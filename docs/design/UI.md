@@ -237,7 +237,7 @@ Colours (CSS variables, light and dark themes, following the system setting by d
 - coloured badges on every field; colour is for severity, validity and the accent only;
 - default, untouched component-library styling (re-theme it with the tokens above first);
 - placeholder content (`Lorem ipsum`, `John Doe`, invented statistics); use realistic alerts based
-  on the samples in `HACK_TASK.md` Appendix A;
+  on the samples in `docs/human/GIVEN_SPEC.md` Appendix A;
 - toasts for routine events; modals for anything except confirming a destructive action.
 
 ## 10. States
@@ -260,6 +260,20 @@ Colours (CSS variables, light and dark themes, following the system setting by d
 
 Record answers here as they are decided:
 
-- Exact list of profiles/roles and which of them may create rules.
-- Where starred filters are stored (backend per user is assumed; local storage only as a fallback).
-- Content of the settings panel beyond profile, notifications, theme and starred filters.
+- ~~Exact list of profiles/roles and which of them may create rules.~~ **Decided:** no auth. Profiles
+  are the people in People & groups, chosen from a profile picker in the settings panel (no
+  password). A `canCreateRules` flag on each person decides whether `+` is rendered.
+- ~~Where starred filters are stored.~~ **Decided:** backend, per profile.
+- ~~Content of the settings panel.~~ **Decided:** profile picker, My notifications, theme, starred
+  filters, and a short **Configure** list linking to separate pages: `/config/sources`,
+  `/config/schemas`, `/config/rules`, `/config/people`, `/config/channels`. These pages follow this
+  file's visual style; they are the only additions to section 2's routes.
+- **Decided (filter language):** the same language is used for rules, routing and runbook matching.
+  Common fields use the `alert.` prefix (`alert.severity`, `alert.source`, `alert.status`,
+  `alert.environment`, `alert.schema`); raw event fields use their own path. Added operators:
+  `matches` (glob, e.g. `pricing-engine-*`), `in`, `not`; `>=`/`<=` on `alert.severity` follow
+  severity order. Severity values are `critical`, `error`, `warning`, `info`; alert status values are
+  `open`, `acknowledged`, `resolved` (the example `alert.status = important` in section 3 is
+  illustrative only).
+- **Decided (`/rules/new`):** specified in `docs/autopilot/SPEC.md` (When → Who → Looks, using this
+  file's filter input for conditions).

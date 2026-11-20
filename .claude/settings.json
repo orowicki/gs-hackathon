@@ -1,11 +1,55 @@
 {
   "$schema": "https://json.schemastore.org/claude-code-settings.json",
-  "model": "opus",
   "env": {
     "CLAUDE_CODE_SUBAGENT_MODEL": "sonnet"
   },
   "permissions": {
-    "disableBypassPermissionsMode": "disable",
+    "allow": [
+      "Bash(just *)",
+      "Bash(uv run *)",
+      "Bash(uv sync *)",
+      "Bash(uv add *)",
+      "Bash(git status *)",
+      "Bash(git diff *)",
+      "Bash(git log *)",
+      "Bash(git show *)",
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(git switch *)",
+      "Bash(git checkout -b *)",
+      "Bash(git merge *)",
+      "Bash(git worktree *)",
+      "Bash(git branch *)",
+      "Bash(git fetch *)",
+      "Bash(git push -u origin ap/*)",
+      "Bash(git push origin ap/*)",
+      "Bash(git rebase --onto *)",
+      "Bash(git rebase origin/*)",
+      "Bash(git rebase ap/*)",
+      "Bash(git rebase --continue)",
+      "Bash(git rebase --abort)",
+      "Bash(git push --force-with-lease origin ap/*)",
+      "Bash(git push --force-with-lease=ap/* origin ap/*)",
+      "Bash(git push origin --delete ap/*)",
+      "Bash(gh pr create --draft *)",
+      "Bash(gh pr view *)",
+      "Bash(gh pr list *)",
+      "Bash(gh pr edit *)",
+      "Bash(gh pr checks *)",
+      "Bash(gh pr ready *)",
+      "Bash(gh run view *)",
+      "Bash(gh run list *)",
+      "Bash(gh issue view *)",
+      "Bash(gh issue list *)",
+      "Bash(gh issue comment *)",
+      "Bash(gh pr comment *)",
+      "Bash(gh issue create *)",
+      "Bash(gh issue edit *)",
+      "Edit(./docs/autopilot/**)",
+      "Write(./docs/autopilot/**)",
+      "Edit(./results/autopilot/team/**)",
+      "Write(./results/autopilot/team/**)"
+    ],
     "deny": [
       "Read(./.env)",
       "Read(./.env.*)",
@@ -58,78 +102,14 @@
       "Write(./docs/autopilot/SPEC.md)",
       "Write(./docs/autopilot/NOTES-HUMAN.md)"
     ],
-    "allow": [
-      "Bash(just *)",
-      "Bash(uv run *)",
-      "Bash(uv sync *)",
-      "Bash(uv add *)",
-      "Bash(git status *)",
-      "Bash(git diff *)",
-      "Bash(git log *)",
-      "Bash(git show *)",
-      "Bash(git add *)",
-      "Bash(git commit *)",
-      "Bash(git switch *)",
-      "Bash(git checkout -b *)",
-      "Bash(git merge *)",
-      "Bash(git worktree *)",
-      "Bash(git branch *)",
-      "Bash(git fetch *)",
-      "Bash(git push -u origin ap/*)",
-      "Bash(git push origin ap/*)",
-      "Bash(git rebase --onto *)",
-      "Bash(git rebase origin/*)",
-      "Bash(git rebase ap/*)",
-      "Bash(git rebase --continue)",
-      "Bash(git rebase --abort)",
-      "Bash(git push --force-with-lease origin ap/*)",
-      "Bash(git push --force-with-lease=ap/* origin ap/*)",
-      "Bash(git push origin --delete ap/*)",
-      "Bash(gh pr create --draft *)",
-      "Bash(gh pr view *)",
-      "Bash(gh pr list *)",
-      "Bash(gh pr edit *)",
-      "Bash(gh pr checks *)",
-      "Bash(gh pr ready *)",
-      "Bash(gh run view *)",
-      "Bash(gh run list *)",
-      "Bash(gh issue view *)",
-      "Bash(gh issue list *)",
-      "Bash(gh issue comment *)",
-      "Bash(gh pr comment *)",
-      "Bash(gh issue create *)",
-      "Bash(gh issue edit *)",
-      "Edit(./docs/autopilot/**)",
-      "Write(./docs/autopilot/**)",
-      "Edit(./results/autopilot/team/**)",
-      "Write(./results/autopilot/team/**)"
-    ]
+    "disableBypassPermissionsMode": "disable"
   },
+  "model": "opus",
   "sandbox": {
     "enabled": true,
     "failIfUnavailable": true,
     "autoAllowBashIfSandboxed": true,
     "allowUnsandboxedCommands": false,
-    "filesystem": {
-      "denyRead": [
-        "~/.ssh",
-        "~/.aws",
-        "~/.config/gh",
-        "~/.config/autopilot",
-        "~/.netrc",
-        "./.env"
-      ],
-      "denyWrite": [
-        "./.claude/settings.json",
-        "./.claude/hooks",
-        "./.devcontainer",
-        "./.git/hooks",
-        "./.autopilot"
-      ],
-      "allowWrite": [
-        "~/.cache/uv"
-      ]
-    },
     "network": {
       "allowedDomains": [
         "api.anthropic.com",
@@ -142,6 +122,29 @@
         "raw.githubusercontent.com",
         "codeload.github.com"
       ]
+    },
+    "filesystem": {
+      "allowWrite": [
+        "~/.cache/uv"
+      ],
+      "denyWrite": [
+        "./.claude/settings.json",
+        "./.claude/hooks",
+        "./.devcontainer",
+        "./.git/hooks",
+        "./.autopilot"
+      ],
+      "denyRead": [
+        "~/.ssh",
+        "~/.aws",
+        "~/.config/gh",
+        "~/.config/autopilot",
+        "~/.netrc",
+        "./.env"
+      ]
     }
+  },
+  "enabledPlugins": {
+    "frontend-design@claude-code-plugins": true
   }
 }
