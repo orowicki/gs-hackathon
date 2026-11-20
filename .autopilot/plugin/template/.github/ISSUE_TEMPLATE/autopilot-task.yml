@@ -1,0 +1,57 @@
+name: Autopilot task
+description: A task any teammate's autopilot can claim (team mode)
+title: ""
+labels: ["ap:task"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Autopilots claim the oldest task that can start now. Keep the scope narrow so tasks can run in parallel.
+  - type: textarea
+    id: goal
+    attributes:
+      label: Goal
+      description: What should exist when this is done, in a sentence or two.
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance
+      description: How a reviewer checks it is done. One check per line.
+      placeholder: |
+        - GET /polls/{id}/export.csv returns one row per vote
+        - just test passes
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: Files in scope
+      description: Files or globs this task edits or creates. Two tasks with overlapping scopes never run at the same time.
+      placeholder: |
+        src/export/**
+        tests/test_export.py
+    validations:
+      required: true
+  - type: textarea
+    id: shared
+    attributes:
+      label: Shared files
+      description: Small edits many tasks make (conftest, README, routes list). Not checked for overlap.
+      placeholder: README.md
+  - type: input
+    id: depends
+    attributes:
+      label: Depends on
+      description: Issues that must be finished first, e.g. "#4, #7". Leave empty if none.
+  - type: input
+    id: milestone
+    attributes:
+      label: Milestone
+      description: The SPEC milestone this belongs to, e.g. "M2". The autopilot sets the GitHub milestone.
+  - type: input
+    id: parent
+    attributes:
+      label: Parent
+      description: A bigger task this is one part of, e.g. "#12". It becomes a sub-issue of it.

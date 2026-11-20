@@ -1,0 +1,158 @@
+#!/usr/bin/env python3
+"""Remove the autopilot kit from a project at the end of development.
+
+    autopilot-eject [TARGET] [--history move|delete|keep] [--remove-container]
+                    [--remove-settings] [--purge-results] [--dry-run] [--yes]
+
+Shows the plan and asks before changing anything. Never commits: review `git status`
+and land it as its own PR. `autopilot-init` puts the kit back.
+"""
+
+import argparse
+import filecmp
+import os
+import re
+import shutil
+import subprocess
+import sys
+
+PLUGIN = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
+TEMPLATE = os.path.join(PLUGIN, "template")
+JUST_MARKER = "# --- autopilot kit (added by autopilot-init)"
+GI_MARKER = "# autopilot kit"
+HISTORY_FILES = ["SPEC.md", "PLAN.md", "DECISIONS.md", "JOURNAL.md", "REPORT.md"]
+ALWAYS_DELETE_STATE = ["STATE.md", "NOTES-HUMAN.md"]
+
+
+def kit_gitignore_lines() -> list[str]:
+    init = open(os.path.join(PLUGIN, "bin", "autopilot-init")).read()
+    block = re.search(r"GITIGNORE = \[(.*?)\]", init, re.S).group(1)
+    return re.findall(r'"([^"]+)"', block)
+
+
+def plan(t: str, a) -> list[tuple[str, str, str]]:
+    """(action, path, note). action in move|delete|edit|keep."""
+    steps = []
+    sd = os.path.join(t, "docs", "autopilot")
+    for f in HISTORY_FILES:
+        p = os.path.join(sd, f)
+        if os.path.exists(p):
+            if a.history == "move":
+                steps.append(("move", f"docs/autopilot/{f}", f"→ docs/history/autopilot/{f}"))
+            elif a.history == "delete":
+                steps.append(("delete", f"docs/autopilot/{f}", "history"))
+            else:
+                steps.append(("keep", f"docs/autopilot/{f}", "--history keep"))
+    for f in ALWAYS_DELETE_STATE:
+        if os.path.exists(os.path.join(sd, f)):
+            steps.append(("delete", f"docs/autopilot/{f}", "run state"))
+    for rel, note in ((".autopilot", "vendored plugin"), ("autopilot.toml", "kit config")):
+        if os.path.exists(os.path.join(t, rel)):
+            steps.append(("delete", rel, note))
+    if os.path.exists(os.path.join(t, "results", "autopilot")):
+        steps.append(("delete", "results/autopilot", "local logs + ledger") if a.purge_results else
+                     ("keep", "results/autopilot", "local logs + ledger, not in git; --purge-results to delete"))
+    jf = os.path.join(t, "justfile")
+    if os.path.exists(jf) and JUST_MARKER in open(jf).read():
+        steps.append(("edit", "justfile", "remove the kit recipes section"))
+    gi = os.path.join(t, ".gitignore")
+    if os.path.exists(gi) and any(line in kit_gitignore_lines() for line in open(gi).read().splitlines()):
+        steps.append(("edit", ".gitignore", "remove the kit lines"))
+    for rel, flag, why in ((".devcontainer", a.remove_container, "--remove-container"),
+                           (".claude/settings.json", a.remove_settings, "--remove-settings")):
+        if os.path.exists(os.path.join(t, rel)):
+            steps.append(("delete" if flag else "keep", rel, "" if flag else f"useful for humans; {why} to drop"))
+    # profile files: remove only if unchanged from the kit's copy
+    prof = os.path.join(PLUGIN, "profiles", "research")
+    for f in sorted(os.listdir(os.path.join(prof, "agents"))):
+        p = os.path.join(t, ".claude", "agents", f)
+        if os.path.exists(p):
+            same = filecmp.cmp(p, os.path.join(prof, "agents", f), shallow=False)
+            steps.append(("delete" if same else "keep", f".claude/agents/{f}", "kit copy" if same else "edited by you: kept"))
+    p = os.path.join(t, "AGENTS.md")
+    if os.path.exists(p):
+        same = filecmp.cmp(p, os.path.join(prof, "AGENTS.md"), shallow=False)
+        steps.append(("delete" if same else "keep", "AGENTS.md", "kit copy" if same else "edited by you: kept"))
+    return steps
+
+
+def strip_justfile(path: str) -> None:
+    s = open(path).read()
+    i = s.find(JUST_MARKER)
+    open(path, "w").write(s[:i].rstrip("\n") + "\n")
+
+
+def strip_gitignore(path: str) -> None:
+    kit = set(kit_gitignore_lines())
+    lines = [line for line in open(path).read().splitlines() if line not in kit]
+    while lines and not lines[-1].strip():
+        lines.pop()
+    open(path, "w").write("\n".join(lines) + ("\n" if lines else ""))
+
+
+def apply(t: str, steps) -> None:
+    for action, rel, _ in steps:
+        p = os.path.join(t, rel)
+        if action == "move":
+            dst = os.path.join(t, "docs", "history", "autopilot", os.path.basename(rel))
+            os.makedirs(os.path.dirname(dst), exist_ok=True)
+            tracked = subprocess.run(["git", "ls-files", "--error-unmatch", rel], cwd=t,
+                                     capture_output=True).returncode == 0
+            if tracked:
+                subprocess.run(["git", "mv", rel, os.path.relpath(dst, t)], cwd=t, check=True)
+            else:
+                shutil.move(p, dst)
+        elif action == "delete":
+            shutil.rmtree(p) if os.path.isdir(p) else os.remove(p)
+        elif action == "edit" and rel == "justfile":
+            strip_justfile(p)
+        elif action == "edit" and rel == ".gitignore":
+            strip_gitignore(p)
+    for d in ("docs/autopilot", "docs", ".claude/agents", ".claude", "results"):
+        p = os.path.join(t, d)
+        if os.path.isdir(p) and not os.listdir(p):
+            os.rmdir(p)
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("target", nargs="?", default=".")
+    ap.add_argument("--history", choices=["move", "delete", "keep"], default="move")
+    ap.add_argument("--remove-container", action="store_true")
+    ap.add_argument("--remove-settings", action="store_true")
+    ap.add_argument("--purge-results", action="store_true", help="also delete local run logs and the ledger")
+    ap.add_argument("--dry-run", action="store_true")
+    ap.add_argument("--yes", action="store_true")
+    a = ap.parse_args()
+    t = os.path.realpath(a.target)
+    state = os.path.join(t, "docs", "autopilot", "STATE.md")
+    if os.path.exists(state) and open(state).readline().startswith("STATUS: RUNNING"):
+        print("Refusing: STATE says RUNNING. Let the run stop first.", file=sys.stderr)
+        return 2
+    steps = plan(t, a)
+    if not steps:
+        print("Nothing to eject: no kit files found.")
+        return 0
+    icon = {"move": "↪", "delete": "✖", "edit": "✎", "keep": "·"}
+    print(f"Eject plan for {t}:")
+    for action, rel, note in steps:
+        print(f"  {icon[action]} {action:6} {rel}" + (f"  ({note})" if note else ""))
+    if a.dry_run:
+        return 0
+    if not a.yes:
+        try:
+            if input("\nApply? [y/N] ").strip().lower() not in ("y", "yes"):
+                print("Nothing changed.")
+                return 1
+        except EOFError:
+            print("Nothing changed.")
+            return 1
+    apply(t, steps)
+    print("\nDone. Nothing is committed. Review with `git status`, then commit on a branch, e.g.\n"
+          "  git switch -c chore/eject-autopilot && git add -A && git commit -m 'chore: remove autopilot kit'\n"
+          "`autopilot-init` puts the kit back.")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

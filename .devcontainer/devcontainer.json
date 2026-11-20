@@ -1,0 +1,20 @@
+{
+  "name": "autopilot",
+  "build": { "dockerfile": "Dockerfile" },
+  "initializeCommand": "bash .devcontainer/host-prep.sh",
+  "runArgs": [
+    "--cap-add=NET_ADMIN", "--cap-add=NET_RAW",
+    "--env-file", "${localWorkspaceFolder}/.devcontainer/.host.env",
+    "--env-file", "${localEnv:HOME}/.config/autopilot/${localWorkspaceFolderBasename}.env"
+  ],
+  "remoteUser": "node",
+  "mounts": [
+    "source=autopilot-claude-config,target=/home/node/.claude,type=volume",
+    "source=autopilot-venv-${devcontainerId},target=/home/node/.venv,type=volume",
+    "source=autopilot-uvcache,target=/home/node/.cache/uv,type=volume"
+  ],
+  "workspaceMount": "source=${localWorkspaceFolder},target=/workspace,type=bind,consistency=delegated",
+  "workspaceFolder": "/workspace",
+  "postStartCommand": "sudo /usr/local/bin/init-firewall.sh && if [ -n \"${GH_TOKEN:-}\" ]; then gh auth setup-git && git config --global url.https://github.com/.insteadOf git@github.com: && echo \"git uses GH_TOKEN over HTTPS (SSH remotes rewritten)\"; fi",
+  "waitFor": "postStartCommand"
+}

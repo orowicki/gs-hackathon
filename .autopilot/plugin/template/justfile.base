@@ -1,0 +1,15 @@
+default:
+    @just --list
+
+# Lint (replace with your project's linter)
+lint:
+    @echo "no linter configured yet"
+
+# Tests (replace with your project's test command)
+test:
+    @echo "no tests configured yet"
+
+# Auto-format
+fmt:
+    @echo "no formatter configured yet"
+

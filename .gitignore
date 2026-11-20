@@ -1,0 +1,10 @@
+# autopilot kit
+results/autopilot/
+.autopilot/**/__pycache__/
+.autopilot/work/
+.devcontainer/.host.env
+.claude/worktrees/
+.claude/settings.local.json
+.autopilot/plugin/.in_use/
+.env
+.env.*

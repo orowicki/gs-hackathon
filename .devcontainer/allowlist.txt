@@ -1,0 +1,3 @@
+# Extra egress domains for this project, one per line (re-run the firewall after editing:
+# `sudo /usr/local/bin/init-firewall.sh`). Include CDN redirect targets, e.g. for
+# Hugging Face: huggingface.co cdn-lfs.huggingface.co cdn-lfs.hf.co us.aws.cdn.hf.co cas-bridge.xethub.hf.co

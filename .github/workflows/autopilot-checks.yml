@@ -1,0 +1,24 @@
+# Lint and tests on every PR and on main (added by `ap init`). Hackathon auto-merge waits for
+# these to pass, so two PRs that each pass alone can't silently break main.
+# Adjust the setup steps to your stack (the commented ones are examples).
+name: checks
+on:
+  pull_request:
+  push:
+    branches: [main]
+concurrency:
+  group: checks-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - uses: extractions/setup-just@v2
+      # - uses: actions/setup-node@v4
+      #   with: { node-version: 22 }
+      # - run: npm ci
+      - run: just lint
+      - run: just test

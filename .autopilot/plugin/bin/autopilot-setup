@@ -1,0 +1,277 @@
+#!/usr/bin/env python3
+"""First-time setup for a teammate, on the HOST. Safe to re-run.
+
+    ap setup [--no-build] [--no-ntfy-test]
+
+1. Checks the host: git, Docker (real Docker, not Podman), devcontainer CLI, `ap` on PATH.
+2. Fills the env-file (~/.config/autopilot/<project>.env) with the keys this project needs.
+   Input is hidden, values are never printed, the file is chmod 600 and outside the repo.
+3. Suggests an ntfy topic and sends a test notification.
+4. Builds the devcontainer (recreates it when the env-file changed) and checks the Claude login.
+5. Runs `just doctor` inside the container.
+"""
+
+import argparse
+import getpass
+import os
+import re
+import secrets
+import shutil
+import subprocess
+import sys
+import urllib.request
+
+OK, WARN, BAD = "✔", "!", "✖"
+
+
+def say(icon: str, msg: str, fix: str = "") -> None:
+    print(f"{icon} {msg}")
+    if fix:
+        for line in fix.splitlines():
+            print(f"    {line}")
+
+
+def sh(*cmd, cwd=None, timeout=60) -> tuple:
+    try:
+        r = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, timeout=timeout)
+        return r.returncode, (r.stdout + r.stderr).strip()
+    except (OSError, subprocess.TimeoutExpired) as e:
+        return 127, str(e)
+
+
+# ---- config (host python may lack tomllib) -------------------------------------
+def toml_value(text: str, key: str):
+    m = re.search(rf"^{key}\s*=\s*(.+?)\s*(#.*)?$", text, re.M)
+    if not m:
+        return None
+    v = m.group(1)
+    if v.startswith("["):
+        return re.findall(r'"([^"]+)"', v)
+    return v.strip('"')
+
+
+def project_needs(root: str) -> dict:
+    """{env var: (required, help)} for this project."""
+    toml = os.path.join(root, "autopilot.toml")
+    text = open(toml).read() if os.path.exists(toml) else ""
+    ntfy = toml_value(text, "ntfy_env") or "AUTOPILOT_NTFY_URL"
+    need = {}
+    _, url = sh("git", "remote", "get-url", "origin", cwd=root)
+    m = re.search(r"github\.com[:/]([^/]+/[^/.\s]+)", url)
+    if m:
+        need["GH_TOKEN"] = (False, (
+            f"GitHub token so the autopilot can push branches and open draft PRs on {m.group(1)}.\n"
+            "Create a fine-grained token: https://github.com/settings/personal-access-tokens/new\n"
+            f"  Repository access: only {m.group(1)}\n"
+            "  Permissions: Contents, Pull requests, Issues = Read and write\n"
+            "  Team mode also: Discussions = Read and write; Actions, Commit statuses = Read\n"
+            "Leave empty to skip: the autopilot then records 'ready to push' instead."))
+    for var in toml_value(text, "required_env") or []:
+        need[var] = (True, f"Required by this project (autopilot.toml [env] required_env).")
+    need[ntfy] = (False, "ntfy URL for phone/desktop alerts when a run stops. Optional.")
+    return need
+
+
+# ---- env-file -------------------------------------------------------------------
+def read_env(path: str) -> dict:
+    out = {}
+    if os.path.exists(path):
+        for line in open(path):
+            m = re.match(r"^\s*([A-Za-z_][A-Za-z0-9_]*)=(.*)$", line)
+            if m:
+                out[m.group(1)] = m.group(2).strip()
+    return out
+
+
+def write_env(path: str, updates: dict) -> None:
+    """Set keys in place (uncommenting `# KEY=` placeholders), append the rest. chmod 600."""
+    lines = open(path).read().splitlines() if os.path.exists(path) else [
+        f"# Secrets for {os.path.basename(path)[:-4]} (never commit). KEY=value, one per line."]
+    left = dict(updates)
+    for i, line in enumerate(lines):
+        m = re.match(r"^\s*#?\s*([A-Za-z_][A-Za-z0-9_]*)=", line)
+        if m and m.group(1) in left:
+            lines[i] = f"{m.group(1)}={left.pop(m.group(1))}"
+    lines += [f"{k}={v}" for k, v in left.items()]
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w") as f:
+        f.write("\n".join(lines) + "\n")
+    os.chmod(path, 0o600)
+
+
+# ---- steps -----------------------------------------------------------------------
+def check_host() -> bool:
+    good = True
+    print("\n1. Host")
+    for tool, fix in (("git", "install git"),
+                      ("python3", "install Python 3"),
+                      ("devcontainer", "npm install -g @devcontainers/cli   (needs Node.js)")):
+        if shutil.which(tool):
+            say(OK, tool)
+        else:
+            say(BAD, f"{tool} not found", fix)
+            good = False
+    dh = os.environ.get("DOCKER_HOST", "")
+    if "podman" in dh:
+        say(BAD, f"DOCKER_HOST points at Podman ({dh})",
+            "unset DOCKER_HOST and remove it from your shell rc. README → Troubleshooting: Podman")
+        good = False
+    elif not shutil.which("docker"):
+        say(BAD, "docker not found",
+            "macOS: Docker Desktop or OrbStack. Linux: Docker Engine from docs.docker.com")
+        good = False
+    else:
+        _, v = sh("docker", "--version")
+        if "podman" in v.lower():
+            say(BAD, f"`docker` is Podman ({v})",
+                "remove podman-docker and install Docker. README → Troubleshooting: Podman")
+            good = False
+        else:
+            code, out = sh("docker", "info", "--format", "{{.ServerVersion}}", timeout=30)
+            if code == 0 and out:
+                say(OK, f"Docker {out}")
+            elif "permission denied" in out.lower():
+                say(BAD, "Docker needs sudo",
+                    "sudo usermod -aG docker $USER, then log out and back in")
+                good = False
+            else:
+                say(BAD, "Docker isn't running", "start Docker Desktop / OrbStack, or: sudo systemctl enable --now docker")
+                good = False
+    local_bin = os.path.expanduser("~/.local/bin")
+    if local_bin in os.environ.get("PATH", "").split(":"):
+        say(OK, "~/.local/bin on PATH (ap)")
+    else:
+        rc = "~/.zshrc" if os.environ.get("SHELL", "").endswith("zsh") else "~/.bashrc"
+        say(WARN, "~/.local/bin is not on PATH, so `ap` isn't found in new terminals",
+            f"echo 'export PATH=\"$HOME/.local/bin:$PATH\"' >> {rc}   then open a new terminal")
+    return good
+
+
+def _safe(fn):
+    """No terminal (EOF / Ctrl-D) counts as 'skip' instead of a traceback."""
+    def call(prompt):
+        try:
+            return fn(prompt)
+        except EOFError:
+            print()
+            return "-"
+    return call
+
+
+def fill_env(root: str, envfile: str, ask=getpass.getpass, inp=input) -> bool:
+    """Returns True if the env-file changed."""
+    ask, inp = _safe(ask), _safe(inp)
+    print(f"\n2. Keys  ({envfile}, outside the repo, chmod 600)")
+    have = read_env(envfile)
+    updates = {}
+    for var, (required, help_) in project_needs(root).items():
+        if have.get(var):
+            say(OK, f"{var} is set")
+            continue
+        print(f"\n{var}{' (required)' if required else ''}:")
+        for line in help_.splitlines():
+            print(f"    {line}")
+        if "NTFY" in var.upper():
+            topic = f"autopilot-{secrets.token_hex(8)}"
+            print(f"    Suggested: https://ntfy.sh/{topic}  (subscribe to it in the ntfy app)")
+            v = inp("    Enter = use the suggestion, or paste your URL, or '-' to skip: ").strip()
+            v = f"https://ntfy.sh/{topic}" if v == "" else ("" if v == "-" else v)
+        else:
+            v = ask("    paste it (hidden, Enter = skip): ").strip()
+            v = "" if v == "-" else v
+        if v:
+            updates[var] = v
+            say(OK, f"{var} saved")
+        else:
+            say(BAD if required else WARN, f"{var} skipped")
+    if updates:
+        write_env(envfile, updates)
+    elif not os.path.exists(envfile):
+        write_env(envfile, {})
+    return bool(updates)
+
+
+def test_ntfy(envfile: str, var: str) -> None:
+    url = read_env(envfile).get(var)
+    if not url:
+        return
+    try:
+        req = urllib.request.Request(url, data=b"autopilot setup: notifications work",
+                                     headers={"Title": "autopilot"})
+        urllib.request.urlopen(req, timeout=10)
+        say(OK, "test notification sent: check your phone/browser")
+    except Exception as e:  # noqa: BLE001
+        say(WARN, f"ntfy test failed ({type(e).__name__})", "check the URL in the env-file")
+
+
+def build_and_login(root: str, recreate: bool) -> bool:
+    print("\n3. Container" + (" (recreating: the env-file changed)" if recreate else ""))
+    cmd = ["devcontainer", "up", "--workspace-folder", root]
+    if recreate:
+        cmd.append("--remove-existing-container")
+    print("    building… (first time takes a few minutes)")
+    r = subprocess.run(cmd, capture_output=True, text=True)
+    if r.returncode != 0:
+        say(BAD, "devcontainer up failed", "\n".join((r.stdout + r.stderr).strip().splitlines()[-8:]))
+        return False
+    say(OK, "container is up")
+    probe = ('test -s "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/.credentials.json" '
+             '|| test -n "${CLAUDE_CODE_OAUTH_TOKEN:-}" || test -n "${ANTHROPIC_API_KEY:-}"')
+    ex = ["devcontainer", "exec", "--workspace-folder", root]
+    if subprocess.run(ex + ["sh", "-c", probe], capture_output=True).returncode == 0:
+        say(OK, "Claude login found (shared by all your kit projects)")
+        return True
+    print("\n    No Claude login in the container yet. Claude opens now:")
+    print("    type /login, open the link in your browser, paste the code back, then /exit.")
+    if not sys.stdin.isatty():
+        say(BAD, "no terminal to log in from", "run `ap setup` in a terminal, or `ap chat` then /login")
+        return False
+    input("    Press Enter to start… ")
+    subprocess.run(ex + ["claude", "--settings", '{"sandbox":{"enabled":false}}'])
+    if subprocess.run(ex + ["sh", "-c", probe], capture_output=True).returncode == 0:
+        say(OK, "Claude login saved")
+        return True
+    say(BAD, "still no login", "run `ap chat`, then /login")
+    return False
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("target", nargs="?", default=".")
+    ap.add_argument("--no-build", action="store_true", help="only check the host and fill the env-file")
+    ap.add_argument("--no-ntfy-test", action="store_true")
+    a = ap.parse_args()
+    sys.stdout.reconfigure(line_buffering=True)  # keep our lines in order with child output
+    code, top = sh("git", "rev-parse", "--show-toplevel", cwd=a.target)
+    root = top if code == 0 else os.path.realpath(a.target)
+    if not os.path.exists(os.path.join(root, ".devcontainer", "devcontainer.json")):
+        print(f"No kit in {root}. Run `ap init --profile <core|hackathon|research>` first.")
+        return 2
+    print(f"autopilot setup for {root}")
+    host_ok = check_host()
+    envfile = os.path.expanduser(f"~/.config/autopilot/{os.path.basename(root)}.env")
+    changed = fill_env(root, envfile)
+    if not a.no_ntfy_test:
+        ntfy = toml_value(open(os.path.join(root, "autopilot.toml")).read(), "ntfy_env") \
+            if os.path.exists(os.path.join(root, "autopilot.toml")) else None
+        test_ntfy(envfile, ntfy or "AUTOPILOT_NTFY_URL")
+    if a.no_build:
+        return 0 if host_ok else 1
+    if not host_ok:
+        print("\nFix the ✖ items above, then run `ap setup` again.")
+        return 1
+    if not build_and_login(root, changed):
+        return 1
+    print("\n4. Doctor")
+    rc = subprocess.run(["devcontainer", "exec", "--workspace-folder", root, "just", "doctor"]).returncode
+    if rc == 0:
+        print("\nReady. Next: `ap autopilot`.")
+    else:
+        print("\nFix the FAIL lines above (each has a fix), then `ap doctor`. On a new project,\n"
+              "`SPEC ready` and `branch` fail until you fill the SPEC and switch to a branch: that's expected.")
+    return rc
+
+
+if __name__ == "__main__":
+    sys.exit(main())

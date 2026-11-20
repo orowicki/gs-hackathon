@@ -1,0 +1,69 @@
+#!/usr/bin/env bash
+# ap: run a project's `just` recipe inside its autopilot devcontainer, from the host.
+#   ap autopilot | ap decide | ap doctor | ap chat | ap <any recipe> [args]
+#   ap            -> interactive shell in the container
+#   ap setup | ap init [--profile P] | ap eject [...]  -> run on the host (autopilot-*)
+#     (Claude can't do this: the project's own rules block writes to .autopilot/)
+# Works from any subfolder of a repo that has .devcontainer/. Inside the container it
+# just runs `just`. Starts the container if it isn't running.
+set -euo pipefail
+
+if [[ "${AUTOPILOT_CONTAINER:-}" == 1 || -f /.dockerenv || -f /run/.containerenv ]]; then
+  if [[ $# -eq 0 ]]; then exec just --list; fi
+  exec just "$@"
+fi
+
+if [[ "${1:-}" == init || "${1:-}" == eject || "${1:-}" == setup ]]; then
+  bin="$(cd "$(dirname "$(python3 -c 'import os,sys;print(os.path.realpath(sys.argv[1]))' "${BASH_SOURCE[0]}")")" && pwd)"
+  cmd="$1"; shift
+  top="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+  exec python3 "$bin/autopilot-$cmd" "$top" "$@"
+fi
+
+root="$(git rev-parse --show-toplevel 2>/dev/null)" || { echo "ap: not inside a git repo" >&2; exit 2; }
+[[ -f "$root/.devcontainer/devcontainer.json" ]] || { echo "ap: no .devcontainer/ in $root (run autopilot-init)" >&2; exit 2; }
+command -v devcontainer >/dev/null || { echo "ap: install the devcontainer CLI: npm i -g @devcontainers/cli" >&2; exit 2; }
+
+# Podman is unsupported (its networking bypasses the firewall). Catch the usual shims.
+podman_hint() {
+  cat >&2 <<'MSG'
+ap: this looks like Podman, not Docker. The kit needs real Docker (Docker Engine on Linux,
+    Docker Desktop or OrbStack on macOS). See README → "Troubleshooting: Podman".
+MSG
+}
+if [[ "${DOCKER_HOST:-}" == *podman* ]]; then
+  podman_hint; echo "    DOCKER_HOST=$DOCKER_HOST points at Podman: unset it (and remove it from your shell rc)." >&2; exit 2
+fi
+if command -v docker >/dev/null && docker --version 2>/dev/null | grep -qi podman; then
+  podman_hint; echo "    \`docker\` is Podman's stand-in (podman-docker package): remove it, install Docker." >&2; exit 2
+fi
+engine=docker; command -v docker >/dev/null || { podman_hint; exit 2; }
+running="$($engine ps -q --filter "label=devcontainer.local_folder=$root" 2>/dev/null || true)"
+if [[ -z "$running" ]]; then
+  echo "ap: starting the devcontainer for $(basename "$root")…" >&2
+  devcontainer up --workspace-folder "$root" >/dev/null
+fi
+
+# Keep the cwd relative to the repo root (e.g. `ap test` from a subfolder).
+rel="$(python3 -c 'import os,sys;print(os.path.relpath(sys.argv[1],sys.argv[2]))' "$PWD" "$root")"
+inner_cd="cd /workspace/$rel 2>/dev/null || cd /workspace"
+if [[ $# -eq 0 ]]; then
+  exec devcontainer exec --workspace-folder "$root" bash -lc "$inner_cd; exec bash -l"
+fi
+args="$(printf '%q ' "$@")"
+if [[ "$1" != autopilot ]]; then
+  exec devcontainer exec --workspace-folder "$root" bash -lc "$inner_cd; exec just $args"
+fi
+# The autopilot: if this terminal closes or ap is stopped, stop the supervisor inside the
+# container too (it would otherwise keep working and spending, unwatched). It stops Claude itself.
+stop_inner() {
+  devcontainer exec --workspace-folder "$root" bash -c '
+    p=$(sed -n "s/^pid \([0-9]*\).*/\1/p" /workspace/results/autopilot/supervisor.lock 2>/dev/null)
+    [ -n "$p" ] && grep -q autopilot.supervisor "/proc/$p/cmdline" 2>/dev/null && kill -TERM "$p"' \
+    >/dev/null 2>&1 || true
+}
+trap 'stop_inner; exit 130' INT TERM HUP
+rc=0
+devcontainer exec --workspace-folder "$root" bash -lc "$inner_cd; exec just $args" || rc=$?
+trap - INT TERM HUP
+exit "$rc"

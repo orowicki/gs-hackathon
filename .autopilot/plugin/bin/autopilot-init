@@ -1,0 +1,165 @@
+#!/usr/bin/env python3
+"""Install the autopilot kit into a repo (or a blank folder).
+
+    autopilot-init [TARGET] [--profile core|research|hackathon] [--force]
+
+Never overwrites existing files unless --force; reports what it skipped.
+"""
+
+import argparse
+import os
+import re
+import shutil
+import subprocess
+import sys
+
+PLUGIN = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
+TEMPLATE = os.path.join(PLUGIN, "template")
+GITIGNORE = [
+    "# autopilot kit",
+    "results/autopilot/",
+    ".autopilot/**/__pycache__/",
+    ".autopilot/work/",
+    ".devcontainer/.host.env",
+    ".claude/worktrees/",
+    ".claude/settings.local.json",
+]
+done, skipped = [], []
+
+
+def copy(src_rel, dst_rel, target, force):
+    src, dst = os.path.join(TEMPLATE, src_rel), os.path.join(target, dst_rel)
+    if os.path.exists(dst) and not force:
+        skipped.append(dst_rel)
+        return False
+    os.makedirs(os.path.dirname(dst) or ".", exist_ok=True)
+    shutil.copy2(src, dst)
+    done.append(dst_rel)
+    return True
+
+
+def main():
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("target", nargs="?", default=".")
+    ap.add_argument("--profile", choices=["core", "research", "hackathon"], default="core")
+    ap.add_argument("--force", action="store_true")
+    a = ap.parse_args()
+    t = os.path.realpath(a.target)
+    os.makedirs(t, exist_ok=True)
+
+    if not os.path.isdir(os.path.join(t, ".git")):
+        subprocess.run(["git", "init", "-q", "-b", "main"], cwd=t, check=True)
+        done.append(".git (new repo on main)")
+
+    for rel in ["autopilot.toml", ".devcontainer/Dockerfile", ".devcontainer/devcontainer.json",
+                ".devcontainer/host-prep.sh", ".devcontainer/init-firewall.sh", ".devcontainer/allowlist.txt",
+                ".github/ISSUE_TEMPLATE/autopilot-task.yml", ".github/workflows/autopilot-checks.yml"]:
+        copy(rel, rel, t, a.force)
+    for f in sorted(os.listdir(os.path.join(TEMPLATE, "docs/autopilot"))):
+        copy(f"docs/autopilot/{f}", f"docs/autopilot/{f}", t, a.force)
+    tpl_settings = open(os.path.join(TEMPLATE, ".claude/settings.json")).read()
+    cur_settings = os.path.join(t, ".claude/settings.json")
+    if os.path.exists(cur_settings) and open(cur_settings).read() == tpl_settings:
+        skipped.append(".claude/settings.json (already the kit's version)")
+    elif not copy(".claude/settings.json", ".claude/settings.json", t, a.force):
+        copy(".claude/settings.json", ".claude/settings.autopilot.json", t, True)
+        print("! .claude/settings.json exists: the kit's version is in .claude/settings.autopilot.json; merge its "
+              "permissions/sandbox/env by hand (a plugin can't ship deny rules).")
+
+    # justfile
+    jf = os.path.join(t, "justfile")
+    ap_part = open(os.path.join(TEMPLATE, "justfile.autopilot")).read()
+    if not os.path.exists(jf):
+        open(jf, "w").write(open(os.path.join(TEMPLATE, "justfile.base")).read() + ap_part)
+        done.append("justfile")
+    else:
+        cur = open(jf).read()
+        marker = "# --- autopilot kit (added by autopilot-init)"
+        i = cur.find(marker)
+        if i == -1:
+            open(jf, "w").write(cur.rstrip("\n") + "\n\n" + ap_part)
+            done.append("justfile (appended autopilot recipes)")
+        elif cur[i:] != ap_part:
+            # the kit section is always last: replace it so re-running init upgrades recipes
+            open(jf, "w").write(cur[:i] + ap_part)
+            done.append("justfile (updated autopilot recipes)")
+        else:
+            skipped.append("justfile (autopilot recipes up to date)")
+
+    # vendored plugin (loaded with --plugin-dir; protected from the agent)
+    vend = os.path.join(t, ".autopilot", "plugin")
+    state_path = os.path.join(t, "docs/autopilot/STATE.md")
+    running = os.path.exists(state_path) and open(state_path).readline().startswith("STATUS: RUNNING")
+    if running and os.path.exists(vend) and not a.force:
+        skipped.append(".autopilot/plugin (STATE says RUNNING: not replacing the plugin under a live run; "
+                       "rerun when it stops, or --force)")
+    else:
+        if os.path.exists(vend):
+            shutil.rmtree(vend)
+        shutil.copytree(PLUGIN, vend, ignore=shutil.ignore_patterns("__pycache__", "*.pyc", ".DS_Store"))
+        done.append(".autopilot/plugin (vendored, refreshed)")
+
+    # profile
+    spec = os.path.join(t, "docs/autopilot/SPEC.md")
+    if os.path.exists(spec):
+        s = open(spec).read()
+        s2 = re.sub(r"^profile:\s*\S+", f"profile: {a.profile}", s, count=1, flags=re.M)
+        if s2 != s:
+            open(spec, "w").write(s2)
+    if a.profile == "research":
+        src = os.path.join(PLUGIN, "profiles", "research")
+        for f in sorted(os.listdir(os.path.join(src, "agents"))):
+            dst = os.path.join(t, ".claude", "agents", f)
+            if os.path.exists(dst) and not a.force:
+                skipped.append(f".claude/agents/{f}")
+                continue
+            os.makedirs(os.path.dirname(dst), exist_ok=True)
+            shutil.copy2(os.path.join(src, "agents", f), dst)
+            done.append(f".claude/agents/{f}")
+        if not os.path.exists(os.path.join(t, "AGENTS.md")) or a.force:
+            shutil.copy2(os.path.join(src, "AGENTS.md"), os.path.join(t, "AGENTS.md"))
+            done.append("AGENTS.md")
+
+    # .gitignore
+    gi = os.path.join(t, ".gitignore")
+    cur = open(gi).read() if os.path.exists(gi) else ""
+    add = [line for line in GITIGNORE if line not in cur.splitlines()]
+    if add:
+        open(gi, "a").write(("\n" if cur and not cur.endswith("\n") else "") + "\n".join(add) + "\n")
+        done.append(".gitignore")
+    os.makedirs(os.path.join(t, "results", "autopilot"), exist_ok=True)
+
+    print("Installed:\n  " + "\n  ".join(done))
+    if skipped:
+        print("Kept existing (use --force to overwrite):\n  " + "\n  ".join(skipped))
+    # host helper: `ap <recipe>` runs it in the devcontainer
+    local_bin = os.path.expanduser("~/.local/bin")
+    ap_link = os.path.join(local_bin, "ap")
+    ap_src = os.path.join(PLUGIN, "bin", "ap")
+    # (Re)point our own symlink at this kit copy: an installed plugin lives in a versioned
+    # cache dir that disappears on update. Never touch a real file or someone else's link.
+    ours = os.path.islink(ap_link) and os.path.basename(os.path.dirname(os.readlink(ap_link))) == "bin" \
+        and os.readlink(ap_link).endswith("/bin/ap")
+    if not os.path.exists("/.dockerenv") and (not os.path.lexists(ap_link) or (ours and os.readlink(ap_link) != ap_src)):
+        os.makedirs(local_bin, exist_ok=True)
+        if os.path.lexists(ap_link):
+            os.remove(ap_link)
+        os.symlink(ap_src, ap_link)
+        done.append(f"~/.local/bin/ap -> {ap_src}")
+        if local_bin not in os.environ.get("PATH", "").split(":"):
+            rc = "~/.zshrc" if os.environ.get("SHELL", "").endswith("zsh") else "~/.bashrc"
+            print(f"! ~/.local/bin is not on your PATH, so `ap` won't be found. Run once, then open a new terminal:\n"
+                  f"    echo 'export PATH=\"$HOME/.local/bin:$PATH\"' >> {rc}")
+
+    print(f"""
+Next:
+  1. Fill docs/autopilot/SPEC.md (goal, criteria, budget) and set `ready: true`.
+  2. Make `just lint` and `just test` real for your stack.
+  3. Commit, then: git switch -c ap/run
+  4. Open in the devcontainer (keys go in ~/.config/autopilot/{os.path.basename(t)}.env).
+  5. ap doctor   → fix every FAIL   (ap <recipe> = just <recipe> inside the container)
+  6. ap autopilot""")
+
+
+if __name__ == "__main__":
+    sys.exit(main())

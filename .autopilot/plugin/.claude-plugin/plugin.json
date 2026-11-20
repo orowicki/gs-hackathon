@@ -1,0 +1,7 @@
+{
+  "name": "autopilot",
+  "version": "0.4.0-rc1",
+  "description": "Unattended, resumable, budget-capped build loop: an Opus coordinator, cheaper worker agents, state on disk, the human makes decisions.",
+  "license": "MIT",
+  "keywords": ["autopilot", "headless", "agents", "coordinator"]
+}

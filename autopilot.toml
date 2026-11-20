@@ -1,0 +1,50 @@
+# Autopilot kit configuration. Human-owned (the agent can't edit it).
+# The total budget lives in docs/autopilot/SPEC.md frontmatter (budget_usd).
+
+[run]
+model = "opus"                 # coordinator; workers set their own model
+max_turns = 400                # per segment (one claude process)
+min_segment_usd = 0.5          # don't start a segment with less than this left
+budget_margin_usd = 0.5        # per-run cap = remaining - margin (the cap is a client estimate)
+idle_timeout_min = 20          # watchdog: no events and no live tasks for this long -> kill
+silent_timeout_min = 60        # watchdog: no events at all for this long, even with live tasks -> kill
+unknown_segment_usd = 1.0      # charged for a killed segment whose real cost Claude never reported
+exit_grace_s = 120             # watchdog: finished but process didn't exit -> kill
+max_no_progress = 2            # segments without a new commit or JOURNAL entry -> BLOCKED
+backoff_s = [10, 60, 300]
+bg_wait_ceiling_ms = 1800000   # how long -p waits for background agents after a turn
+
+[gate]
+gate = "just lint;;just test"  # Stop-hook quality gate, ';;'-separated
+
+[env]
+required_env = []              # e.g. ["OPENROUTER_API_KEY"]; checked before any spend
+
+[notify]
+desktop_notify = true          # host only; inside the container use ntfy
+ntfy_env = "AUTOPILOT_NTFY_URL"  # env var holding https://ntfy.sh/<your-secret-topic>
+# name = "pollboard"           # short project name in notification titles (default: repo name)
+notify_done = false            # phone notification when a run finishes (Question, Blocked, Budget, Review always notify)
+
+[launch]
+plugin_dir = ".autopilot/plugin"
+tested_claude_version = "2.1.327"
+
+[team]
+# Several people's autopilots share the work through GitHub Issues (docs/TEAMMATES.md).
+enabled = true
+# repo = "owner/name"          # default: the origin remote
+poll_minutes = 5               # `just autopilot --wait` checks GitHub for answers this often
+max_open_claims = 1
+heartbeat_minutes = 20         # refresh the claim this often while a segment runs
+max_proposals = 5              # ap:proposed issues per run; extras are parked (ap:blocked)
+discussions = "Autopilot"      # Discussions category for team notes; make it in the repo's Discussions settings ("" = off)
+max_notes = 3                  # team notes one autopilot may post per run
+# auto_merge = true            # default: on with the hackathon profile only. Merges your autopilot's PRs that
+                               # say "Review: not needed", pass checks, touch no protected files, and get no
+                               # comment from a person within the delay
+auto_merge_delay_min = 5
+# auto_promote = true          # default: on with the hackathon profile only. Your autopilot's proposals
+                               # become ap:task unless someone comments or thumbs-downs them in time
+auto_promote_delay_min = 5
+# claim_expiry_h = 24          # default 24, 2 with the hackathon profile; label ap:hold pauses expiry
