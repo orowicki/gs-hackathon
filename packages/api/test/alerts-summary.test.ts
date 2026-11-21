@@ -169,6 +169,7 @@ function suite(name: string, make: () => Promise<{ stores: AlertStores; tag: str
         expect([...p1.body, ...p2.body, ...p3.body].map((x) => x.id)).toEqual(full);
         expect(p3.body).toHaveLength(2);
         expect(p1.next).toBe("3");
+        expect(p3.next).toBeNull();
         expect(p2.next).toBe("6");
       } finally {
         await t.cleanup();
@@ -188,11 +189,18 @@ function suite(name: string, make: () => Promise<{ stores: AlertStores; tag: str
         const r2 = await fetch(`${t.url}/api/alerts?${t.f}&limit=3&before=${encodeURIComponent(next!)}`);
         expect([...b1, ...((await r2.json()) as Alert[])].map((x) => x.id)).toEqual(def.slice(0, 6));
         // before + non-default sort / offset is rejected
-        for (const extra of ["sort=count", "order=asc", "offset=1"]) {
+        for (const extra of ["sort=count", "order=asc"]) {
           const bad = await fetch(`${t.url}/api/alerts?${t.f}&before=${encodeURIComponent(next!)}&${extra}`);
           expect(bad.status).toBe(400);
           expect(typeof ((await bad.json()) as { error: string }).error).toBe("string");
         }
+        // offset is ignored with the default sort (backwards compatible), x-next-before is kept
+        const ign = await fetch(`${t.url}/api/alerts?${t.f}&limit=3&offset=2`);
+        expect((await ign.json() as Alert[]).map((x) => x.id)).toEqual(def.slice(0, 3));
+        expect(ign.headers.get("x-next-before")).toBeTruthy();
+        expect(ign.headers.get("x-next-offset")).toBeNull();
+        const ign2 = await fetch(`${t.url}/api/alerts?${t.f}&before=${encodeURIComponent(next!)}&offset=1`);
+        expect(ign2.status).toBe(200);
         // explicit default sort with before is fine
         const ok = await fetch(`${t.url}/api/alerts?${t.f}&sort=lastSeen&order=desc&before=${encodeURIComponent(next!)}`);
         expect(ok.status).toBe(200);

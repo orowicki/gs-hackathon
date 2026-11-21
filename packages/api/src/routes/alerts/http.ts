@@ -132,20 +132,20 @@ async function listAlerts(res: http.ServerResponse, url: URL, deps: AlertsApiDep
   const sort = (sortParam ?? undefined) as AlertSort | undefined;
   const order = (orderParam ?? undefined) as SortOrder | undefined;
   const custom = (sort ?? "lastSeen") !== "lastSeen" || (order ?? "desc") !== "desc";
-  if (before && (custom || offsetParam !== null))
-    return sendJson(res, 400, { error: "before cursor is only valid with the default sort (lastSeen desc) and without offset; use offset instead" });
+  if (before && custom)
+    return sendJson(res, 400, { error: "before cursor is only valid with the default sort (lastSeen desc); use offset with a non-default sort" });
   const sortQ = custom ? { sort: sort ?? "lastSeen", order: order ?? "desc" } : {};
 
   if (!tree) {
-    const rows = await deps.alerts.list({ state, before, limit, ...sortQ, offset: offset || undefined });
+    const rows = await deps.alerts.list({ state, before, limit, ...sortQ, offset: custom ? offset || undefined : undefined });
     const headers: Record<string, string> = {};
     if (rows.length === limit) {
-      if (custom || offsetParam !== null) headers["x-next-offset"] = String(offset + limit);
+      if (custom) headers["x-next-offset"] = String(offset + limit);
       else headers["x-next-before"] = encodeCursor(rows[rows.length - 1]!);
     }
     return sendJson(res, 200, rows, headers);
   }
-  if (custom || offsetParam !== null) return listFilteredOffset(res, deps, tree, { state, limit, offset, ...sortQ });
+  if (custom) return listFilteredOffset(res, deps, tree, { state, limit, offset, ...sortQ });
 
   const needsEvents = !!deps.events && [...treeFields(tree)].some((f) => !f.startsWith("alert."));
   const out: Alert[] = [];
@@ -218,7 +218,8 @@ async function listFilteredOffset(
     }
   }
   const headers: Record<string, string> = {};
-  if (!exhausted) headers["x-next-offset"] = String(q.offset + out.length);
+  // Only when the page filled up: a cap hit with fewer matches would make clients rescan the same rows forever.
+  if (!exhausted && out.length >= q.limit) headers["x-next-offset"] = String(q.offset + out.length);
   sendJson(res, 200, out, headers);
 }
 

@@ -119,8 +119,9 @@ function cmpNewest(a: { lastSeen: string; id: string }, b: { lastSeen: string; i
 
 function sortKey(a: Alert, sort: AlertSort): number {
   if (sort === "severity") return SEVERITY_RANK[a.severity] ?? 0;
-  if (sort === "count") return a.count;
-  return ms(sort === "firstSeen" ? a.firstSeen : a.lastSeen);
+  if (sort === "count") return a.count ?? 0;
+  const v = ms((sort === "firstSeen" ? a.firstSeen : a.lastSeen) ?? "");
+  return Number.isNaN(v) ? 0 : v;
 }
 
 function cmpSorted(sort: AlertSort, order: SortOrder): (a: Alert, b: Alert) => number {
@@ -328,9 +329,9 @@ export function createPgAlertStores(pool: Pool): AlertStores {
         const dir = order === "asc" ? "ASC" : "DESC";
         const key =
           sort === "firstSeen"
-            ? "(data->>'firstSeen')::timestamptz"
+            ? "COALESCE((data->>'firstSeen')::timestamptz, 'epoch'::timestamptz)"
             : sort === "count"
-              ? "(data->>'count')::numeric"
+              ? "COALESCE((data->>'count')::numeric, 0)"
               : sort === "severity"
                 ? "CASE data->>'severity' WHEN 'critical' THEN 4 WHEN 'error' THEN 3 WHEN 'warning' THEN 2 WHEN 'info' THEN 1 ELSE 0 END"
                 : "last_seen";
