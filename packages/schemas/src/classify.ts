@@ -21,6 +21,39 @@ export function compileMatch(schema: SchemaDef): FilterNode | null {
   return validateTree(m);
 }
 
+export interface CompiledSchema {
+  schema: SchemaDef;
+  tree: FilterNode | null;
+}
+
+/** Sort by id ascending and compile match filters; bad filters are reported and skipped. */
+export function compileSchemas(
+  schemas: readonly SchemaDef[],
+  onError?: SchemaErrorHandler,
+): CompiledSchema[] {
+  const sorted = [...schemas].sort((a, b) =>
+    a.id < b.id ? -1 : a.id > b.id ? 1 : 0,
+  );
+  const out: CompiledSchema[] = [];
+  for (const schema of sorted) {
+    try {
+      out.push({ schema, tree: compileMatch(schema) });
+    } catch (e) {
+      onError?.(e instanceof Error ? e : new Error(String(e)), schema.id);
+    }
+  }
+  return out;
+}
+
+function matchCompiled(
+  parsed: unknown,
+  compiled: readonly CompiledSchema[],
+): SchemaDef | undefined {
+  for (const c of compiled)
+    if (evaluate(c.tree, { event: parsed })) return c.schema;
+  return undefined;
+}
+
 /**
  * First matching schema. Order: schemas sorted by `id` ascending (plain string compare), so users
  * control precedence with id prefixes (`10-foo`, `20-bar`). A schema whose filter cannot be parsed
@@ -31,20 +64,7 @@ export function matchSchema(
   schemas: readonly SchemaDef[],
   onError?: SchemaErrorHandler,
 ): SchemaDef | undefined {
-  const sorted = [...schemas].sort((a, b) =>
-    a.id < b.id ? -1 : a.id > b.id ? 1 : 0,
-  );
-  for (const s of sorted) {
-    let tree: FilterNode | null;
-    try {
-      tree = compileMatch(s);
-    } catch (e) {
-      onError?.(e instanceof Error ? e : new Error(String(e)), s.id);
-      continue;
-    }
-    if (evaluate(tree, { event: parsed })) return s;
-  }
-  return undefined;
+  return matchCompiled(parsed, compileSchemas(schemas, onError));
 }
 
 export interface Classification {
@@ -54,17 +74,27 @@ export interface Classification {
   parsed: unknown;
 }
 
+/** Classify against pre-compiled (sorted) schemas. */
+export function classifyCompiled(
+  raw: unknown,
+  compiled: readonly CompiledSchema[],
+): Classification {
+  const parsed = normaliseDeep(raw);
+  const s = matchCompiled(parsed, compiled);
+  if (!s) return { schemaId: null, common: {}, parsed };
+  // map from the original event so text fields stay verbatim ("1.10" is not "1.1")
+  return { schemaId: s.id, common: mapCommonFields(raw, s), parsed };
+}
+
 /**
- * Normalise (`normaliseDeep`), match and map. Match filters and mapping run on the normalised
- * event. Unmatched: `{ schemaId: null, common: {}, parsed }` (raw fields stay usable by filters).
+ * Normalise (`normaliseDeep`), match and map. Match filters run on the normalised event; common
+ * fields are mapped from the original event (strings verbatim). Unmatched:
+ * `{ schemaId: null, common: {}, parsed }` (raw fields stay usable by filters).
  */
 export function classifyEvent(
   raw: unknown,
   schemas: readonly SchemaDef[],
   onError?: SchemaErrorHandler,
 ): Classification {
-  const parsed = normaliseDeep(raw);
-  const s = matchSchema(parsed, schemas, onError);
-  if (!s) return { schemaId: null, common: {}, parsed };
-  return { schemaId: s.id, common: mapCommonFields(parsed, s), parsed };
+  return classifyCompiled(raw, compileSchemas(schemas, onError));
 }

@@ -34,14 +34,16 @@ const DIGITS = /^-?\d+(\.\d+)?$/;
 
 /**
  * ISO string, epoch seconds or epoch ms -> ISO `toISOString()`. Numbers below 1e11 are seconds,
- * otherwise milliseconds. Numeric strings count as epoch only with >= 9 digits (so "2026" or
+ * otherwise milliseconds. Numbers and numeric strings count as epoch only with >= 9 integer digits (so "2026" or
  * "20261023" are omitted, never 1970 dates). Unparseable -> undefined.
  */
 export function normaliseTimestamp(v: unknown): string | undefined {
   let d: Date;
   let n: number | undefined;
-  if (typeof v === "number") n = v;
-  else if (typeof v === "string") {
+  if (typeof v === "number") {
+    if (Math.abs(v) < 1e8) return undefined; // fewer than 9 integer digits: not an epoch
+    n = v;
+  } else if (typeof v === "string") {
     const t = v.trim();
     if (EPOCH_STRING.test(t)) n = Number(t);
     else if (DIGITS.test(t)) return undefined;

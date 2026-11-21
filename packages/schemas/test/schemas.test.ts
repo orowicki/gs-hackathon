@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   mkdtemp,
   mkdir,
@@ -456,6 +456,86 @@ describe("registry initial load failure", () => {
     await new Promise((r) => setTimeout(r, 20));
     expect(reg.classify({ kind: "k1" }).schemaId).toBe("s1");
     reg.close();
+  });
+});
+
+describe("registry retry with backoff", () => {
+  it("retries the initial load on a timer until it succeeds", async () => {
+    vi.useFakeTimers();
+    try {
+      const store = fakeStore();
+      await store.upsert("schema", mk("s1", "kind = k1"));
+      let calls = 0;
+      const list = store.list.bind(store);
+      store.list = (async (k: Kind) => {
+        if (++calls === 1) throw new Error("db down");
+        return list(k);
+      }) as typeof store.list;
+      const reg = createSchemaRegistry(store);
+      await expect(reg.ready).rejects.toThrow("db down");
+      expect(reg.classify({ kind: "k1" }).schemaId).toBeNull();
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(calls).toBe(2);
+      expect(reg.classify({ kind: "k1" }).schemaId).toBe("s1");
+      reg.close();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+  it("close() cancels the retry", async () => {
+    vi.useFakeTimers();
+    try {
+      const store = fakeStore();
+      let calls = 0;
+      store.list = (async () => {
+        calls++;
+        throw new Error("db down");
+      }) as typeof store.list;
+      const reg = createSchemaRegistry(store);
+      await expect(reg.ready).rejects.toThrow("db down");
+      reg.close();
+      await vi.advanceTimersByTimeAsync(60000);
+      expect(calls).toBe(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
+describe("raw-event mapping and strict epochs", () => {
+  const sch = mk("a", "", {
+    title: { kind: "template", template: "v{{ver}}" },
+    dedupKey: { kind: "path", path: "amt" },
+    entity: { kind: "path", path: "o" },
+    message: { kind: "path", path: "obj" },
+    occurredAt: { kind: "path", path: "t" },
+  } as never);
+  it("keeps strings verbatim in mapped fields but normalises for filters", () => {
+    const r = classifyEvent({ ver: "1.10", amt: "12.50", o: "1.0" }, [sch]);
+    expect(r.common.title).toBe("v1.10");
+    expect(r.common.dedupKey).toBe("12.50");
+    expect(r.common.entity).toBe("1.0");
+    expect((r.parsed as { ver: unknown }).ver).toBe(1.1);
+  });
+  it("omits object/array valued fields", () => {
+    expect(classifyEvent({ obj: { a: 1 } }, [sch]).common.message).toBe(
+      undefined,
+    );
+    expect(classifyEvent({ obj: [1] }, [sch]).common.message).toBe(undefined);
+  });
+  it.each(["20261023", "2026", 2026, 20261023])(
+    "short epoch %j is omitted",
+    (t) => {
+      expect(classifyEvent({ t }, [sch]).common.occurredAt).toBeUndefined();
+    },
+  );
+  it.each([
+    ["1700000000", "2023-11-14T22:13:20.000Z"],
+    [1700000000, "2023-11-14T22:13:20.000Z"],
+    [1700000000000, "2023-11-14T22:13:20.000Z"],
+    ["2023-11-14T22:13:20Z", "2023-11-14T22:13:20.000Z"],
+  ])("epoch %j", (t, iso) => {
+    expect(classifyEvent({ t }, [sch]).common.occurredAt).toBe(iso);
   });
 });
 

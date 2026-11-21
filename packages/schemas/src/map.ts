@@ -25,7 +25,7 @@ function text(v: unknown): string | undefined {
   if (v === undefined || v === null) return undefined;
   if (typeof v === "string") return v === "" ? undefined : v;
   if (typeof v === "number" || typeof v === "boolean") return String(v);
-  return JSON.stringify(v);
+  return undefined; // objects/arrays: omit, no JSON blobs
 }
 
 /** Template result; undefined if ANY placeholder is missing/empty (then `default` applies). */
