@@ -13,6 +13,7 @@ import {
 } from "@alerting/runbooks";
 import { startIngestService, startSchemaMapping, type IngestService, type SchemaMapping } from "@alerting/ingest";
 import { createConfigStore, migrate, type ConfigStore } from "@alerting/config";
+import { startConfigWatch } from "./config-watch.js";
 import { createServer } from "./server.js";
 import { createUiPushHub } from "./stream/sse.js";
 import { createPgAlertStores, createPgEventLoader } from "./routes/alerts/store.js";
@@ -105,6 +106,10 @@ if (process.env.DATABASE_URL) {
   });
   config = createConfigStore({ pool, redis: configRedis });
 }
+// Live YAML reload: files load on start only when the entity is missing (API edits survive), later changes apply.
+const configWatcher = config
+  ? startConfigWatch(config, process.env.CONFIG_DIR ?? "./config", { onError: (err, file) => console.error(`config watcher: ${file}: ${err.message}`) })
+  : undefined;
 
 // Runbooks: runs, approvals (audit goes to the alerts audit store). Lazy connections, so the API still starts when Postgres/Redis are down.
 const runbooksReady = migrateRunbooks(pool);
@@ -210,7 +215,7 @@ function shutdown(): void {
   stopping = true;
   server.close();
   server.closeAllConnections?.();
-  void Promise.allSettled([delivery.stop(), Promise.resolve(ingest?.stop()).finally(() => schemaMapping?.close()), runbookRegistry?.close(), config?.close()])
+  void Promise.allSettled([delivery.stop(), Promise.resolve(ingest?.stop()).finally(() => schemaMapping?.close()), runbookRegistry?.close(), configWatcher?.close().finally(() => config?.close())])
     .then(() => Promise.allSettled([pool.end(), redis.quit(), configRedis?.quit(), deliveryRedis.quit(), subRedis.quit()])).then(() => process.exit(0));
 }
 process.on("SIGTERM", shutdown);
