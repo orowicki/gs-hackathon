@@ -29,17 +29,7 @@
   padding: var(--space-1) var(--space-2);
 }
 .rules-page textarea { min-height: 6em; font-family: var(--font-mono, monospace); }
-.rules-page button, .rules-page .btn {
-  font: inherit;
-  color: var(--text);
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: var(--space-1) var(--space-3);
-  cursor: pointer;
-  text-decoration: none;
-}
-.rules-page button:disabled { opacity: 0.5; cursor: default; }
+/* buttons: styles/components.css */
 .rules-page .error { color: var(--error); font-size: var(--text-sm); }
 .rules-page .result { font-size: var(--text-sm); }
 .rules-page .warn { color: var(--warning); }

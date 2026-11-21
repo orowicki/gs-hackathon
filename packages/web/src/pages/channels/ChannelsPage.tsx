@@ -72,7 +72,7 @@ export function ChannelsPage() {
       <div className="channels-actions">
         <button
           type="button"
-          className="channels-btn"
+          className="btn"
           onClick={() => void load()}
           disabled={loading}
         >
@@ -156,7 +156,7 @@ export function ChannelsPage() {
                 <td>
                   <button
                     type="button"
-                    className="channels-btn"
+                    className="btn"
                     aria-label={`Retry ${d.id}`}
                     disabled={retrying.has(d.id)}
                     onClick={() => void retry(d.id)}

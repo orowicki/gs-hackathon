@@ -17,17 +17,20 @@ export function StatPanels({ alerts, onFilter }: { alerts: Alert[]; onFilter: (q
         <span className="stat-label">Open alerts</span>
         <span className="stat-value">{open.length}</span>
       </button>
-      {PANELS.map(({ sev, label }) => (
-        <button
-          key={sev}
-          type="button"
-          className={`stat sev-${sev}`}
-          onClick={() => onFilter(`alert.severity = ${sev}`)}
-        >
-          <span className="stat-label">{label}</span>
-          <span className="stat-value">{count(sev)}</span>
-        </button>
-      ))}
+      {PANELS.map(({ sev, label }) => {
+        const n = count(sev);
+        return (
+          <button
+            key={sev}
+            type="button"
+            className={`stat sev-${sev}${n > 0 ? " lit" : ""}`}
+            onClick={() => onFilter(`alert.severity = ${sev}`)}
+          >
+            <span className="stat-label">{label}</span>
+            <span className="stat-value">{n}</span>
+          </button>
+        );
+      })}
     </section>
   );
 }
