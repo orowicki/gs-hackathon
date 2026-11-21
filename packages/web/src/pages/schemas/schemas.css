@@ -1,113 +1,190 @@
-.sch-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  gap: var(--space-4);
-  align-items: start;
-}
-@media (max-width: 900px) {
-  .sch-grid {
-    grid-template-columns: 1fr;
-  }
-}
-.sch-tree {
-  list-style: none;
-  margin: 0;
-  padding: 0 0 0 var(--space-3);
-  font-family: var(--font-mono);
+/* Schemas list and editor (sx-*). Shared controls: styles/components.css. */
+
+/* ---- List ------------------------------------------------------------------------- */
+.sx-table tr.clickable { cursor: pointer; }
+.sx-table td:first-child a { color: var(--text-strong); font-weight: var(--weight-strong); }
+.sx-id { font-size: var(--text-xs); }
+.sx-cond { font-family: var(--font-mono); font-size: var(--text-sm); color: var(--text); }
+
+/* ---- Editor ----------------------------------------------------------------------- */
+.sx-error { color: var(--critical); font-size: var(--text-sm); font-weight: var(--weight-regular); }
+.sx-sample { min-height: 120px; resize: vertical; }
+
+.sx-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  align-self: flex-start;
+  height: 24px;
+  padding: 0 var(--space-2);
+  border-radius: var(--radius);
   font-size: var(--text-sm);
+  font-weight: var(--weight-strong);
 }
-.sch-tree.root {
-  padding-left: 0;
+.sx-badge.yes { background: var(--valid-tint); color: var(--valid); }
+.sx-badge.no { background: var(--critical-tint); color: var(--critical); }
+
+/* Mapping table beside the clickable sample. */
+.sx-map-layout { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-3); }
+.sx-map-layout.with-sample { grid-template-columns: minmax(0, 1fr) minmax(240px, 300px); align-items: start; }
+
+.sx-rows {
   border: 1px solid var(--border);
-  border-radius: var(--radius);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
   background: var(--bg);
-  padding: var(--space-2);
 }
-.sch-leaf {
-  display: flex;
-  gap: var(--space-2);
-  align-items: baseline;
-  width: 100%;
-  text-align: left;
-  background: none;
-  border: 1px solid transparent;
-  border-radius: var(--radius);
-  color: var(--text);
-  font: inherit;
-  padding: 0 var(--space-1);
-  cursor: pointer;
-}
-.sch-leaf:hover,
-.sch-leaf:focus-visible {
-  border-color: var(--accent);
-}
-.sch-leaf .val {
-  color: var(--muted);
-  overflow-wrap: anywhere;
-}
-.sch-leaf.mapped {
-  border-color: var(--valid);
-}
-.sch-key {
-  color: var(--muted);
-}
-.sch-map {
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: var(--space-3);
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-}
-.sch-map.active {
-  border-color: var(--accent);
-}
-.sch-map h3 {
-  margin: 0;
-  font-size: inherit;
-  display: flex;
-  gap: var(--space-2);
+
+.sx-row-head,
+.sx-row-main {
+  display: grid;
+  grid-template-columns: minmax(140px, 1fr) minmax(240px, 2fr) minmax(120px, 1.3fr) 64px;
+  gap: var(--space-3);
   align-items: center;
 }
-.sch-map .cfg-row > * {
+
+.sx-row-head {
+  padding: 8px var(--space-3);
+  background: var(--surface-2);
+  color: var(--muted);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-strong);
+}
+
+.sx-row { border-top: 1px solid var(--border); }
+.sx-row-main { padding: 8px var(--space-3); }
+.sx-row.picking { background: var(--info-tint); }
+
+.sx-name { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.sx-name .mono { color: var(--text-strong); font-size: var(--text-sm); }
+.sx-row.unmapped .sx-name .mono { color: var(--muted); }
+.sx-req { color: var(--muted); font-size: var(--text-xs); }
+.sx-hint { color: var(--faint); font-size: var(--text-xs); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Kind switch on top, the input below it with the pick button: the input gets the full width. */
+.sx-source {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 6px;
   min-width: 0;
 }
-.sch-map .cfg-row input {
-  flex: 1;
-  font: inherit;
-  color: var(--text);
-  background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: var(--space-1) var(--space-2);
-}
-.sch-map .cfg-row select {
-  font: inherit;
-  color: var(--text);
-  background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: var(--space-1) var(--space-2);
-}
-.sch-result {
-  width: 100%;
-  border-collapse: collapse;
+.sx-source .segmented-sm { grid-column: 1 / -1; }
+.sx-source > .btn { justify-self: start; grid-column: 1 / -1; }
+.sx-input { min-width: 0; min-height: 28px; height: 28px; font-size: var(--text-sm); }
+.sx-source .seg { height: 24px; font-size: var(--text-xs); }
+.sx-pick.on { color: var(--accent); background: var(--info-tint); }
+
+.sx-result {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--faint);
   font-size: var(--text-sm);
 }
-.sch-result th,
-.sch-result td {
-  text-align: left;
-  padding: var(--space-1) var(--space-2);
+.sx-result.has { color: var(--text-strong); }
+
+.sx-tools { display: flex; justify-content: flex-end; gap: 2px; }
+.sx-tools .icon-btn.on { color: var(--accent); }
+
+.sx-more {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
+  gap: var(--space-4);
+  padding: var(--space-2) var(--space-3) var(--space-3) calc(var(--space-3) + 150px);
+}
+
+.sx-vmap { display: flex; flex-direction: column; gap: 6px; font-weight: var(--weight-regular); }
+.sx-vmap-row { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr) auto; gap: var(--space-2); align-items: center; }
+.sx-vmap-row input { min-height: 28px; height: 28px; font-size: var(--text-sm); }
+.sx-vmap .link-btn { display: inline-flex; align-items: center; gap: 4px; font-size: var(--text-sm); }
+
+/* The clickable sample (sticky beside the mapping rows). */
+.sx-sample-panel {
+  position: sticky;
+  top: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--bg);
+  max-height: 520px;
+  overflow: auto;
+}
+
+.sx-sample-head {
+  position: sticky;
+  top: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px var(--space-3);
+  background: var(--surface-2);
   border-bottom: 1px solid var(--border);
+  color: var(--muted);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-strong);
 }
-.sch-result td {
+.sx-sample-head .link-btn { margin-left: auto; font-size: var(--text-xs); }
+
+.sx-tree { list-style: none; margin: 0; padding: 0 0 0 var(--space-3); font-size: var(--text-sm); }
+.sx-sample-panel > .sx-tree { padding: 6px; }
+.sx-key { display: block; padding: 3px 6px; color: var(--muted); font-family: var(--font-mono); font-size: var(--text-xs); }
+
+.sx-leaf {
+  display: flex;
+  gap: var(--space-2);
+  width: 100%;
+  padding: 3px 6px;
+  background: transparent;
+  color: var(--text);
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.sx-leaf:hover { background: var(--surface-2); }
+.sx-leaf.picking { border-style: dashed; border-color: var(--border-strong); }
+.sx-leaf.picking:hover { border-color: var(--accent-bg); background: var(--info-tint); }
+.sx-leaf.mapped .sx-leaf-key { color: var(--accent); }
+.sx-leaf-key { flex: none; font-family: var(--font-mono); font-size: var(--text-xs); color: var(--text-strong); }
+.sx-leaf-val { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font-size: var(--text-xs); }
+
+/* Summary: the sample as an alert. */
+.sx-preview { border: 1px solid var(--border); border-radius: var(--radius-lg); overflow: hidden; background: var(--bg); }
+.sx-preview-caption { padding: 6px var(--space-3); color: var(--faint); font-size: var(--text-xs); border-bottom: 1px solid var(--border); }
+.sx-preview-row { display: flex; align-items: center; gap: var(--space-2); padding: 8px var(--space-3); background: var(--surface); }
+.sx-preview-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-strong); font-size: var(--text-sm); }
+.sx-preview-facts { padding: var(--space-2) var(--space-3) var(--space-3); border-top: 1px solid var(--border); }
+.sx-preview-facts dt { font-family: var(--font-mono); font-size: var(--text-xs); }
+
+@media (max-width: 1200px) {
+  .sx-map-layout.with-sample { grid-template-columns: minmax(0, 1fr); }
+  .sx-sample-panel { position: static; }
+}
+
+/* Advanced: the generated "which events" rule. */
+.sx-advanced {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+}
+.sx-advanced[open] { padding-bottom: var(--space-4); }
+.sx-advanced summary { color: var(--text); font-weight: var(--weight-strong); cursor: pointer; }
+.sx-advanced .re-help { margin: var(--space-2) 0 var(--space-3); }
+.sx-advanced > .btn { align-self: flex-start; margin-top: var(--space-3); }
+.sx-advanced .sx-badge { margin-top: var(--space-3); }
+.sx-rule {
+  display: block;
+  padding: var(--space-2) var(--space-3);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
   font-family: var(--font-mono);
-}
-.sch-yes {
-  color: var(--valid);
-  font-weight: var(--weight-strong);
-}
-.sch-no {
-  color: var(--critical);
-  font-weight: var(--weight-strong);
+  font-size: var(--text-sm);
+  color: var(--accent);
+  overflow-wrap: anywhere;
 }

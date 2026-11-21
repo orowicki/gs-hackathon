@@ -10,6 +10,16 @@ describe("mock source", () => {
     for (let i = 1; i < a.length; i++) expect(Date.parse(a[i - 1]!.lastSeen)).toBeGreaterThanOrEqual(Date.parse(a[i]!.lastSeen));
   });
 
+  it("acknowledges and unacknowledges an alert", async () => {
+    const s = createMockSource(1000);
+    const open = (await s.listAlerts()).find((a) => a.state === "open")!;
+    expect((await s.ack!(open.id)).state).toBe("acknowledged");
+    const back = await s.unack!(open.id);
+    expect(back.state).toBe("open");
+    expect(back.acknowledgedAt).toBeUndefined();
+    await expect(s.unack!(open.id)).rejects.toThrow("Only acknowledged");
+  });
+
   it("pushes new alerts that sort to the top", async () => {
     vi.useFakeTimers();
     const s = createMockSource(1000);
