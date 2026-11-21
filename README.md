@@ -35,6 +35,6 @@ All variables have defaults, so the stack runs without any configuration. Overri
 
 ## Performance
 
-Load test at 5000 ev/s for 60 s (local mode, median of 3 windows per configuration, [min-max]): 1 worker falls behind (processed 4932.7/s, e2e p50 946 ms [14-2420], p99 3784 ms [2267-6876], 0 lost); 2 workers sustain the rate (processed 4999.3/s, e2e p50 9 ms [8-9], p99 531 ms [379-1089], 0 lost).
-Targets (p50 < 50 ms, p99 < 250 ms, 0 lost) are not met: 1 worker misses p50 and p99, 2 workers meet p50 but miss p99.
+Load test at 5000 ev/s for 60 s (local mode, current code): both configurations are overloaded. Sustainable throughput is 519.3 ev/s with 1 worker and 930.4 ev/s with 2 workers (about 1.8x); backlog at end 237354 and 187821 events, 0 lost. Latency is dominated by queueing (e2e p50 63843 ms and 66533 ms), so the targets (p50 < 50 ms, p99 < 250 ms) are not met.
+Before the engine dedup merge (#61) 2 workers sustained 5000 ev/s with p50 9 ms and p99 531 ms (medians of 3 windows); the regression is in the engine, outside #31.
 Details, caveats and how to re-run (`just loadtest`): [docs/performance.md](docs/performance.md). Raw results: [1 worker](results/loadtest-2026-11-21.json), [2 workers](results/loadtest-2026-11-21-workers2.json).
