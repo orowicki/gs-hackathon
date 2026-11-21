@@ -1,10 +1,12 @@
 // Demo event generator: sends a mix of Appendix A events through http, file_tail, redis_stream and kafka.
 // node --experimental-strip-types scripts/demo/demo.ts [--once] [--burst] [--no-showcase] [--rate 2] [--duration 60] [--count N]
+//   [--unknown-after S] [--unknown-share 0.3]: from S seconds after the start, mix in events of a schema
+//   nothing recognises (share of the random events); `just longtest` uses this for 15 minutes.
 import { spawn } from "node:child_process";
 import { appendFileSync, mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { nextEvent, oneOfEach, showcase, type DemoEvent } from "./events.ts";
+import { nextEvent, oneOfEach, showcase, unknownSchemaEvent, type DemoEvent } from "./events.ts";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const API_URL = (process.env.API_URL ?? "http://localhost:3000").replace(/\/$/, "");
@@ -111,6 +113,12 @@ async function main(): Promise<void> {
   const rate = num("rate", "DEMO_RATE", 2);
   const duration = num("duration", "DEMO_DURATION", 60);
   const count = arg("count") !== undefined ? num("count", "DEMO_COUNT", 1) : Infinity;
+  const unknownAfter = arg("unknown-after") !== undefined ? Number(arg("unknown-after")) : undefined;
+  if (unknownAfter !== undefined && (!Number.isFinite(unknownAfter) || unknownAfter < 0))
+    throw new Error("--unknown-after must be a number of seconds >= 0");
+  const unknownShare = Number(arg("unknown-share") ?? 0.3);
+  if (!Number.isFinite(unknownShare) || unknownShare <= 0 || unknownShare > 1) throw new Error("--unknown-share must be in (0, 1]");
+  let unknownSent = 0;
   const redis = await makeRedisSender();
   const kafka = await makeKafkaSender();
   const counts: Record<Sink, number> = { http: 0, file_tail: 0, redis_stream: 0, kafka: 0 };
@@ -147,7 +155,11 @@ async function main(): Promise<void> {
     } else {
       console.log(`demo: ~${rate} events/s for ${count === Infinity ? `${duration} s` : `${count} events`} (Ctrl-C to stop)`);
       const recent: DemoEvent[] = [];
-      const end = Date.now() + duration * 1000; // includes the showcase
+      const start = Date.now();
+      const end = start + duration * 1000; // includes the showcase
+      if (unknownAfter !== undefined)
+        console.log(`demo: from ${unknownAfter} s on, ~${Math.round(unknownShare * 100)}% of random events use an unrecognised schema (eventName = md.feed.stale)`);
+      let unknownStarted = false;
       if (!noShowcase) {
         const steps = showcase(new Date());
         console.log(`demo: showcase first (${steps.length} scripted events), then random events`);
@@ -159,9 +171,20 @@ async function main(): Promise<void> {
       const interval = 1000 / rate;
       for (let i = 0; i < count && (count !== Infinity || Date.now() < end); i++) {
         const started = Date.now();
-        const e = nextEvent(Math.random, new Date(), recent);
-        recent.push(e);
-        if (recent.length > 10) recent.shift();
+        const unknownPhase = unknownAfter !== undefined && started - start >= unknownAfter * 1000;
+        if (unknownPhase && !unknownStarted) {
+          unknownStarted = true;
+          console.log(`demo: ${Math.round((started - start) / 1000)} s in: now mixing in unrecognised-schema events`);
+        }
+        let e: DemoEvent;
+        if (unknownPhase && Math.random() < unknownShare) {
+          e = unknownSchemaEvent(Math.random, new Date());
+          unknownSent++;
+        } else {
+          e = nextEvent(Math.random, new Date(), recent);
+          recent.push(e);
+          if (recent.length > 10) recent.shift();
+        }
         await emit(sinks[i % sinks.length] as Sink, e);
         // Pace by elapsed time; never sleep past the end of the duration.
         const wait = Math.max(0, interval * (0.5 + Math.random()) - (Date.now() - started));
@@ -175,6 +198,7 @@ async function main(): Promise<void> {
   console.log(
     `demo: sent ${counts.http} via http, ${counts.file_tail} via file_tail, ${counts.redis_stream} via redis_stream, ${counts.kafka} via kafka`,
   );
+  if (unknownAfter !== undefined) console.log(`demo: ${unknownSent} of them in the unrecognised schema`);
 }
 
 main().catch((e) => {
