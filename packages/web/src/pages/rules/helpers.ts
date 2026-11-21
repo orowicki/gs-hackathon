@@ -24,6 +24,8 @@ export interface RuleDraft {
   colour: string;
   /** Comma separated common field names that group repeats into one alert. */
   dedupFields: string;
+  /** Rule fields the editor doesn't show (e.g. groupBy, groupWindow): kept and saved as they are. */
+  extra?: Record<string, unknown>;
 }
 
 /** Intro under "New rule": the same on every tab and in the editor. */
@@ -122,7 +124,7 @@ export type RulePayload = Pick<Rule, "name" | "enabled" | "when" | "who" | "look
 export function buildRule(d: RuleDraft, opts: { id: string; loaded?: Rule; now?: string }): Rule {
   const now = opts.now ?? new Date().toISOString();
   const base = opts.loaded ?? { createdAt: now };
-  const rule = { ...base, ...buildPayload(d), id: opts.id, updatedAt: now } as Rule;
+  const rule = { ...base, ...(d.extra ?? {}), ...buildPayload(d), id: opts.id, updatedAt: now } as Rule;
   // The editor shows dedupFields, so an empty list there means "cleared", not "keep the old one".
   if (splitList(d.dedupFields).length === 0) delete rule.dedupFields;
   return rule;
@@ -208,5 +210,7 @@ export function yamlToDraft(text: string, parse: (t: string) => unknown): RuleDr
     createdAt: "",
     updatedAt: "",
   };
-  return ruleToDraft(rule);
+  const known = new Set(["id", "name", "enabled", "when", "who", "looks", "dedupFields", "createdAt", "updatedAt"]);
+  const extra = Object.fromEntries(Object.entries(r).filter(([k]) => !known.has(k)));
+  return { ...ruleToDraft(rule), ...(Object.keys(extra).length ? { extra } : {}) };
 }

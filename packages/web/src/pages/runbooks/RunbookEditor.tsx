@@ -87,6 +87,24 @@ function StepCard({
         </div>
       </div>
 
+      {(step.if || step.retries || step.id) && (
+        <p className="rb-branch" aria-label={`Branching for step ${i + 1}`}>
+          {step.if && (
+            <>
+              Runs only if <code>{step.if}</code>
+            </>
+          )}
+          {step.retries ? <span> · retries {step.retries}×</span> : null}
+          {step.id ? (
+            <span>
+              {" "}
+              · id <code>{step.id}</code>
+            </span>
+          ) : null}
+          <span className="re-hint"> (kept as is; edit it in YAML)</span>
+        </p>
+      )}
+
       <div className="field">
         <label htmlFor={id("name")} className="field-label">
           Step name

@@ -1,7 +1,14 @@
+import { parse } from "yaml";
 import { describe, expect, it } from "vitest";
-import { buildPayload, buildRule, newWhoDraft, slugify, emptyDraft, filterText, moveRow, parseRecipients, ruleToDraft, shortText, validateDraft } from "./helpers";
+import { buildPayload, buildRule, newWhoDraft, slugify, emptyDraft, filterText, moveRow, parseRecipients, ruleToDraft, shortText, validateDraft, yamlToDraft } from "./helpers";
 
 describe("rules helpers", () => {
+  it("keeps rule fields the editor doesn't show (grouping) through a YAML import", () => {
+    const d = yamlToDraft("id: g\nname: G\nwhen: alert.severity = critical\ngroupBy: [alert.source]\ngroupWindow: 5m\n", parse);
+    const r = buildRule(d, { id: "g", now: "T" }) as unknown as Record<string, unknown>;
+    expect(r).toMatchObject({ id: "g", groupBy: ["alert.source"], groupWindow: "5m" });
+  });
+
   it("parses recipients", () => {
     expect(parseRecipients("person:a, group:g1, bob")).toEqual([
       { type: "person", id: "a" },

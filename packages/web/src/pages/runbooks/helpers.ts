@@ -36,9 +36,17 @@ export function newStep(action: RunbookStep["action"] = "http"): DraftStep {
   return withKey({ action: "http", name: "", method: "POST", url: "", approval: "none" });
 }
 
-/** Change a step's action, keeping its name and approval settings. */
+/** Change a step's action, keeping its name, approval and branching (id, if, retries). */
 export function switchAction(s: DraftStep, action: RunbookStep["action"]): DraftStep {
-  const keep = { key: s.key, name: s.name, approval: s.approval, ...(s.approvers ? { approvers: s.approvers } : {}) };
+  const keep = {
+    key: s.key,
+    name: s.name,
+    approval: s.approval,
+    ...(s.approvers ? { approvers: s.approvers } : {}),
+    ...(s.id !== undefined ? { id: s.id } : {}),
+    ...(s.if !== undefined ? { if: s.if } : {}),
+    ...(s.retries !== undefined ? { retries: s.retries } : {}),
+  };
   if (action === "escalate") return { ...keep, action, group: "" };
   if (action === "wait") return { ...keep, action, duration: "5m" };
   return { ...keep, action: "http", method: "POST", url: "" };
