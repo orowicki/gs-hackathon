@@ -7,6 +7,7 @@ export default defineConfig({
       "packages/*",
       "scripts/seed",
       "scripts/demo",
+      "tests/integration",
       { test: { name: "loadtest", include: ["scripts/loadtest/**/*.test.mjs"] } },
     ],
   },
