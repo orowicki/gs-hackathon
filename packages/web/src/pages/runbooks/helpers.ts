@@ -24,7 +24,11 @@ export const ACTIONS: { id: RunbookStep["action"]; label: string }[] = [
 export type DraftStep = RunbookStep & { key: string };
 let seq = 0;
 export const withKey = (s: RunbookStep): DraftStep => ({ ...s, key: "s" + ++seq });
-export const stripKey = ({ key: _k, ...s }: DraftStep): RunbookStep => s as RunbookStep;
+export function stripKey(s: DraftStep): RunbookStep {
+  const out: Partial<DraftStep> = { ...s };
+  delete out.key;
+  return out as RunbookStep;
+}
 
 export function newStep(action: RunbookStep["action"] = "http"): DraftStep {
   if (action === "escalate") return withKey({ action, name: "", group: "", approval: "none" });
