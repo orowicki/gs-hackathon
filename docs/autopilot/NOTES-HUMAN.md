@@ -9,6 +9,12 @@
   log (`gh run view <id> --log-failed`) and fix the cause; never skip, delete or loosen a
   test to go green. Only when all your PRs are green and conflict-free, continue your task.
   If a PR is stuck on another person's PR or a question, say so in one PR comment and move on.
+> HACKATHON MODE: working features beat test coverage. In a feature task, write only a few
+  small unit tests for the core logic (the main path plus the one most likely failure) to
+  show it works. No exhaustive edge cases, and no new integration, e2e or load suites unless
+  the task is itself a test task. If something deserves bigger tests, propose a separate
+  task (ap:proposed) and move on. Spend the time making the feature actually run in
+  `just up` instead. Existing tests must still pass (see TOP PRIORITY above).
 > Root package.json must never list packages by name. Each package defines its own
   "build" and "typecheck" scripts; the root runs them with --workspaces --if-present.
 > On rebase conflicts in package-lock.json: take main's version, then run `npm install`.
