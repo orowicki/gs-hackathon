@@ -40,7 +40,7 @@ Details that matter:
 - The delivery worker is not a separate process. It runs inside the API (`packages/api/src/main.ts` calls `createDeliveryQueue(...).start()`). There is no standalone delivery entry point. The engine only enqueues; it does not send.
 - Ingest sources and the parse worker also run inside the API. The HTTP source needs this, because its route registry lives in the API process. So the API and the `worker` container both read `alerting:events:raw` in group `parse`.
 - By default the standalone ingest worker does not run non-HTTP sources (`file_tail`, `redis_stream`). The API runs them. Setting `INGEST_RUN_SOURCES=1` on the worker runs them there too. Do not do both.
-- The runbook worker is not started. `packages/runbooks/src/worker.ts` exports `startRunbookWorker`, which reads `alerting:alerts` in group `runbooks`. Nothing calls it. A comment in `packages/api/src/main.ts` says it will be wired once alerts are persisted. The runbook runner and HTTP routes (`/api/runbooks`) do run in the API, so runbooks can be started by hand, but alerts do not start them automatically.
+- The runbook worker runs in the compose `worker` service as a third process (`packages/api/dist/runbook-worker.js`, source `packages/api/src/runbook-worker.ts`). It calls `startRunbookWorker` from `packages/runbooks/src/worker.ts`, reading `alerting:alerts` in consumer group `runbooks`, so each alert's runbooks start once even with several `WORKERS` replicas. The runner is built by `packages/api/src/runbooks-runtime.ts`, shared with the API, which serves `/api/runbooks` and recovers stale runs on start (the worker does not).
 - Postgres, Redis, ntfy, Mailpit and a demo service run as separate containers. `just up` then seeds demo data with `scripts/seed/seed.ts`.
 
 ## Redis streams and keys
@@ -51,7 +51,7 @@ The source of truth for names is `packages/shared/src/streams.ts`. All names sta
 |---|---|---|---|
 | `alerting:events:raw` | stream | source plugins (`packages/ingest/src/publisher.ts`) | parse worker, group `parse` |
 | `alerting:events` | stream | parse worker | rule engine, group `engine` |
-| `alerting:alerts` | stream | rule engine (`AlertEvent` after each match) | no consumer today. `GROUP_FANOUT` is defined but unused. Runbook worker would read it (not started). |
+| `alerting:alerts` | stream | rule engine (`AlertEvent` after each match) | read by the runbook worker (group `runbooks`). `GROUP_FANOUT` is defined but unused. |
 | `alerting:delivery:queue` | list | rule engine, throttle digests, runbook notifier | delivery worker |
 | `alerting:delivery:processing:<workerId>` (plus `...:alive` lease key) | lists | delivery worker, one list per worker, for crash recovery | delivery worker (reaper) |
 | `alerting:delivery:retry` | sorted set | delivery worker (retryable failures, score = due time) | delivery worker (moves due items back to the queue) |
