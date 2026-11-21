@@ -1,10 +1,6 @@
-.src-head { display: flex; align-items: center; gap: var(--space-2); }
-.src-head h1 { flex: 1; }
+/* Shared form classes below (.field, .hint, .cfg-panel, .actions, .preview...) are also
+   used by the Schemas and People pages: page CSS is global. New Sources UI uses src-*. */
 /* .btn lives in styles/components.css */
-.src-list { list-style: none; margin: 0; padding: 0; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); }
-.src-list li { display: flex; align-items: center; gap: var(--space-3); padding: var(--space-2) var(--space-3); border-bottom: 1px solid var(--border); }
-.src-list li:last-child { border-bottom: 0; }
-.src-list .grow { flex: 1; min-width: 0; }
 
 .badge.on { background: var(--valid-tint); border-color: transparent; color: var(--valid); }
 .cfg-panel { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: var(--space-4); display: flex; flex-direction: column; gap: var(--space-3); }
@@ -24,3 +20,120 @@
 .preview { font-family: var(--font-mono); font-size: var(--text-sm); background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); padding: var(--space-2); margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
 .stream { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--space-2); max-height: 260px; overflow: auto; }
 .actions { display: flex; gap: var(--space-2); flex-wrap: wrap; }
+
+/* ---- Sources list ----------------------------------------------------------------- */
+.src-table tr.clickable { cursor: pointer; }
+.src-table td:first-child a { color: var(--text-strong); font-weight: var(--weight-strong); }
+.src-id { font-size: var(--text-xs); }
+.src-where { font-size: var(--text-sm); color: var(--text); }
+
+/* ---- Source editor ---------------------------------------------------------------- */
+.src-types {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: var(--space-2);
+}
+
+.src-type {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  grid-template-rows: auto 1fr;
+  align-content: start;
+  column-gap: var(--space-3);
+  row-gap: 2px;
+  padding: var(--space-3);
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.src-type:hover { border-color: var(--border-strong); }
+.src-type.on { border-color: var(--accent-bg); box-shadow: inset 0 0 0 1px var(--accent-bg); }
+.src-type .choice-icon { width: 32px; height: 32px; }
+.src-type .choice-icon svg { width: 18px; height: 18px; }
+
+.src-schema-form { display: flex; flex-direction: column; gap: var(--space-3); }
+
+.src-copy { display: flex; flex-direction: column; gap: 6px; }
+
+.src-copy-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 4px 4px 4px var(--space-3);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.src-copy-row code {
+  flex: 1;
+  min-width: 0;
+  overflow-x: auto;
+  white-space: nowrap;
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  color: var(--text-strong);
+}
+
+.src-parsed {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--bg);
+  overflow: hidden;
+}
+
+.src-parsed-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px var(--space-3);
+  border-bottom: 1px solid var(--border);
+  color: var(--valid);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-strong);
+}
+
+.src-parsed dl {
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  column-gap: var(--space-5);
+  row-gap: 4px;
+}
+
+.src-parsed dl div {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
+  align-items: baseline;
+  gap: var(--space-2);
+}
+
+.src-parsed dt {
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.src-parsed dd { margin: 0; color: var(--text-strong); font-size: var(--text-sm); overflow-wrap: anywhere; }
+
+.src-parse-error { margin: 0; color: var(--critical); font-size: var(--text-sm); font-weight: var(--weight-regular); }
+
+.src-stream {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 260px;
+  overflow: auto;
+  font-size: var(--text-sm);
+}
+
+.src-stream li { padding: 4px 0; border-top: 1px solid var(--border); }
