@@ -44,12 +44,20 @@
   the UI change, without the ap:task label. Keep the API the UI uses backwards compatible;
   if you must change a response shape, say so under "Contract change" in the PR.
   Your focus, in this order:
-  1. Backend correctness and the demo data path (seed, `just demo`, engine worker).
-  2. Good endpoints for the UI: everything a page needs in one call where sensible (lists
+  1. INTEGRATION FIRST: the whole pipeline must work in the running app (`just up`), not
+     only in tests: event in -> parsed -> schema-mapped -> rule matched -> alert stored ->
+     notification delivered (ui + ntfy) -> runbook. Wire each package into the real entry
+     points (packages/api/src/main.ts, the compose `worker` service), never only into test
+     helpers. If a test helper wires something the running app doesn't, that is a bug in
+     the app: fix it there (example: schema mapping, #91). Check by hand once: `just up`,
+     `just demo`, then see alerts in GET /api/alerts. A broken link in this chain beats
+     every other task, including your current one.
+  2. Backend correctness and the demo data path (seed, `just demo`, engine worker).
+  3. Good endpoints for the UI: everything a page needs in one call where sensible (lists
      with filtering, sorting and paging; counts/summaries such as open alerts per severity;
      detail views with related data), consistent error shapes, and every endpoint in the
      OpenAPI spec (/api/openapi.json) with request/response schemas and examples.
-  3. Documentation of everything that exists: README quick start, architecture overview,
+  4. Documentation of everything that exists: README quick start, architecture overview,
      API reference (generated from or checked against OpenAPI), config file formats,
      how to add a source / schema / channel / action type. Fill gaps; keep docs true.
-  4. End-to-end tests and performance numbers.
+  5. End-to-end tests and performance numbers.
