@@ -58,6 +58,44 @@ The service is fully configurable through its HTTP API, described by an OpenAPI 
 
 Existing entities can be inspected with `GET /api/{sources,schemas,rules,people,groups,runbooks}`.
 
+### MCP server
+
+`packages/mcp` is a stdio MCP server that wraps the HTTP API. Run it with `just mcp`. It reads the API address from `ALERTING_API_URL` (default `http://localhost:3000`).
+
+Claude Code:
+
+```sh
+claude mcp add alerting -e ALERTING_API_URL=http://localhost:3000 -- node /path/to/repo/packages/mcp/dist/main.js
+```
+
+Claude Desktop (`claude_desktop_config.json`):
+
+```json
+{
+  "mcpServers": {
+    "alerting": {
+      "command": "node",
+      "args": ["/path/to/repo/packages/mcp/dist/main.js"],
+      "env": { "ALERTING_API_URL": "http://localhost:3000" }
+    }
+  }
+}
+```
+
+Run `npm run build -w @alerting/mcp` once first, so `dist/main.js` exists.
+
+Tools:
+
+- `list_sources`, `get_source`, `create_source`, `update_source`, `delete_source`
+- `list_schemas`, `get_schema`, `create_schema`, `update_schema`, `delete_schema`
+- `list_rules`, `get_rule`, `create_rule`, `update_rule`, `delete_rule`
+- `validate_filter`: check a filter expression
+- `list_recent_events`: newest events first
+- `list_alerts`: with `filter`, `state`, `limit`, `before`, `sort`, `order`, `offset`
+- `acknowledge_alert`, `resolve_alert`
+
+API errors come back as tool errors with the API's message.
+
 ## Configuration
 
 All variables have defaults, so the stack runs without any configuration. Override them with a `.env` file in the repo root (gitignored); compose reads it automatically.
