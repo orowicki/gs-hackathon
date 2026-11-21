@@ -4,6 +4,7 @@ import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import type { RecipientRef, Rule } from "@alerting/shared";
 import { FilterBar } from "../../components/filter-bar";
 import { Icon } from "../../components/Icon";
+import { Step } from "../../components/EditorStep";
 import { useStarredFilters } from "../../starred";
 import { MultiSelect } from "../../components/MultiSelect";
 import { useFieldCatalog } from "./fields";
@@ -178,23 +179,6 @@ function AlertPreview({ draft }: { draft: RuleDraft }) {
         </div>
       )}
     </div>
-  );
-}
-
-/** Step header: number, title (the heading), one line of help. */
-function Step({ n, title, help, children }: { n: number; title: string; help: string; children: React.ReactNode }) {
-  const id = "step-" + title.toLowerCase().replace(/\W+/g, "-");
-  return (
-    <section className="re-step" aria-labelledby={id}>
-      <div className="re-step-num" aria-hidden="true">
-        {n}
-      </div>
-      <div className="re-step-body">
-        <h2 id={id}>{title}</h2>
-        <p className="re-help">{help}</p>
-        {children}
-      </div>
-    </section>
   );
 }
 
