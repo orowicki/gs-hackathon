@@ -51,6 +51,11 @@ export interface AlertStore {
   list(q: AlertListQuery): Promise<Alert[]>;
   /** Counts of all alerts in a single aggregate query (no filter). */
   summary(): Promise<AlertSummary>;
+  /**
+   * Optional: same counts restricted to a compiled filter (`where` placeholders start at $1),
+   * grouped in SQL. Stores without it make callers evaluate the filter in Node.
+   */
+  summaryWhere?(where: { sql: string; params: unknown[] }): Promise<AlertSummary>;
   upsert(alert: Alert): Promise<void>;
   /** Atomic: applies `patch` only if the current state is in `from`. */
   transition(id: string, from: AlertState[], patch: Partial<Alert>): Promise<Alert | null | "conflict">;
@@ -378,6 +383,23 @@ export function createPgAlertStores(pool: Pool): AlertStores {
         bySeverity: { critical: n("critical"), error: n("error"), warning: n("warning"), info: n("info") },
         byStatus: { open: n("open"), acknowledged: n("acknowledged"), resolved: n("resolved") },
       };
+    },
+    async summaryWhere(where) {
+      const rows = await q<{ state: AlertState; severity: string | null; n: string }>(
+        `SELECT state, data->>'severity' AS severity, count(*) AS n FROM alerts WHERE ${where.sql} GROUP BY 1, 2`,
+        where.params,
+      );
+      const out = emptySummary();
+      for (const r of rows) {
+        const n = Number(r.n);
+        out.byStatus[r.state] = (out.byStatus[r.state] ?? 0) + n;
+        if (r.state === "open") {
+          out.open += n;
+          const sev = r.severity as Severity;
+          out.bySeverity[sev] = (out.bySeverity[sev] ?? 0) + n;
+        }
+      }
+      return out;
     },
     async upsert(a) {
       await q(
