@@ -95,7 +95,11 @@ export function filterText(f: Filter): string {
 
 export function newStarred(personId: string, text: string): StarredFilter {
   const id = "star-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 6);
-  return { id, personId, name: text, filter: text };
+  // The API (contract: StarredFilter.filter is a Filter) stores the parsed tree and
+  // rejects plain text with 400, so send the tree. Text only if it doesn't parse.
+  const r = tryParse(text);
+  const filter = (r.ok && r.tree ? r.tree : text) as Filter;
+  return { id, personId, name: text, filter };
 }
 
 /** Parses filter text for display. Empty text is valid and matches everything. */

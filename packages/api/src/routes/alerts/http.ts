@@ -15,7 +15,8 @@ import {
 } from "../common.js";
 import { createSuggestion } from "../suggestions/http.js";
 import { alertContext } from "./filter-context.js";
-import type { AlertCursor, AuditCursor } from "./store.js";
+import type { AlertCursor, AlertSort, AuditCursor, SortOrder } from "./store.js";
+import { computeSummary } from "./summary.js";
 
 export type { AlertsApiDeps } from "../common.js";
 
@@ -64,28 +65,47 @@ function treeFields(n: FilterNode, out: Set<string> = new Set()): Set<string> {
   return out;
 }
 
-async function listAlerts(res: http.ServerResponse, url: URL, deps: AlertsApiDeps): Promise<void> {
-  const sp = url.searchParams;
-  let tree: FilterNode | null = null;
+type TreeResult = { tree: FilterNode | null } | { status: 400; body: Record<string, unknown> };
+
+/** `filter` (text) wins over `tree` (JSON), exactly as for the list. */
+function parseTree(sp: URLSearchParams): TreeResult {
   const filterText = sp.get("filter");
   const treeText = sp.get("tree");
   if (filterText !== null && filterText.trim() !== "") {
     const r = tryParse(filterText);
-    if (!r.ok) return sendJson(res, 400, { error: r.error.message, position: r.error.position });
-    tree = r.tree;
-  } else if (treeText !== null) {
+    if (!r.ok) return { status: 400, body: { error: r.error.message, position: r.error.position } };
+    return { tree: r.tree };
+  }
+  if (treeText !== null) {
     let raw: unknown;
     try {
       raw = JSON.parse(treeText);
     } catch {
-      return sendJson(res, 400, { error: "tree is not valid JSON" });
+      return { status: 400, body: { error: "tree is not valid JSON" } };
     }
     try {
-      tree = validateTree(raw);
+      return { tree: validateTree(raw) };
     } catch (e) {
-      return sendJson(res, 400, { error: e instanceof Error ? e.message : "invalid tree" });
+      return { status: 400, body: { error: e instanceof Error ? e.message : "invalid tree" } };
     }
   }
+  return { tree: null };
+}
+
+const SORTS = ["lastSeen", "firstSeen", "severity", "count"];
+
+async function summaryRoute(res: http.ServerResponse, url: URL, deps: AlertsApiDeps): Promise<void> {
+  const t = parseTree(url.searchParams);
+  if ("status" in t) return sendJson(res, 400, t.body);
+  const needsEvents = !!t.tree && !!deps.events && [...treeFields(t.tree)].some((f) => !f.startsWith("alert."));
+  sendJson(res, 200, await computeSummary(deps, t.tree, needsEvents));
+}
+
+async function listAlerts(res: http.ServerResponse, url: URL, deps: AlertsApiDeps): Promise<void> {
+  const sp = url.searchParams;
+  const t = parseTree(sp);
+  if ("status" in t) return sendJson(res, 400, t.body);
+  const tree = t.tree;
   const stateParam = sp.get("state");
   if (stateParam !== null && !["open", "acknowledged", "resolved"].includes(stateParam))
     return sendJson(res, 400, { error: "bad state" });
@@ -98,12 +118,34 @@ async function listAlerts(res: http.ServerResponse, url: URL, deps: AlertsApiDep
     if (!before) return sendJson(res, 400, { error: "bad before cursor" });
   }
 
+  const sortParam = sp.get("sort");
+  const orderParam = sp.get("order");
+  const offsetParam = sp.get("offset");
+  if (sortParam !== null && !SORTS.includes(sortParam)) return sendJson(res, 400, { error: "bad sort" });
+  if (orderParam !== null && orderParam !== "asc" && orderParam !== "desc") return sendJson(res, 400, { error: "bad order" });
+  let offset = 0;
+  if (offsetParam !== null) {
+    if (!/^\d+$/.test(offsetParam) || !Number.isSafeInteger(Number(offsetParam)))
+      return sendJson(res, 400, { error: "bad offset" });
+    offset = Number(offsetParam);
+  }
+  const sort = (sortParam ?? undefined) as AlertSort | undefined;
+  const order = (orderParam ?? undefined) as SortOrder | undefined;
+  const custom = (sort ?? "lastSeen") !== "lastSeen" || (order ?? "desc") !== "desc";
+  if (before && custom)
+    return sendJson(res, 400, { error: "before cursor is only valid with the default sort (lastSeen desc); use offset with a non-default sort" });
+  const sortQ = custom ? { sort: sort ?? "lastSeen", order: order ?? "desc" } : {};
+
   if (!tree) {
-    const rows = await deps.alerts.list({ state, before, limit });
+    const rows = await deps.alerts.list({ state, before, limit, ...sortQ, offset: custom ? offset || undefined : undefined });
     const headers: Record<string, string> = {};
-    if (rows.length === limit) headers["x-next-before"] = encodeCursor(rows[rows.length - 1]!);
+    if (rows.length === limit) {
+      if (custom) headers["x-next-offset"] = String(offset + limit);
+      else headers["x-next-before"] = encodeCursor(rows[rows.length - 1]!);
+    }
     return sendJson(res, 200, rows, headers);
   }
+  if (custom) return listFilteredOffset(res, deps, tree, { state, limit, offset, ...sortQ });
 
   const needsEvents = !!deps.events && [...treeFields(tree)].some((f) => !f.startsWith("alert."));
   const out: Alert[] = [];
@@ -136,6 +178,48 @@ async function listAlerts(res: http.ServerResponse, url: URL, deps: AlertsApiDep
   }
   const headers: Record<string, string> = {};
   if (!exhausted && lastScanned) headers["x-next-before"] = encodeCursor(lastScanned);
+  sendJson(res, 200, out, headers);
+}
+
+/** Filtered list for non-default sorts: scan in sort order, skip `offset` matches, then take `limit`. */
+async function listFilteredOffset(
+  res: http.ServerResponse,
+  deps: AlertsApiDeps,
+  tree: FilterNode,
+  q: { state?: Alert["state"]; limit: number; offset: number; sort?: AlertSort; order?: SortOrder },
+): Promise<void> {
+  const needsEvents = !!deps.events && [...treeFields(tree)].some((f) => !f.startsWith("alert."));
+  const out: Alert[] = [];
+  let skipped = 0;
+  let scanned = 0;
+  let exhausted = false;
+  scan: while (scanned < SCAN_CAP) {
+    const batch = await deps.alerts.list({ state: q.state, limit: BATCH, sort: q.sort, order: q.order, offset: scanned });
+    if (batch.length === 0) {
+      exhausted = true;
+      break;
+    }
+    let events = new Map<string, Event>();
+    if (needsEvents) events = await deps.events!.getEvents([...new Set(batch.map((a) => a.eventId))]);
+    for (const a of batch) {
+      scanned++;
+      if (evaluate(tree, alertContext(a, events.get(a.eventId)))) {
+        if (skipped < q.offset) skipped++;
+        else {
+          out.push(a);
+          if (out.length >= q.limit) break scan;
+        }
+      }
+      if (scanned >= SCAN_CAP) break scan;
+    }
+    if (batch.length < BATCH) {
+      exhausted = true;
+      break;
+    }
+  }
+  const headers: Record<string, string> = {};
+  // Only when the page filled up: a cap hit with fewer matches would make clients rescan the same rows forever.
+  if (!exhausted && out.length >= q.limit) headers["x-next-offset"] = String(q.offset + out.length);
   sendJson(res, 200, out, headers);
 }
 
@@ -183,6 +267,7 @@ export async function handleAlertsRoutes(
   const method = req.method ?? "GET";
   try {
     if (method === "GET" && path === "/api/alerts") return await listAlerts(res, url, deps), true;
+    if (method === "GET" && path === "/api/alerts/summary") return await summaryRoute(res, url, deps), true;
     if (method === "GET" && path === "/api/audit") {
       const sp = url.searchParams;
       const beforeParam = sp.get("before");

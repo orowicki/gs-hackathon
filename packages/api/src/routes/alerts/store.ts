@@ -1,22 +1,56 @@
 import type { Pool, PoolClient } from "pg";
 import { migrate } from "@alerting/config";
-import type { Alert, AlertState, AuditEntry, Event, Suggestion } from "@alerting/shared";
+import type { Alert, AlertState, AuditEntry, Event, Severity, Suggestion } from "@alerting/shared";
 
 export interface AlertCursor {
   lastSeen: string;
   id: string;
 }
 
+export type AlertSort = "lastSeen" | "firstSeen" | "severity" | "count";
+export type SortOrder = "asc" | "desc";
+
 export interface AlertListQuery {
   state?: AlertState;
   before?: AlertCursor;
   limit: number;
+  /** Non-default sorts order by (key, id) in the same direction; `before` only applies to lastSeen desc. */
+  sort?: AlertSort;
+  order?: SortOrder;
+  offset?: number;
 }
+
+export interface AlertSummary {
+  open: number;
+  bySeverity: Record<Severity, number>;
+  byStatus: Record<AlertState, number>;
+}
+
+export function emptySummary(): AlertSummary {
+  return {
+    open: 0,
+    bySeverity: { critical: 0, error: 0, warning: 0, info: 0 },
+    byStatus: { open: 0, acknowledged: 0, resolved: 0 },
+  };
+}
+
+/** bySeverity counts open alerts only; byStatus counts all. */
+export function addToSummary(s: AlertSummary, a: { state: AlertState; severity: Severity }): void {
+  s.byStatus[a.state] = (s.byStatus[a.state] ?? 0) + 1;
+  if (a.state === "open") {
+    s.open++;
+    s.bySeverity[a.severity] = (s.bySeverity[a.severity] ?? 0) + 1;
+  }
+}
+
+const SEVERITY_RANK: Record<string, number> = { critical: 4, error: 3, warning: 2, info: 1 };
 
 export interface AlertStore {
   get(id: string): Promise<Alert | null>;
   /** Newest first: lastSeen desc, then id desc. */
   list(q: AlertListQuery): Promise<Alert[]>;
+  /** Counts of all alerts in a single aggregate query (no filter). */
+  summary(): Promise<AlertSummary>;
   upsert(alert: Alert): Promise<void>;
   /** Atomic: applies `patch` only if the current state is in `from`. */
   transition(id: string, from: AlertState[], patch: Partial<Alert>): Promise<Alert | null | "conflict">;
@@ -83,6 +117,22 @@ function cmpNewest(a: { lastSeen: string; id: string }, b: { lastSeen: string; i
   return a.id < b.id ? 1 : a.id > b.id ? -1 : 0;
 }
 
+function sortKey(a: Alert, sort: AlertSort): number {
+  if (sort === "severity") return SEVERITY_RANK[a.severity] ?? 0;
+  if (sort === "count") return a.count ?? 0;
+  const v = ms((sort === "firstSeen" ? a.firstSeen : a.lastSeen) ?? "");
+  return Number.isNaN(v) ? 0 : v;
+}
+
+function cmpSorted(sort: AlertSort, order: SortOrder): (a: Alert, b: Alert) => number {
+  const dir = order === "asc" ? 1 : -1;
+  return (a, b) => {
+    const d = sortKey(a, sort) - sortKey(b, sort);
+    if (d !== 0) return d * dir;
+    return (a.id < b.id ? -1 : a.id > b.id ? 1 : 0) * dir;
+  };
+}
+
 function cmpAuditNewest(a: { at: string; id: string }, b: { at: string; id: string }): number {
   const d = ms(b.at) - ms(a.at);
   if (d !== 0) return d;
@@ -102,13 +152,20 @@ export function createMemoryAlertStores(): AlertStores & { events: Map<string, E
         return a ? structuredClone(a) : null;
       },
       async list(q) {
-        let all = [...alerts.values()].sort(cmpNewest);
+        const custom = q.sort !== undefined || q.order !== undefined;
+        let all = [...alerts.values()].sort(custom ? cmpSorted(q.sort ?? "lastSeen", q.order ?? "desc") : cmpNewest);
         if (q.state) all = all.filter((a) => a.state === q.state);
         if (q.before) {
           const b = q.before;
           all = all.filter((a) => cmpNewest(b, a) < 0);
         }
-        return structuredClone(all.slice(0, q.limit));
+        const off = q.offset ?? 0;
+        return structuredClone(all.slice(off, off + q.limit));
+      },
+      async summary() {
+        const out = emptySummary();
+        for (const a of alerts.values()) addToSummary(out, a);
+        return out;
       },
       async upsert(alert) {
         alerts.set(alert.id, structuredClone(alert));
@@ -256,7 +313,7 @@ export function createPgAlertStores(pool: Pool): AlertStores {
     async get(id) {
       return datas(await q<DataRow<Alert>>("SELECT data FROM alerts WHERE id = $1", [id]))[0] ?? null;
     },
-    async list({ state, before, limit }) {
+    async list({ state, before, limit, sort, order, offset }) {
       const params: unknown[] = [];
       const where: string[] = [];
       if (state) {
@@ -267,9 +324,44 @@ export function createPgAlertStores(pool: Pool): AlertStores {
         params.push(before.lastSeen, before.id);
         where.push(`(last_seen, id) < ($${params.length - 1}::timestamptz, $${params.length})`);
       }
+      let orderBy = "last_seen DESC, id DESC";
+      if (sort !== undefined || order !== undefined) {
+        const dir = order === "asc" ? "ASC" : "DESC";
+        const key =
+          sort === "firstSeen"
+            ? "COALESCE((data->>'firstSeen')::timestamptz, 'epoch'::timestamptz)"
+            : sort === "count"
+              ? "COALESCE((data->>'count')::numeric, 0)"
+              : sort === "severity"
+                ? "CASE data->>'severity' WHEN 'critical' THEN 4 WHEN 'error' THEN 3 WHEN 'warning' THEN 2 WHEN 'info' THEN 1 ELSE 0 END"
+                : "last_seen";
+        orderBy = `${key} ${dir}, id ${dir}`;
+      }
       params.push(limit);
-      const sql = `SELECT data FROM alerts ${where.length ? `WHERE ${where.join(" AND ")}` : ""} ORDER BY last_seen DESC, id DESC LIMIT $${params.length}`;
+      let sql = `SELECT data FROM alerts ${where.length ? `WHERE ${where.join(" AND ")}` : ""} ORDER BY ${orderBy} LIMIT $${params.length}`;
+      if (offset) {
+        params.push(offset);
+        sql += ` OFFSET $${params.length}`;
+      }
       return datas(await q<DataRow<Alert>>(sql, params));
+    },
+    async summary() {
+      const [r] = await q<Record<string, string>>(
+        `SELECT count(*) FILTER (WHERE state = 'open') AS open,
+           count(*) FILTER (WHERE state = 'acknowledged') AS acknowledged,
+           count(*) FILTER (WHERE state = 'resolved') AS resolved,
+           count(*) FILTER (WHERE state = 'open' AND data->>'severity' = 'critical') AS critical,
+           count(*) FILTER (WHERE state = 'open' AND data->>'severity' = 'error') AS error,
+           count(*) FILTER (WHERE state = 'open' AND data->>'severity' = 'warning') AS warning,
+           count(*) FILTER (WHERE state = 'open' AND data->>'severity' = 'info') AS info
+         FROM alerts`,
+      );
+      const n = (k: string): number => Number(r?.[k] ?? 0);
+      return {
+        open: n("open"),
+        bySeverity: { critical: n("critical"), error: n("error"), warning: n("warning"), info: n("info") },
+        byStatus: { open: n("open"), acknowledged: n("acknowledged"), resolved: n("resolved") },
+      };
     },
     async upsert(a) {
       await q(
