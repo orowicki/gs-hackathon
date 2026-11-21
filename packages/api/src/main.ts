@@ -2,7 +2,6 @@ import pg from "pg";
 import { Redis } from "ioredis";
 import { CHANNEL_UI_PUSH, type UiPush } from "@alerting/shared";
 import { createDeliveryQueue, createNtfyChannel, createUiChannel, registerChannel } from "@alerting/delivery";
-import { createConfigStore } from "@alerting/config";
 import {
   createDefaultActions,
   createGroupNotifier,
@@ -13,6 +12,7 @@ import {
   migrateRunbooks,
 } from "@alerting/runbooks";
 import { startIngestService, type IngestService } from "@alerting/ingest";
+import { createConfigStore, migrate, type ConfigStore } from "@alerting/config";
 import { createServer } from "./server.js";
 import { createUiPushHub } from "./stream/sse.js";
 import { createPgAlertStores, createPgEventLoader } from "./routes/alerts/store.js";
@@ -84,15 +84,37 @@ subRedis.on("message", (_ch: string, json: string) => {
   uiHub.publish(json);
 });
 
+// Config store: shared pool (close() does not end it); own Redis for change publishing that fails fast.
+// Alert stores run migrate lazily too, and it is idempotent.
+let config: ConfigStore | undefined;
+let configRedis: Redis | undefined;
+if (process.env.DATABASE_URL) {
+  try {
+    await migrate(pool);
+  } catch (err) {
+    console.error("config migrate failed:", (err as Error).message);
+  }
+  configRedis = new Redis(redisUrl, {
+    connectTimeout: 1500,
+    maxRetriesPerRequest: 1,
+    enableOfflineQueue: false,
+    retryStrategy: (times) => Math.min(times * 500, 5000),
+  });
+  configRedis.on("error", () => {
+    /* change publishing is best effort */
+  });
+  config = createConfigStore({ pool, redis: configRedis });
+}
+
 // Runbooks: runs, approvals (audit goes to the alerts audit store). Lazy connections, so the API still starts when Postgres/Redis are down.
 const runbooksReady = migrateRunbooks(pool);
 runbooksReady.catch((err: unknown) => console.error("runbooks migration failed:", (err as Error).message));
-const configStore = createConfigStore({ pool, redis: deliveryRedis });
-const runbookRegistry = createRunbookRegistry(configStore, {
-  onError: (err) => console.error("runbook registry:", err.message),
-});
+// The registry shares the config store (and its change events), so runbooks created via /api/runbooks are picked up.
+const runbookRegistry = config
+  ? createRunbookRegistry(config, { onError: (err) => console.error("runbook registry:", err.message) })
+  : undefined;
 const notifyGroup = createGroupNotifier({
-  getGroup: (id) => configStore.get("group", id),
+  getGroup: async (id) => (config ? config.get("group", id) : undefined),
   enqueue: (n) => delivery.enqueue(n),
 });
 const stores = createPgAlertStores(pool);
@@ -126,8 +148,9 @@ runbooksReady
 let publishWarned = false;
 
 const server = createServer({
-  runbooks: createRunbookRoutes({ runner, registry: runbookRegistry }),
+  runbooks: runbookRegistry ? createRunbookRoutes({ runner, registry: runbookRegistry }) : undefined,
   delivery,
+  config,
   subscribeUiPush(onMessage) {
     return uiHub.subscribe(onMessage);
   },
@@ -172,8 +195,8 @@ function shutdown(): void {
   stopping = true;
   server.close();
   server.closeAllConnections?.();
-  void Promise.allSettled([delivery.stop(), ingest?.stop(), runbookRegistry.close(), configStore.close()])
-    .then(() => Promise.allSettled([pool.end(), redis.quit(), deliveryRedis.quit(), subRedis.quit()])).then(() => process.exit(0));
+  void Promise.allSettled([delivery.stop(), ingest?.stop(), runbookRegistry?.close(), config?.close()])
+    .then(() => Promise.allSettled([pool.end(), redis.quit(), configRedis?.quit(), deliveryRedis.quit(), subRedis.quit()])).then(() => process.exit(0));
 }
 process.on("SIGTERM", shutdown);
 process.on("SIGINT", shutdown);
