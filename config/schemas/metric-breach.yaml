@@ -7,5 +7,9 @@ mapping:
   source: { kind: path, path: labels.service }
   environment: { kind: path, path: labels.environment, default: prod }
   dedupKey: { kind: template, template: "{{alertname}}-{{labels.service}}" }
-  status: { kind: path, path: status, default: firing }
+  sourceStatus: { kind: path, path: status, default: firing }
   occurredAt: { kind: path, path: startsAt }
+  type: { kind: path, path: alertname }
+  message: { kind: path, path: annotations.summary }
+  entity: { kind: path, path: labels.instance }
+  runbookUrl: { kind: path, path: annotations.runbook_url }

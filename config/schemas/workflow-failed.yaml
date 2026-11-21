@@ -7,5 +7,8 @@ mapping:
   source: { kind: path, path: workflowName }
   environment: { kind: path, path: environment }
   dedupKey: { kind: template, template: "{{workflowName}}-{{step}}" }
-  status: { kind: constant, value: firing }
+  sourceStatus: { kind: constant, value: firing }
   occurredAt: { kind: path, path: timestamp }
+  type: { kind: path, path: type }
+  message: { kind: path, path: error.message }
+  entity: { kind: path, path: workflowId }

@@ -5,12 +5,16 @@ Recognise an event's schema and map it onto the common fields.
 - `matchSchema(parsed, schemas, onError?)`: first match wins. Schemas are sorted by `id` ascending
   (plain string compare), so control order with id prefixes (`10-foo` before `20-bar`). A schema
   whose `match` filter fails to parse is skipped and reported via `onError`. Empty filter matches all.
+- Common fields (`SCHEMA_COMMON_FIELD_NAMES`): `severity`, `title`, `source`, `environment`, `dedupKey`,
+  `sourceStatus`, `occurredAt` plus optional `type`, `message`, `entity`, `runbookUrl` (absent when
+  unmapped or empty). A legacy `status` mapping key is accepted as alias of `sourceStatus` (`sourceStatus`
+  wins); output only ever has `sourceStatus`. Types are local (`SchemaCommonFields`, `SchemaDef`).
 - `mapCommonFields(parsed, schema)`: per field `path` (dot path, array index `a.0.b`), `constant` or
   `template` (`{{a.b}}`). A template with any missing/empty placeholder counts as missing. Then
   `valueMap` (exact, then case-insensitive), then `default`. `severity`: case/alias normalised
-  (`warn`, `crit`), unknown -> `info`. `status`: `firing|resolved` (case-insensitive), unknown ->
+  (`warn`, `crit`), unknown -> `info`. `sourceStatus`: `firing|resolved` (case-insensitive), unknown ->
   omitted. `occurredAt` (value -> valueMap -> default, like the others): ISO, epoch seconds (< 1e11)
-  or epoch ms -> ISO `toISOString()`. Numeric *strings* count as epoch only with >= 9 digits, so
+  or epoch ms -> ISO `toISOString()`. Numeric _strings_ count as epoch only with >= 9 digits, so
   `"2026"` / `"20261023"` are omitted (not 1970); unparseable -> omitted. Fields without a value are omitted.
 - `classifyEvent(parsed, schemas)` -> `{ schemaId, common, parsed }`. The event is normalised
   automatically first (`normaliseDeep`): `match` filters and mappings run on the normalised event, and

@@ -22,7 +22,9 @@ export function normaliseValue(v: unknown): unknown {
 export function normaliseDeep(v: unknown): unknown {
   if (Array.isArray(v)) return v.map(normaliseDeep);
   if (v !== null && typeof v === "object") {
-    return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, normaliseDeep(x)]));
+    return Object.fromEntries(
+      Object.entries(v).map(([k, x]) => [k, normaliseDeep(x)]),
+    );
   }
   return normaliseValue(v);
 }

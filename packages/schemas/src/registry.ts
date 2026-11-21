@@ -1,11 +1,15 @@
 import type { ConfigStore } from "@alerting/config";
-import type { Schema } from "@alerting/shared";
-import { classifyEvent, compileMatch, type Classification } from "./classify.js";
+import type { SchemaDef } from "./types.js";
+import {
+  classifyEvent,
+  compileMatch,
+  type Classification,
+} from "./classify.js";
 
 export interface SchemaRegistry {
   ready: Promise<void>;
   classify(parsed: unknown): Classification;
-  schemas(): Schema[];
+  schemas(): SchemaDef[];
   close(): void;
 }
 
@@ -13,10 +17,15 @@ export interface RegistryOptions {
   onError?: (err: Error, schemaId?: string) => void;
 }
 
-function valid(s: unknown): s is Schema {
+function valid(s: unknown): s is SchemaDef {
   if (typeof s !== "object" || s === null) return false;
   const e = s as Record<string, unknown>;
-  return typeof e.id === "string" && typeof e.mapping === "object" && e.mapping !== null && e.match !== undefined;
+  return (
+    typeof e.id === "string" &&
+    typeof e.mapping === "object" &&
+    e.mapping !== null &&
+    e.match !== undefined
+  );
 }
 
 /**
@@ -36,7 +45,7 @@ export function createSchemaRegistry(
       /* ignore reporter failure */
     }
   };
-  let current: Schema[] = [];
+  let current: SchemaDef[] = [];
   let closed = false;
   let unsub: (() => void) | undefined;
   let chain: Promise<void> = Promise.resolve();
@@ -44,10 +53,13 @@ export function createSchemaRegistry(
   const reload = async (): Promise<void> => {
     {
       const all = await store.list("schema");
-      const ok: Schema[] = [];
+      const ok: SchemaDef[] = [];
       for (const s of all) {
         if (!valid(s)) {
-          report(new Error("invalid schema entry"), (s as { id?: string } | null)?.id);
+          report(
+            new Error("invalid schema entry"),
+            (s as { id?: string } | null)?.id,
+          );
           continue;
         }
         try {
@@ -85,7 +97,8 @@ export function createSchemaRegistry(
 
   return {
     ready,
-    classify: (parsed) => classifyEvent(parsed, current, (e, id) => report(e, id)),
+    classify: (parsed) =>
+      classifyEvent(parsed, current, (e, id) => report(e, id)),
     schemas: () => [...current],
     close() {
       closed = true;

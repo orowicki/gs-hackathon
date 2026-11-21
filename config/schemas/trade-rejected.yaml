@@ -7,5 +7,8 @@ mapping:
   source: { kind: path, path: meta.producer }
   environment: { kind: constant, value: prod }
   dedupKey: { kind: path, path: payload.tradeId }
-  status: { kind: constant, value: firing }
+  sourceStatus: { kind: constant, value: firing }
   occurredAt: { kind: path, path: meta.ts }
+  type: { kind: path, path: meta.schema }
+  message: { kind: path, path: payload.reason }
+  entity: { kind: path, path: payload.tradeId }

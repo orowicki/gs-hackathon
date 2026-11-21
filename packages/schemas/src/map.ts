@@ -1,12 +1,21 @@
-import type { CommonFieldName, CommonFields, FieldMapping, Schema } from "@alerting/shared";
-import { COMMON_FIELD_NAMES } from "@alerting/shared";
-import { normaliseSeverity, normaliseStatus, normaliseTimestamp } from "./normalise.js";
+import type { FieldMapping } from "@alerting/shared";
+import {
+  SCHEMA_COMMON_FIELD_NAMES,
+  type SchemaCommonFields,
+  type SchemaDef,
+} from "./types.js";
+import {
+  normaliseSeverity,
+  normaliseStatus,
+  normaliseTimestamp,
+} from "./normalise.js";
 
 /** Dot path lookup with array indexes (`a.0.b`); own properties only. */
 export function getPath(root: unknown, path: string): unknown {
   let cur = root;
   for (const seg of path.split(".")) {
-    if (cur === null || typeof cur !== "object" || !Object.hasOwn(cur, seg)) return undefined;
+    if (cur === null || typeof cur !== "object" || !Object.hasOwn(cur, seg))
+      return undefined;
     cur = (cur as Record<string, unknown>)[seg];
   }
   return cur;
@@ -44,11 +53,15 @@ function raw(parsed: unknown, m: FieldMapping): string | undefined {
   }
 }
 
-function applyValueMap(v: string, map: Record<string, string> | undefined): string {
+function applyValueMap(
+  v: string,
+  map: Record<string, string> | undefined,
+): string {
   if (!map) return v;
   if (Object.hasOwn(map, v)) return map[v]!;
   const lc = v.toLowerCase();
-  for (const [k, to] of Object.entries(map)) if (k.toLowerCase() === lc) return to;
+  for (const [k, to] of Object.entries(map))
+    if (k.toLowerCase() === lc) return to;
   return v;
 }
 
@@ -58,14 +71,21 @@ function applyValueMap(v: string, map: Record<string, string> | undefined): stri
  * Per field: value from `path` / `constant` / `template`; a template with any missing placeholder
  * counts as missing (so `default` applies). Then `valueMap` (exact, then case-insensitive), and
  * `default` if nothing was found. Severity is normalised (case, aliases warn/crit) and falls back
- * to `info`. Status is normalised to firing|resolved, unknown values are omitted. occurredAt is
+ * to `info`. sourceStatus is normalised (legacy mapping key `status` is an alias) to firing|resolved, unknown values are omitted. occurredAt is
  * normalised to an ISO string (ISO, epoch s or ms); unparseable values are omitted.
  * Fields with no value are omitted (except severity, always present).
  */
-export function mapCommonFields(parsed: unknown, schema: Schema): Partial<CommonFields> {
-  const out: Partial<CommonFields> = {};
-  for (const name of COMMON_FIELD_NAMES as readonly CommonFieldName[]) {
-    const m = schema.mapping[name];
+export function mapCommonFields(
+  parsed: unknown,
+  schema: SchemaDef,
+): Partial<SchemaCommonFields> {
+  const out: Partial<SchemaCommonFields> = {};
+  for (const name of SCHEMA_COMMON_FIELD_NAMES) {
+    // legacy `status` key is an alias of `sourceStatus` (sourceStatus wins)
+    const m =
+      name === "sourceStatus"
+        ? (schema.mapping.sourceStatus ?? schema.mapping.status)
+        : schema.mapping[name];
     let v = m ? raw(parsed, m) : undefined;
     if (m) {
       if (v !== undefined) v = applyValueMap(v, m.valueMap);
@@ -75,9 +95,9 @@ export function mapCommonFields(parsed: unknown, schema: Schema): Partial<Common
       case "severity":
         out.severity = normaliseSeverity(v) ?? "info";
         break;
-      case "status": {
+      case "sourceStatus": {
         const s = normaliseStatus(v);
-        if (s) out.status = s;
+        if (s) out.sourceStatus = s;
         break;
       }
       case "occurredAt": {
