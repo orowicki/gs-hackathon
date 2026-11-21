@@ -874,3 +874,13 @@ input.mono,
 .chooser-tabs + .chooser-panel {
   margin-top: calc(-1 * var(--space-2));
 }
+
+/* Tabs placed directly in a page (above the rule editor) sit exactly where they do in
+   the chooser: the chooser spaces its children 16px and pulls the panel 8px closer. */
+.page > .chooser-tabs {
+  margin-top: var(--space-1);
+}
+
+.page > .chooser-tabs + * {
+  margin-top: calc(-1 * var(--space-1));
+}
