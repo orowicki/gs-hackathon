@@ -16,6 +16,8 @@ export interface Deps {
   delivery?: DeliveryDeps;
   /** Subscribe to CHANNEL_UI_PUSH messages; returns an unsubscribe function. */
   subscribeUiPush?(onMessage: (json: string) => void): () => void;
+  /** Runbook runs, approvals and audit routes (from @alerting/runbooks). */
+  runbooks?: { handle(req: http.IncomingMessage, res: http.ServerResponse, url: URL): Promise<boolean> };
   /** Directory with the built web app; defaults to env WEB_DIST. */
   webDist?: string;
 }
@@ -136,6 +138,19 @@ export function createServer(deps: Deps): http.Server {
     }
     if (req.method === "GET" && path === "/api/openapi.json") {
       send(res, 200, buildOpenApi());
+      return;
+    }
+    if (
+      deps.runbooks &&
+      (path.startsWith("/api/alerts/") || path === "/api/approvals" || path === "/api/audit")
+    ) {
+      const url = new URL(req.url ?? "/", "http://localhost");
+      deps.runbooks.handle(req, res, url).then(
+        (handled) => {
+          if (!handled) send(res, 404, { error: "not found" });
+        },
+        () => send(res, 500, { error: "internal error" }),
+      );
       return;
     }
     const retryMatch = /^\/api\/dead-letters\/([^/]+)\/retry$/.exec(path);

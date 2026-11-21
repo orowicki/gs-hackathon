@@ -1,7 +1,17 @@
 import pg from "pg";
 import { Redis } from "ioredis";
-import { CHANNEL_UI_PUSH } from "@alerting/shared";
+import { CHANNEL_UI_PUSH, type UiPush } from "@alerting/shared";
 import { createDeliveryQueue, createNtfyChannel, createUiChannel, registerChannel } from "@alerting/delivery";
+import { createConfigStore } from "@alerting/config";
+import {
+  createDefaultActions,
+  createGroupNotifier,
+  createPgRunStore,
+  createRunbookRegistry,
+  createRunbookRoutes,
+  createRunner,
+  migrateRunbooks,
+} from "@alerting/runbooks";
 import { startIngestService, type IngestService } from "@alerting/ingest";
 import { createServer } from "./server.js";
 
@@ -77,7 +87,30 @@ subRedis.on("message", (_ch: string, json: string) => {
   }
 });
 
+// Runbooks: runs, approvals, audit. Lazy connections, so the API still starts when Postgres/Redis are down.
+migrateRunbooks(pool).catch((err: unknown) => console.error("runbooks migration failed:", (err as Error).message));
+const configStore = createConfigStore({ pool, redis: deliveryRedis });
+const runbookRegistry = createRunbookRegistry(configStore, {
+  onError: (err) => console.error("runbook registry:", err.message),
+});
+const notifyGroup = createGroupNotifier({
+  getGroup: (id) => configStore.get("group", id),
+  enqueue: (n) => delivery.enqueue(n),
+});
+const runner = createRunner({
+  store: createPgRunStore(pool),
+  actions: createDefaultActions({ notifyGroup }),
+  onUpdate: (run) => {
+    const push: UiPush = { type: "alert", alertId: run.alertId, kind: "updated" };
+    redis.publish(CHANNEL_UI_PUSH, JSON.stringify(push)).catch(() => {
+      /* UI push is best effort */
+    });
+  },
+});
+// The alert worker (startRunbookWorker) is wired here once alerts are persisted (needs loadAlert/loadEvent).
+
 const server = createServer({
+  runbooks: createRunbookRoutes({ runner, registry: runbookRegistry }),
   delivery,
   subscribeUiPush(onMessage) {
     uiClients.add(onMessage);
@@ -112,7 +145,7 @@ function shutdown(): void {
   stopping = true;
   server.close();
   server.closeAllConnections?.();
-  void Promise.allSettled([delivery.stop(), ingest?.stop()])
+  void Promise.allSettled([delivery.stop(), ingest?.stop(), runbookRegistry.close(), configStore.close()])
     .then(() => Promise.allSettled([pool.end(), redis.quit(), deliveryRedis.quit(), subRedis.quit()])).then(() => process.exit(0));
 }
 process.on("SIGTERM", shutdown);

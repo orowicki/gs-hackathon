@@ -5,3 +5,6 @@ export * from "./actions.js";
 export * from "./store.js";
 export * from "./store-pg.js";
 export * from "./runner.js";
+export * from "./http.js";
+export * from "./notifier.js";
+export * from "./worker.js";
