@@ -56,7 +56,6 @@ export function SchemasListPage() {
 
   return (
     <main className="page">
-      <Link to="/">← Back to alerts</Link>
       <div className="src-head">
         <h1>Schemas</h1>
         <button

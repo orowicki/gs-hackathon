@@ -7,21 +7,35 @@
 
 ## 1. Principles
 
-1. **Show as little as possible.** The landing screen must not overwhelm the user. No dashboards,
-   no charts, no sidebars, no stat cards, no hero sections, no onboarding banners.
-2. **The filter is the main control.** Users find what they care about by typing a filter, not by
-   clicking through menus.
-3. **Clean and quiet.** Neutral colours, one accent colour, colour used mostly for alert severity.
-   Information first, decoration never.
-4. **Readable by non-engineers.** No raw JSON, curly braces or quotes in the default views.
+> Revised 2026-11-21 (team decision): Grafana-style layout. Supersedes the earlier
+> "no sidebars, no stat cards" rule.
+
+1. **Two areas, always one click away.** A left sidebar (Grafana-style) with two sections:
+   **Alerts** (alert feed, my notifications) for people handling alerts, and **Configuration**
+   (rules, sources, schemas, people & groups, channels) for setting the service up. Every page is
+   reachable from the sidebar; no page is hidden behind another page's button. Each page declares
+   its sidebar entry with `nav` in its `packages/web/src/routes/*.route.tsx` file.
+2. **The filter is the main control on the feed.** Stat panels above the feed (open alerts, and open
+   alerts per severity) give the overview and filter the feed when clicked. No charts or dashboards
+   beyond these panels.
+3. **Grafana look.** Dark theme by default (light available), panels with 1 px borders, colour used
+   for severity, validity and the accent. Palette lives in `packages/web/src/styles/tokens.css`.
+4. **Every configuration page has its primary action** ("Add source", "Add schema", "New rule", ...)
+   at the top right of its page header.
+5. **Readable by non-engineers.** No raw JSON, curly braces or quotes in the default views.
 
 ## 2. Pages and routes
 
-| Route | Page | Who sees it |
-|---|---|---|
-| `/` | Alerts (landing page) | everyone |
-| `/alerts/:id` | Alert detail | everyone |
-| `/rules/new` | New rule | only profiles with permission to create rules |
+| Route | Page | Sidebar section | Who sees it |
+|---|---|---|---|
+| `/` | Alert feed (landing page) | Alerts | everyone |
+| `/alerts/:id` | Alert detail | (under Alert feed) | everyone |
+| `/settings/notifications` | My notifications | Alerts | everyone |
+| `/rules`, `/rules/new`, `/rules/:id` | Rules list and editor | Configuration | everyone; editing only profiles with permission to create rules |
+| `/config/sources`, `/config/sources/:id` | Sources | Configuration | everyone |
+| `/config/schemas`, `/config/schemas/:id` | Schemas | Configuration | everyone |
+| `/config/people` | People & groups | Configuration | everyone |
+| `/config/channels` | Channels and dead letters | Configuration | everyone |
 
 The current filter is stored in the URL (`/?q=<url-encoded filter>`), so a filtered view can be shared
 as a link and survives a page refresh.
@@ -213,21 +227,10 @@ The full event is shown as a clean, readable list of fields. The user should nev
 | Icons | Lucide, 16 px, stroke 1.5. |
 | Motion | 120–160 ms ease-out, only for expanding rows, opening panels and highlighting new alerts. Respect `prefers-reduced-motion`. |
 
-Colours (CSS variables, light and dark themes, following the system setting by default):
-
-| Role | Light | Dark |
-|---|---|---|
-| Background | `#F7F7F5` | `#0E1014` |
-| Surface (rows, panels) | `#FFFFFF` | `#15181E` |
-| Border | `#E3E3DF` | `#262B34` |
-| Text | `#16181D` | `#E6E8EB` |
-| Muted text | `#5B6270` | `#9BA3AF` |
-| Accent (focus, filled star, links) | `#2F5BD3` | `#6E8EF5` |
-| Critical | `#D93036` | `#F2555A` |
-| Error | `#C4560F` | `#F7863B` |
-| Warning | `#9A7200` | `#F5C02E` |
-| Info | `#5B6270` | `#8B93A1` |
-| Valid filter | `#2F8F5B` | `#4CC38A` |
+Colours: Grafana dark palette by default, light theme via `data-theme="light"`. The single source
+is `packages/web/src/styles/tokens.css` (severity: critical `#F2495C`, error `#FF9830`,
+warning `#FADE2A`, info `#5794F2`; valid `#73BF69`; accent `#6E9FFF`). Don't hard-code colours in
+page CSS; use the variables.
 
 ### Do not
 

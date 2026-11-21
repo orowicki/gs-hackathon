@@ -9,6 +9,12 @@
   log (`gh run view <id> --log-failed`) and fix the cause; never skip, delete or loosen a
   test to go green. Only when all your PRs are green and conflict-free, continue your task.
   If a PR is stuck on another person's PR or a question, say so in one PR comment and move on.
+> HACKATHON MODE: working features beat test coverage. In a feature task, write only a few
+  small unit tests for the core logic (the main path plus the one most likely failure) to
+  show it works. No exhaustive edge cases, and no new integration, e2e or load suites unless
+  the task is itself a test task. If something deserves bigger tests, propose a separate
+  task (ap:proposed) and move on. Spend the time making the feature actually run in
+  `just up` instead. Existing tests must still pass (see TOP PRIORITY above).
 > Root package.json must never list packages by name. Each package defines its own
   "build" and "typecheck" scripts; the root runs them with --workspaces --if-present.
 > On rebase conflicts in package-lock.json: take main's version, then run `npm install`.
@@ -32,3 +38,28 @@
   your route needs on Deps from that file with `declare module "../http.js" { interface
   Deps { ... } }`, not in http.ts. Helpers go in routes/<name>/. When rebasing onto this
   change, move your server.ts routes into such a file.
+> UI is hand-built by the people now. Do not change anything under packages/web/ or
+  docs/design/UI.md, and don't claim or propose UI tasks. If backend work needs a UI change
+  (a new field to show, a new page), finish the backend part and file an issue describing
+  the UI change, without the ap:task label. Keep the API the UI uses backwards compatible;
+  if you must change a response shape, say so under "Contract change" in the PR.
+  Your focus, in this order:
+  1. FULL FUNCTIONALITY FIRST: every feature in SPEC.md built and working in the running
+     app (`just up`): event in -> parsed -> schema-mapped -> rule matched -> alert stored ->
+     notification delivered (ui + ntfy) -> runbook. If a SPEC feature is missing, build it.
+     Wire each package into the real entry points (packages/api/src/main.ts, the compose
+     `worker` service), not only into test helpers (example: schema mapping, #91). A
+     missing or unwired feature beats every other task, including your current one. This
+     is about building and connecting features, NOT about writing integration tests.
+  2. Backend correctness and the demo data path (seed, `just demo`, engine worker).
+  3. Good endpoints for the UI: everything a page needs in one call where sensible (lists
+     with filtering, sorting and paging; counts/summaries such as open alerts per severity;
+     detail views with related data), consistent error shapes, and every endpoint in the
+     OpenAPI spec (/api/openapi.json) with request/response schemas and examples.
+  4. Documentation of everything that exists: README quick start, architecture overview,
+     API reference (generated from or checked against OpenAPI), config file formats,
+     how to add a source / schema / channel / action type. Fill gaps; keep docs true.
+  5. LATER, only once 1-4 are done: integration, end-to-end and load tests, then
+     debugging tasks for what they find. Until then don't claim or start test-only tasks
+     (e.g. #78) and don't write new integration/e2e/load tests; finish and merge test PRs
+     that are already open, then move on.

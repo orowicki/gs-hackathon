@@ -11,7 +11,7 @@ import {
   createRunner,
   migrateRunbooks,
 } from "@alerting/runbooks";
-import { startIngestService, type IngestService } from "@alerting/ingest";
+import { startIngestService, startSchemaMapping, type IngestService, type SchemaMapping } from "@alerting/ingest";
 import { createConfigStore, migrate, type ConfigStore } from "@alerting/config";
 import { createServer } from "./server.js";
 import { createUiPushHub } from "./stream/sse.js";
@@ -180,10 +180,25 @@ server.listen(port, () => console.log(`api listening on :${port}`));
 
 // Ingest (sources, http route registry, parse worker) runs in-process: the http plugin registry is per process.
 let ingest: IngestService | undefined;
-if (process.env.DATABASE_URL && process.env.REDIS_URL) {
-  startIngestService({ databaseUrl: process.env.DATABASE_URL, redisUrl: process.env.REDIS_URL })
+// Events are mapped onto the live schema registry (reloads on config changes) so common fields and schema_id are set.
+// Ingest starts only after the first successful schema load (async: does not block server.listen).
+const ingestEnabled = Boolean(process.env.DATABASE_URL && process.env.REDIS_URL);
+const schemaMapping: SchemaMapping | undefined = config && ingestEnabled ? startSchemaMapping(config) : undefined;
+if (ingestEnabled) {
+  (schemaMapping ? schemaMapping.ready : Promise.resolve())
+    .then(() =>
+      stopping
+        ? undefined
+        : startIngestService({
+            databaseUrl: process.env.DATABASE_URL as string,
+            redisUrl: process.env.REDIS_URL as string,
+            mapEvent: schemaMapping?.mapEvent,
+          }),
+    )
     .then((s) => {
-      ingest = s;
+      if (!s) return;
+      if (stopping) void s.stop();
+      else ingest = s;
     })
     .catch((err: unknown) => console.error("ingest failed to start:", err));
 } else {
@@ -195,7 +210,7 @@ function shutdown(): void {
   stopping = true;
   server.close();
   server.closeAllConnections?.();
-  void Promise.allSettled([delivery.stop(), ingest?.stop(), runbookRegistry?.close(), config?.close()])
+  void Promise.allSettled([delivery.stop(), Promise.resolve(ingest?.stop()).finally(() => schemaMapping?.close()), runbookRegistry?.close(), config?.close()])
     .then(() => Promise.allSettled([pool.end(), redis.quit(), configRedis?.quit(), deliveryRedis.quit(), subRedis.quit()])).then(() => process.exit(0));
 }
 process.on("SIGTERM", shutdown);
