@@ -2,6 +2,9 @@ import { Route, Routes } from "react-router-dom";
 import { AlertDetailPage } from "./pages/alert-detail/AlertDetailPage";
 import { FeedPage } from "./pages/feed/FeedPage";
 import { NewRulePage } from "./pages/NewRulePage";
+import { ChannelsPage } from "./pages/channels/ChannelsPage";
+import { MyNotificationsPage } from "./pages/my-notifications/MyNotificationsPage";
+import { PeoplePage } from "./pages/people/PeoplePage";
 
 export function App() {
   return (
@@ -9,6 +12,9 @@ export function App() {
       <Route path="/" element={<FeedPage />} />
       <Route path="/alerts/:id" element={<AlertDetailPage />} />
       <Route path="/rules/new" element={<NewRulePage />} />
+      <Route path="/config/people" element={<PeoplePage />} />
+      <Route path="/config/channels" element={<ChannelsPage />} />
+      <Route path="/settings/notifications" element={<MyNotificationsPage />} />
       <Route path="*" element={<FeedPage />} />
     </Routes>
   );
