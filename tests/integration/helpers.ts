@@ -1,9 +1,10 @@
 import http from "node:http";
 import type { AddressInfo } from "node:net";
-import { randomBytes } from "node:crypto";
 import pg from "pg";
 import { Redis } from "ioredis";
 import {
+  GROUP_ENGINE,
+  GROUP_PARSE,
   LIST_RECENT_EVENTS,
   PREFIX,
   STREAM_ALERTS,
@@ -117,11 +118,16 @@ export interface Stack {
 /**
  * Wires ingest (http source + parse worker with schema mapping), engine (dedup + throttle),
  * delivery (ui + stubbed ntfy) and the API http server in-process, the same way the packages'
- * main.ts files do, against the seeded config/ files. `dedupKeys` are removed from Redis
- * before and after so a previous run cannot leak open alerts into this one.
+ * main.ts files do, against the seeded config/ files. `run` is a unique suffix; the posted
+ * events must carry it in their dedup keys (`dedupKeys`) so alerts and Redis dedup state are
+ * run-scoped and only those keys are touched.
+ *
+ * Trade-off: engine, delivery queue and the Redis stream names are fixed by the production code
+ * (no prefix option), so a developer's running engine could compete for this run's events. Config
+ * entities are loaded under their real ids (rules reference real people/groups) and restored in
+ * stop() or when setup fails.
  */
-export async function startStack(dedupKeys: string[]): Promise<Stack> {
-  const run = randomBytes(4).toString("hex");
+export async function startStack(run: string, dedupKeys: string[]): Promise<Stack> {
   const sourceId = `it-pipeline-${run}`;
   const databaseUrl = process.env.DATABASE_URL as string;
   const redisUrl = process.env.REDIS_URL as string;
@@ -136,7 +142,7 @@ export async function startStack(dedupKeys: string[]): Promise<Stack> {
   const store = createConfigStore({ pool, redis });
 
   // Load config/ into the store. The files are authoritative for this run: existing entities with
-  // the same ids are overwritten and restored (or deleted if absent) in stop().
+  // the same ids are overwritten and restored (or deleted if absent) in stop() or on setup failure.
   const data = loadConfigDir(join(REPO_ROOT, "config"));
   const restore: Array<() => Promise<unknown>> = [];
   for (const kind of KIND_ORDER) {
@@ -152,10 +158,11 @@ export async function startStack(dedupKeys: string[]): Promise<Stack> {
   const recipients = data.person.map((p) => p.id);
   const clearRedis = async () => {
     const keys = ruleIds.flatMap((r) => dedupKeys.map((k) => dedupKey(r, k)));
-    for (const p of recipients) for (const c of ["ui", "ntfy"]) keys.push(throttleKey(p, c));
     if (keys.length) await redis.del(...keys);
   };
   await clearRedis();
+
+  const build = async (): Promise<Stack> => {
 
   // The http source this run posts to.
   const source: Source = {
@@ -255,10 +262,15 @@ export async function startStack(dedupKeys: string[]): Promise<Stack> {
       await step(() => ntfy.close());
 
       // Postgres: alerts of this run's events, the events, then what this run seeded or created.
+      const eventIds: string[] = [];
+      const alertIds: string[] = [];
       await step(async () => {
         const ev = await pool.query<{ id: string }>("SELECT id FROM events WHERE source_id = $1", [sourceId]);
         const ids = ev.rows.map((r) => r.id);
-        await pool.query("DELETE FROM alerts WHERE data->>'eventId' = ANY($1::text[])", [ids]);
+        eventIds.push(...ids);
+        const al = await pool.query<{ id: string }>("SELECT id FROM alerts WHERE data->>'eventId' = ANY($1::text[])", [ids]);
+        alertIds.push(...al.rows.map((r) => r.id));
+        await pool.query("DELETE FROM alerts WHERE id = ANY($1::text[])", [alertIds]);
         await pool.query("DELETE FROM events WHERE source_id = $1", [sourceId]);
       });
       await step(() => store.delete("source", sourceId));
@@ -269,7 +281,12 @@ export async function startStack(dedupKeys: string[]): Promise<Stack> {
         const from = `${startedAtMs - 1000}-0`;
         for (const stream of [STREAM_RAW_EVENTS, STREAM_EVENTS, STREAM_ALERTS]) {
           const rows = (await redis.xrange(stream, from, "+")) as Array<[string, string[]]>;
-          const mine = rows.filter(([, f]) => (f[1] ?? "").includes(sourceId)).map(([id]) => id);
+          const mine = rows
+            .filter(([, f]) => {
+              const d = f[1] ?? "";
+              return d.includes(sourceId) || eventIds.some((e) => d.includes(e)) || alertIds.some((a) => d.includes(a));
+            })
+            .map(([id]) => id);
           if (mine.length) await redis.xdel(stream, ...mine);
         }
         for (const raw of await redis.lrange(LIST_RECENT_EVENTS, 0, 200)) {
@@ -282,6 +299,23 @@ export async function startStack(dedupKeys: string[]): Promise<Stack> {
           }
         }
         await clearRedis();
+        // Throttle counters are keyed by real recipient ids: undo only this run's increments.
+        for (const n of ntfy.received) {
+          const who = String(n.topic).replace(/^alerting-/, "");
+          const key = throttleKey(who, "ntfy");
+          if ((await redis.decr(key)) <= 0) await redis.del(key);
+        }
+        // Consumers this run registered in the shared consumer groups.
+        for (const [stream, group, prefix] of [
+          [STREAM_RAW_EVENTS, GROUP_PARSE, `it-parse-${run}`],
+          [STREAM_EVENTS, GROUP_ENGINE, `engine-${process.pid}-`],
+        ] as const) {
+          const cs = (await redis.xinfo("CONSUMERS", stream, group)) as unknown[][];
+          for (const c of cs) {
+            const name = String(c[1]);
+            if (name.startsWith(prefix)) await redis.xgroup("DELCONSUMER", stream, group, name);
+          }
+        }
       });
       await step(() => pool.end());
       redis.disconnect();
@@ -289,4 +323,11 @@ export async function startStack(dedupKeys: string[]): Promise<Stack> {
       if (errs.length) console.error("pipeline test cleanup errors:", errs);
     },
   };
+  };
+  try {
+    return await build();
+  } catch (e) {
+    for (const undo of restore) await undo().catch(() => undefined);
+    throw e;
+  }
 }
