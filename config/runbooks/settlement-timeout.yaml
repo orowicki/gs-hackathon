@@ -21,4 +21,5 @@ steps:
   - name: Escalate to counterparty-support
     action: escalate
     group: counterparty-support
+    approvers: settlements-oncall
     approval: required

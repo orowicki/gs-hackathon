@@ -2,7 +2,9 @@ import type pg from "pg";
 import type { Redis } from "ioredis";
 import { CHANNEL_UI_PUSH, type Alert, type Event, type Notification, type UiPush } from "@alerting/shared";
 import type { ConfigStore } from "@alerting/config";
+import { compileRule, createDirectory, defaultChannels, routeAlert, type Directory } from "@alerting/engine";
 import {
+  createApprovalNotifier,
   createDefaultActions,
   createGroupNotifier,
   createPgRunStore,
@@ -48,10 +50,32 @@ export function createRunbookRuntime(o: RunbookRuntimeOptions): RunbookRuntime {
     getGroup: async (id) => (config ? config.get("group", id) : undefined),
     enqueue: (n) => o.enqueue(n),
   });
+  const directory: Directory | undefined = config ? createDirectory(config as ConfigStore) : undefined;
   const stores = createPgAlertStores(o.pool);
   const events = createPgEventLoader(o.pool);
   // One audit log: runbook audit entries are written to (and read from) the alerts audit store.
   const runStore = createPgRunStore(o.pool, { ready });
+
+  /** Who to notify for an approval: routed like the alert itself (preferences apply), optionally to the step's approvers group. */
+  async function approvalRecipients(alert: Alert, approvers: string | undefined) {
+    if (!config || !directory) return [];
+    await directory.ready;
+    const rule = await config.get("rule", alert.ruleId);
+    const event = await events.getEvents([alert.eventId]).then((m) => m.get(alert.eventId));
+    if (rule && event) {
+      const compiled = compileRule(approvers ? { ...rule, id: `${rule.id}#approvers:${approvers}`, who: [{ recipients: [{ type: "group", id: approvers }] }] } : rule);
+      return routeAlert({ alert, event, rule: compiled, directory, now: new Date() }).map((n) => ({
+        recipientId: n.recipientId,
+        channel: n.channel,
+      }));
+    }
+    // fallback: the approvers group members with the default channels
+    const group = approvers ? directory.group(approvers) : undefined;
+    return (group?.memberIds ?? []).flatMap((id) => {
+      const person = directory.person(id);
+      return person ? defaultChannels(person, alert.severity).map((channel) => ({ recipientId: id, channel })) : [];
+    });
+  }
   const runner = createRunner({
     store: {
       ...runStore,
@@ -64,6 +88,8 @@ export function createRunbookRuntime(o: RunbookRuntimeOptions): RunbookRuntime {
       },
     },
     actions: createDefaultActions({ notifyGroup }),
+    onAwaitingApproval: createApprovalNotifier({ recipients: approvalRecipients, enqueue: (n) => o.enqueue(n) }),
+    onError: (err) => console.error("runbook approval notification:", err.message),
     onUpdate: (run) => {
       const push: UiPush = { type: "alert", alertId: run.alertId, kind: "updated" };
       o.redis.publish(CHANNEL_UI_PUSH, JSON.stringify(push)).catch(() => {
@@ -80,6 +106,7 @@ export function createRunbookRuntime(o: RunbookRuntimeOptions): RunbookRuntime {
     loadEvent: async (id) => (await events.getEvents([id])).get(id),
     close: async () => {
       await registry?.close();
+      directory?.close();
     },
   };
 }

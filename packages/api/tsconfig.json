@@ -2,5 +2,5 @@
   "extends": "../../tsconfig.base.json",
   "compilerOptions": { "outDir": "dist", "rootDir": "src", "tsBuildInfoFile": "./dist/tsconfig.tsbuildinfo" },
   "include": ["src"],
-  "references": [{ "path": "../shared" }, { "path": "../delivery" }, { "path": "../ingest" }, { "path": "../filter" }, { "path": "../config" }, { "path": "../runbooks" }]
+  "references": [{ "path": "../shared" }, { "path": "../delivery" }, { "path": "../ingest" }, { "path": "../filter" }, { "path": "../config" }, { "path": "../runbooks" }, { "path": "../engine" }]
 }

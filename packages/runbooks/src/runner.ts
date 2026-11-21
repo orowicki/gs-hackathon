@@ -21,6 +21,9 @@ export interface RunnerOptions {
   now?: () => Date;
   newId?: () => string;
   onUpdate?: (run: StoredRun) => void;
+  /** Called once after a step moves to awaiting_approval. Best effort: errors never fail the run. */
+  onAwaitingApproval?: (run: StoredRun, stepIndex: number) => Promise<void>;
+  onError?: (err: Error) => void;
 }
 export interface ApproveOptions {
   actor: string;
@@ -130,7 +133,15 @@ export function createRunner(opts: RunnerOptions): Runner {
       if (run.runbook.steps[next.index]!.approval === "required") {
         setStep(run, next.index, "awaiting_approval");
         run.status = "awaiting_approval";
-        return save(run);
+        const saved = await save(run);
+        if (opts.onAwaitingApproval) {
+          try {
+            await opts.onAwaitingApproval(structuredClone(saved), next.index);
+          } catch (e) {
+            opts.onError?.(e instanceof Error ? e : new Error(String(e)));
+          }
+        }
+        return saved;
       }
       run.status = "running";
       if (!(await execute(run, next.index, "system"))) {

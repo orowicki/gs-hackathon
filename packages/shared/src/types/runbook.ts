@@ -12,6 +12,8 @@ export interface HttpStep {
   /** Templated, e.g. {"workflowId":"{{workflowId}}"}. */
   body?: string;
   approval: ApprovalMode;
+  /** Group id to notify (with an Approve button) when this step awaits approval; default: the alert's own recipients. */
+  approvers?: Id;
 }
 export interface EscalateStep {
   action: "escalate";
@@ -19,6 +21,8 @@ export interface EscalateStep {
   /** Group id to notify. */
   group: Id;
   approval: ApprovalMode;
+  /** Group id to notify (with an Approve button) when this step awaits approval; default: the alert's own recipients. */
+  approvers?: Id;
 }
 export interface WaitStep {
   action: "wait";
@@ -26,6 +30,8 @@ export interface WaitStep {
   /** e.g. "2m", "30s". */
   duration: string;
   approval: ApprovalMode;
+  /** Group id to notify (with an Approve button) when this step awaits approval; default: the alert's own recipients. */
+  approvers?: Id;
 }
 /** Action types are plugins; these are the built-ins. */
 export type RunbookStep = HttpStep | EscalateStep | WaitStep;
