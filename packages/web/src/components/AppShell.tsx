@@ -1,6 +1,6 @@
 import { ChevronRight, Siren } from "lucide-react";
 import type { ReactNode } from "react";
-import { Link, useLocation } from "react-router-dom";
+import { Link, matchPath, useLocation } from "react-router-dom";
 import { routes } from "../routes/registry";
 import type { NavEntry, RouteDef } from "../routes/types";
 import { Icon } from "./Icon";
@@ -30,6 +30,13 @@ export function AppShell({ children }: { children: ReactNode }) {
   const current = items.find((r) => isActive(r, pathname));
   const section = current && SECTIONS.find((s) => s.id === current.nav.section);
   const deeper = current && pathname !== current.path;
+  // The page under the sidebar entry, if it names itself ("New rule", "Edit rule"...).
+  // Most specific match wins: /rules/new over /rules/:id.
+  const leaf = deeper
+    ? routes
+        .filter((r) => r.crumb && r.path !== "*" && matchPath({ path: r.path, end: true }, pathname))
+        .sort((a, b) => a.path.split(":").length - b.path.split(":").length)[0]
+    : undefined;
   return (
     <div className="shell">
       <nav className="sidebar" aria-label="Main">
@@ -68,9 +75,19 @@ export function AppShell({ children }: { children: ReactNode }) {
               <>
                 <Icon as={ChevronRight} />
                 {deeper ? (
-                  <Link className="crumb" to={current.path}>
-                    {current.nav.label}
-                  </Link>
+                  <>
+                    <Link className="crumb" to={current.path}>
+                      {current.nav.label}
+                    </Link>
+                    {leaf?.crumb && (
+                      <>
+                        <Icon as={ChevronRight} />
+                        <span className="crumb current" aria-current="page">
+                          {leaf.crumb}
+                        </span>
+                      </>
+                    )}
+                  </>
                 ) : (
                   <span className="crumb current" aria-current="page">
                     {current.nav.label}

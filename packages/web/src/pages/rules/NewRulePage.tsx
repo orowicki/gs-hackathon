@@ -1,9 +1,9 @@
 import { FileUp, FileCode2, LayoutTemplate, ListChecks } from "lucide-react";
 import { useState } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useLocation, useSearchParams } from "react-router-dom";
+import { parse as parseYaml } from "yaml";
 import { ChooserTabs, CreateChooser, type CreateOption } from "../../components/CreateChooser";
-import { importYaml } from "./api";
-import { emptyDraft, newWhoDraft, type RuleDraft } from "./helpers";
+import { emptyDraft, newWhoDraft, RULE_INTRO, yamlToDraft, type RuleDraft } from "./helpers";
 import { RuleEditorPage } from "./RuleEditorPage";
 import "./rules.css";
 
@@ -75,60 +75,61 @@ function exampleDraft(e: Example): RuleDraft {
   return { ...emptyDraft(), name: e.name, id: e.id, ...e.draft, who: [newWhoDraft()] };
 }
 
-/** /rules/new: pick how to create the rule; "editor" (and examples) open the editor. */
+/**
+ * /rules/new: pick how to create the rule. Every way ends in the editor, so the rule is
+ * reviewed (with its summary) before it is saved; YAML is parsed in the browser.
+ * History: the 2x2 grid -> a way is one step; switching ways or opening the editor
+ * replaces it, so Back always returns to the grid.
+ */
 export function NewRulePage() {
   const [params, setParams] = useSearchParams();
-  const navigate = useNavigate();
+  const location = useLocation();
   const mode = params.get("mode");
+  const from = params.get("from");
   const exampleId = params.get("example");
   const [yaml, setYaml] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
 
   const choose = (id: string) => {
     setError(null);
-    setParams(id === "editor" ? { mode: "editor" } : { mode: id }, { replace: id !== "editor" });
+    // From the grid (no mode yet) push, so Back returns to it; otherwise replace.
+    setParams({ mode: id }, { replace: mode !== null });
   };
+
   if (mode === "editor") {
     const ex = EXAMPLES.find((e) => e.id === exampleId);
+    const imported = (location.state as { draft?: RuleDraft } | null)?.draft;
+    const initial = imported ?? (ex ? exampleDraft(ex) : undefined);
+    const tab = imported && (from === "yaml" || from === "file") ? from : ex ? "example" : "editor";
     return (
       <RuleEditorPage
-        key={exampleId ?? "blank"}
-        initial={ex ? exampleDraft(ex) : undefined}
-        tabs={<ChooserTabs options={OPTIONS} selected={ex ? "example" : "editor"} onSelect={choose} />}
+        key={(exampleId ?? from ?? "blank") + (imported ? ":" + imported.id : "")}
+        initial={initial}
+        notice={imported ? "Imported. Check the rule below, then save it." : undefined}
+        tabs={<ChooserTabs options={OPTIONS} selected={tab} onSelect={choose} />}
       />
     );
   }
 
-
-
-  async function doImport(text: string) {
+  /** Parse YAML here and open it in the editor for review. */
+  function review(text: string, source: "yaml" | "file") {
     setError(null);
-    setBusy(true);
     try {
-      const rule = await importYaml(text);
-      navigate("/rules/" + encodeURIComponent(rule.id), { state: { saved: true } });
+      const draft = yamlToDraft(text, parseYaml);
+      setParams({ mode: "editor", from: source }, { replace: true, state: { draft } });
     } catch (e) {
       setError((e as Error).message);
-    } finally {
-      setBusy(false);
     }
   }
 
   async function onFile(file: File | undefined) {
     if (!file) return;
-    await doImport(await file.text());
+    review(await file.text(), "file");
   }
 
   return (
     <main className="page rules-page">
-      <CreateChooser
-        title="New rule"
-        intro="A rule decides which events become alerts and who gets notified. How do you want to create it?"
-        options={OPTIONS}
-        selected={mode}
-        onSelect={choose}
-      >
+      <CreateChooser title="New rule" intro={RULE_INTRO} options={OPTIONS} selected={mode} onSelect={choose}>
         {mode === "example" && (
           <ul className="example-list" aria-label="Examples">
             {EXAMPLES.map((e) => (
@@ -136,7 +137,7 @@ export function NewRulePage() {
                 <button
                   type="button"
                   className="example"
-                  onClick={() => setParams({ mode: "editor", example: e.id })}
+                  onClick={() => setParams({ mode: "editor", example: e.id }, { replace: true })}
                 >
                   <span className="example-name">{e.name}</span>
                   <span className="example-what">{e.what}</span>
@@ -158,8 +159,8 @@ export function NewRulePage() {
               onChange={(e) => setYaml(e.target.value)}
             />
             <div className="import-actions">
-              <button type="button" className="btn primary" disabled={busy || yaml.trim() === ""} onClick={() => doImport(yaml)}>
-                Import rule
+              <button type="button" className="btn primary" disabled={yaml.trim() === ""} onClick={() => review(yaml, "yaml")}>
+                Review rule
               </button>
             </div>
           </div>
@@ -168,13 +169,13 @@ export function NewRulePage() {
           <label className="dropzone">
             <FileUp size={20} strokeWidth={1.5} aria-hidden="true" />
             <span>Choose a .yaml file</span>
-            <span className="muted">The rule is imported as soon as you pick it.</span>
+            <span className="muted">It opens in the editor so you can check it before saving.</span>
             <input type="file" accept=".yaml,.yml,application/yaml,text/yaml" onChange={(e) => void onFile(e.target.files?.[0])} />
           </label>
         )}
         {error && (
           <p role="alert" className="callout error">
-            Couldn't import the rule: {error}
+            Couldn't read the rule: {error}
           </p>
         )}
       </CreateChooser>

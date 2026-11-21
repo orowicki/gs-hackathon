@@ -4,4 +4,5 @@ import { NewRulePage } from "../pages/rules/NewRulePage";
 export default {
   path: "/rules/new",
   element: <NewRulePage />,
+  crumb: "New rule",
 } satisfies RouteDef;
