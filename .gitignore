@@ -8,3 +8,7 @@ results/autopilot/
 .autopilot/plugin/.in_use/
 .env
 .env.*
+!.env.example
+node_modules/
+dist/
+*.tsbuildinfo

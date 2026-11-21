@@ -1,17 +1,34 @@
 default:
     @just --list
 
-# Lint (replace with your project's linter)
+# Lint (eslint + type-check)
 lint:
-    @echo "no linter configured yet"
+    npm run lint
 
-# Tests (replace with your project's test command)
+# Tests
 test:
-    @echo "no tests configured yet"
+    npm test
 
-# Auto-format
+# Auto-format / autofix
 fmt:
-    @echo "no formatter configured yet"
+    npx eslint . --fix
+
+# Build and start the stack, wait up to 120 s for /health
+up:
+    #!/usr/bin/env bash
+    set -u
+    docker compose up -d --build || exit 1
+    for i in $(seq 1 60); do
+      if out=$(curl -fsS http://localhost:3000/health 2>/dev/null); then echo "healthy: $out"; exit 0; fi
+      sleep 2
+    done
+    echo "not healthy after 120 s" >&2
+    docker compose ps >&2
+    exit 1
+
+# Stop the stack
+down:
+    docker compose down
 
 # --- autopilot kit (added by autopilot-init) ---------------------------------
 _ap_py := "uv run -q --no-project --with rich==13.9.4 env PYTHONPATH=.autopilot/plugin/template/scripts python"
