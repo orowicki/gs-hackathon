@@ -104,24 +104,22 @@ export function createDedupHooks(opts: DedupOptions): EngineHooks {
           await remember({ skip: true });
           return skip();
         }
-        await redis.del(mapKey);
-        await remember({
-          alertId: resolved.id,
-          notify: false,
-          kind: "resolved",
-        });
+        // sent together (one round trip, executed in this order)
+        await Promise.all([
+          redis.del(mapKey),
+          remember({ alertId: resolved.id, notify: false, kind: "resolved" }),
+        ]);
         return { alert: resolved, notify: false, kind: "resolved" };
       }
 
       const res = await repo.upsertOpen(built);
       if (res) {
         if (res.created) {
-          await redis.set(mapKey, res.alert.id);
-          await remember({
-            alertId: res.alert.id,
-            notify: true,
-            kind: "created",
-          });
+          // sent together (one round trip, executed in this order)
+          await Promise.all([
+            redis.set(mapKey, res.alert.id),
+            remember({ alertId: res.alert.id, notify: true, kind: "created" }),
+          ]);
           return { alert: res.alert, notify: true, kind: "created" };
         }
         const kind: AlertEvent["kind"] = res.raised

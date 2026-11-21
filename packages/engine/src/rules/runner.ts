@@ -212,9 +212,12 @@ export function createEngine(opts: EngineOptions): Engine {
   let directory: Directory | undefined;
 
   const publishAlert = async (ae: AlertEvent) => {
-    await opts.redis.xadd(STREAM_ALERTS, "*", "data", JSON.stringify(ae));
     const push: UiPush = { type: "alert", alertId: ae.alertId, kind: ae.kind };
-    await opts.redis.publish(CHANNEL_UI_PUSH, JSON.stringify(push));
+    // one round trip: both commands go out together and run in this order on the connection
+    await Promise.all([
+      opts.redis.xadd(STREAM_ALERTS, "*", "data", JSON.stringify(ae)),
+      opts.redis.publish(CHANNEL_UI_PUSH, JSON.stringify(push)),
+    ]);
   };
 
   const ensureGroup = async () => {

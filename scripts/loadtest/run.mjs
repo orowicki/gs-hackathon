@@ -100,17 +100,28 @@ export function parseArgs(argv, env = process.env, now = new Date()) {
 }
 
 /** Identical events (one dedup key): the temporary schema maps them all to the same common.dedupKey. */
-export function buildRepeatBatch(runId, firstSeq, count, ts) {
+export function buildRepeatBatch(runId, firstSeq, count, ts, rkey = "events") {
   const out = [];
   for (let i = 0; i < count; i++)
     out.push({
       run: `${runId}rk`,
+      rkey,
       repeat: true,
       seq: firstSeq + i,
       ts,
       message: `loadtest ${runId} repeat`,
     });
   return out;
+}
+
+/** Dedup key the temporary schema gives repeat events with `rkey` ("events" = measured, "probe"). */
+export function repeatDedupKey(runId, rkey) {
+  return `${TMP_PREFIX}rk-${runId}-${rkey}`;
+}
+
+/** repeat-keys verdict: every measured event accepted and folded into exactly one alert of the measured key. */
+export function repeatKeysOk({ events, accepted, alerts, count }) {
+  return accepted === events && alerts === 1 && count === events;
 }
 
 /** Event payloads for one batch. Every event is unique (seq in message) so dedup cannot merge them. */
@@ -123,7 +134,7 @@ export function buildBatch(runId, firstSeq, count, ts) {
   return out;
 }
 
-function entities(runId) {
+export function entities(runId) {
   const { source: SOURCE_ID, person: PERSON_ID, rule: RULE_ID } = ids(runId);
   const stamp = "2026-11-01T00:00:00Z";
   return {
@@ -135,13 +146,14 @@ function entities(runId) {
       parser: { type: "json" },
       config: {},
     },
-    // only matches the repeat-keys events; gives them one constant dedupKey so the engine folds them into one alert
+    // only matches the repeat-keys events; dedupKey from their `rkey` field, so the measured events fold into one
+    // alert and the schema-liveness probes into another (the measured count is exact)
     schema: {
       id: ids(runId).schema,
       name: `Load test repeat keys (temporary, ${runId})`,
       match: `run matches "${runId}rk*"`,
       mapping: {
-        dedupKey: { kind: "constant", value: `${TMP_PREFIX}rk-${runId}` },
+        dedupKey: { kind: "template", template: repeatDedupKey(runId, "{{rkey}}") },
         title: { kind: "constant", value: "loadtest repeat" },
       },
     },
@@ -634,14 +646,14 @@ async function main() {
 /**
  * Schema propagation is async (config change -> every ingest worker). Send single repeat events until
  * an alert with the schema's constant dedup key shows up in Postgres, which proves the schema is live.
- * Returns how many probe events that took (they are part of the alert's count).
+ * Probes carry their own dedup key, so they never add to the measured alert. Returns how many were sent.
  */
 async function waitForSchema(pool, ruleId, key, runId, post) {
   const deadline = Date.now() + 30_000;
   let probes = 0;
   for (;;) {
     const r = await post(
-      JSON.stringify(buildRepeatBatch(runId, -1 - probes, 1, Date.now())),
+      JSON.stringify(buildRepeatBatch(runId, -1 - probes, 1, Date.now(), "probe")),
     );
     if (r.status === 202 && Number.isFinite(r.accepted) && r.accepted >= 1)
       probes++;
@@ -659,12 +671,12 @@ async function waitForSchema(pool, ruleId, key, runId, post) {
 async function runRepeatKeys(opts, runId, post) {
   const events = opts.repeatKeys;
   const ruleId = ids(runId).rule;
-  const key = `${TMP_PREFIX}rk-${runId}`;
+  const key = repeatDedupKey(runId, "events");
   const pool = new pg.Pool({ connectionString: opts.databaseUrl, max: 1 });
   let probes = 0;
   let accepted = 0;
   try {
-    probes = await waitForSchema(pool, ruleId, key, runId, post);
+    probes = await waitForSchema(pool, ruleId, repeatDedupKey(runId, "probe"), runId, post);
   } catch (err) {
     await pool.end();
     throw err;
@@ -692,7 +704,7 @@ async function runRepeatKeys(opts, runId, post) {
       );
       alerts = r.rows[0].alerts;
       count = r.rows[0].count;
-      if (count >= accepted + probes || Date.now() > deadline) break;
+      if (count >= accepted || Date.now() > deadline) break;
       await sleep(250);
     }
   } finally {
@@ -704,7 +716,7 @@ async function runRepeatKeys(opts, runId, post) {
     accepted,
     alerts,
     count,
-    ok: accepted === events && alerts === 1 && count === events + probes,
+    ok: repeatKeysOk({ events, accepted, alerts, count }),
   };
 }
 
