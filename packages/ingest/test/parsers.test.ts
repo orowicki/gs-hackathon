@@ -49,8 +49,14 @@ describe("logfmt", () => {
   });
   it("falls back when nothing found", () =>
     expect(parse("   ", c("logfmt"))).toEqual({ raw: "   " }));
+  it("falls back to raw when there is no key=value pair", () => {
+    expect(parse("!!!  ", c("logfmt"))).toEqual({ raw: "!!!  " });
+    expect(parse("hello world", c("logfmt"))).toEqual({ raw: "hello world" });
+  });
+  it("keeps bare keys alongside a key=value pair", () =>
+    expect(parse("a=1 flag", c("logfmt"))).toEqual({ a: "1", flag: true }));
   it("stringifies object input", () =>
-    expect(parse({ a: "b" }, c("logfmt")).raw).toBeUndefined());
+    expect(parse({ a: "b" }, c("logfmt"))).toEqual({ raw: '{"a":"b"}' }));
 });
 
 describe("regex", () => {

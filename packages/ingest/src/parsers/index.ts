@@ -39,10 +39,10 @@ const LOGFMT_RE = /([^\s="]+)(?:=(?:"((?:[^"\\]|\\.)*)"|(\S*)))?/g;
 export const logfmtParser: Parser = (input) => {
   const text = stripEol(toText(input));
   const out: JsonObject = {};
-  let found = false;
+  let found = false; // true once a key=value pair is seen; bare keys alone are not logfmt
   for (const m of text.matchAll(LOGFMT_RE)) {
-    found = true;
     const key = m[1] as string;
+    if (m[2] !== undefined || m[3] !== undefined) found = true;
     if (m[2] !== undefined)
       out[key] = m[2].replace(/\\(.)/g, (_, c: string) =>
         c === "n" ? "\n" : c === "t" ? "\t" : c,
