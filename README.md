@@ -55,6 +55,7 @@ All variables have defaults, so the stack runs without any configuration. Overri
 | `DATABASE_URL` | `postgres://alerting:alerting@postgres:5432/alerting` | Postgres connection string |
 | `REDIS_URL` | `redis://redis:6379` | Redis connection string |
 | `NTFY_URL` | `http://ntfy:80` | Base URL of the ntfy server (host access: `http://localhost:8080`) |
+| `CONFIG_DIR` | `./config` (`/app/config` in compose) | Directory of YAML config (sources, schemas, rules, people, groups, runbooks), watched live. Files are loaded on start only if the entity is missing, later file edits overwrite, deleting a file deletes the entity |
 | `POSTGRES_USER` | `alerting` | Postgres user created on first start |
 | `POSTGRES_PASSWORD` | `alerting` | Postgres password |
 | `POSTGRES_DB` | `alerting` | Postgres database name |
