@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import RedisMock from "ioredis-mock";
 import type { Redis } from "ioredis";
-import type { Notification } from "@alerting/shared";
+import { digestKey, type Notification } from "@alerting/shared";
 import { createThrottle, throttleConfigFromEnv } from "../src/index.js";
 
 const note = (i: number, over: Partial<Notification> = {}): Notification => ({
@@ -48,6 +48,27 @@ describe("throttle", () => {
     expect(d.recipientId).toBe("bob");
     expect(d.channel).toBe("ntfy");
     expect(await t.flushDue(clock + 120_000)).toBe(0); // buffer drained
+  });
+
+  it("does not strand a notification buffered right after the empty read", async () => {
+    const t = mk(1);
+    await t.beforeEnqueue(note(0));
+    await t.beforeEnqueue(note(1)); // buffered, digest scheduled
+    await redis.del(digestKey("bob", "ntfy")); // empty buffer with a due entry
+    const realLrange = redis.lrange.bind(redis);
+    let raced = false;
+    (redis as unknown as { lrange: unknown }).lrange = async (...args: Parameters<Redis["lrange"]>) => {
+      const res = await realLrange(...args);
+      if (!raced) {
+        raced = true;
+        expect(await t.beforeEnqueue(note(2))).toBeNull();
+      }
+      return res;
+    };
+    expect(await t.flushDue(clock + 61_000)).toBe(0);
+    expect(sent).toHaveLength(0);
+    expect(await t.flushDue(clock + 61_000)).toBe(1);
+    expect(sent[0]!.digestAlertIds).toEqual(["a2"]);
   });
 
   it("is deterministic for the same bundle and per recipient+channel", async () => {

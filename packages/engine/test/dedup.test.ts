@@ -181,6 +181,21 @@ function suite(
       expect(next.alerts[0]!.count).toBe(2);
     });
 
+    it("does not renotify or steal the map when an old event is redelivered after the marker expired", async () => {
+      const first = await h.feed(mkEvent("e1"), "1-0");
+      await h.feed(mkEvent("e2"), "2-0"); // count 2
+      for (const k of await redis.keys("*dedupseen:*")) await redis.del(k);
+      const mapKeys = (await redis.keys("*")).filter((k) => !k.includes("dedupseen") && !k.includes("lock") && (k.includes(rule.id)));
+      expect(mapKeys).toHaveLength(1);
+      await redis.set(mapKeys[0]!, "newer-alert");
+      h.sent.length = 0;
+      const again = await h.feed(mkEvent("e1"), "1-0");
+      expect(again.alerts[0]!.id).toBe(first.alerts[0]!.id);
+      expect(again.notifications).toHaveLength(0);
+      expect(h.sent).toHaveLength(0);
+      expect(await redis.get(mapKeys[0]!)).toBe("newer-alert");
+    });
+
     it("accepts the legacy `status` field for resolved", async () => {
       const first = await h.feed(mkEvent("e1"));
       const res = await h.feed(mkEvent("e2", { status: "resolved" }));

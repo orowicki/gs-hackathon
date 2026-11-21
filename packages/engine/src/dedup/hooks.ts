@@ -36,6 +36,9 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 /**
  * Dedup / auto-resolve hook. State: Redis maps rule+dedupKey -> current alert id; alerts live in the
  * repo (Postgres), which is authoritative for state. A per-key Redis lock serialises instances.
+ * The Redis rule+dedupKey -> alert map is authoritative for lookup: if it is lost, a resolved event
+ * cannot find the open alert and the next event opens a new one. A crash after the bump but before
+ * the seen-marker is written double-counts that one event on redelivery (at-least-once).
  */
 export function createDedupHooks(opts: DedupOptions): EngineHooks {
   const { redis, repo } = opts;
@@ -104,9 +107,12 @@ export function createDedupHooks(opts: DedupOptions): EngineHooks {
           await remember({ skip: true });
           return skip();
         }
-        await redis.set(mapKey, own.id);
-        await remember({ alertId: own.id, notify: true, kind: "created" });
-        return { alert: own, notify: true, kind: "created" };
+        // never overwrite a map entry that points to another (newer) alert
+        const claimed = (await redis.set(mapKey, own.id, "NX")) === "OK" || (await redis.get(mapKey)) === own.id;
+        const notify = claimed && own.count === 1 && own.state === "open";
+        const kind: AlertEvent["kind"] = notify ? "created" : "updated";
+        await remember({ alertId: own.id, notify, kind });
+        return { alert: own, notify, kind };
       }
 
       if (currentId) {

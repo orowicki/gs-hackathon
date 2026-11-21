@@ -64,6 +64,11 @@ const CLAIM = `
 local s = redis.call('zscore', KEYS[1], ARGV[3])
 if s and tonumber(s) <= tonumber(ARGV[1]) then redis.call('zadd', KEYS[1], ARGV[2], ARGV[3]) return 1 end
 return 0`;
+// KEYS: buffer, due zset. ARGV: member, now. Drop the due entry only if nothing was buffered meanwhile.
+const DROP_IF_EMPTY = `
+if redis.call('llen', KEYS[1]) == 0 then redis.call('zrem', KEYS[2], ARGV[1])
+else redis.call('zadd', KEYS[2], tonumber(ARGV[2]), ARGV[1]) end
+return 1`;
 // KEYS: buffer, due zset. ARGV: sent count, member, retry-at. Drop what was sent; reschedule leftovers.
 const FINISH = `
 redis.call('ltrim', KEYS[1], tonumber(ARGV[1]), -1)
@@ -131,7 +136,7 @@ export function createThrottle(opts: ThrottleOptions): Throttle {
       const bk = digestKey(recipientId, channel);
       const raw = await redis.lrange(bk, 0, -1);
       if (raw.length === 0) {
-        await redis.zrem(ZSET_DIGEST_DUE, member);
+        await redis.eval(DROP_IF_EMPTY, 2, bk, ZSET_DIGEST_DUE, member, nowMs);
         continue;
       }
       const items = raw.map((r) => JSON.parse(r) as Notification);
