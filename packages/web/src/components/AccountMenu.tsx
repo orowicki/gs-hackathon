@@ -9,7 +9,7 @@ export function initials(name: string): string {
   return ((parts[0]?.[0] ?? "?") + (parts.length > 1 ? parts[parts.length - 1]![0] : "")).toUpperCase();
 }
 
-/** Top-right account button: who you are, My notifications, Sign out. */
+/** Top-right account button: who you are, Notification preferences, Sign out. */
 export function AccountMenu() {
   const { state, signOut } = useAccount();
   const [open, setOpen] = useState(false);
@@ -65,7 +65,7 @@ export function AccountMenu() {
             {state.mock ? " Demo mode: kept in this browser." : ""}
           </p>
           <Link className="account-item" to="/settings/notifications" onClick={() => setOpen(false)}>
-            <Icon as={BellRing} /> My notifications
+            <Icon as={BellRing} /> Notification preferences
           </Link>
           <button type="button" className="account-item" onClick={() => void signOut()}>
             <Icon as={LogOut} /> Sign out

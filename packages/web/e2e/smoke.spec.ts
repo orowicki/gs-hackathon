@@ -40,7 +40,7 @@ for (const scheme of ["light", "dark"] as const) {
       await page.goto("/");
       await page.getByRole("button", { name: /^Account:/ }).click();
       const menu = page.getByRole("dialog", { name: "Account" });
-      await expect(menu.getByRole("link", { name: "My notifications" })).toBeVisible();
+      await expect(menu.getByRole("link", { name: "Notification preferences" })).toBeVisible();
       await expect(menu.getByRole("button", { name: "Sign out" })).toBeVisible();
       await expect(menu).toBeVisible();
       await page.waitForTimeout(300);

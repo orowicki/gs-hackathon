@@ -1,9 +1,9 @@
-import { BellRing } from "lucide-react";
 import type { RouteDef } from "./types";
 import { MyNotificationsPage } from "../pages/my-notifications/MyNotificationsPage";
 
+// Not in the sidebar: reached from the account menu (top right).
 export default {
   path: "/settings/notifications",
   element: <MyNotificationsPage />,
-  nav: { section: "alerts", label: "My notifications", icon: BellRing, order: 20 },
+  crumb: "Notification preferences",
 } satisfies RouteDef;

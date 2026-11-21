@@ -13,6 +13,32 @@ const PEOPLE = [
 async function mockApi(page: Page, puts: unknown[]) {
   const prefs = new Map<string, unknown>();
   await page.route("**/api/people", (route) => route.fulfill({ json: PEOPLE }));
+  await page.route("**/api/channels", (route) =>
+    route.fulfill({
+      json: [
+        { id: "ui", healthy: true, pending: 0, deadLetters: 0 },
+        { id: "ntfy", healthy: true, pending: 0, deadLetters: 0 },
+        { id: "email", healthy: false, pending: 2, deadLetters: 1, lastError: "SMTP down" },
+      ],
+    }),
+  );
+  await page.route("**/api/groups", (route) => route.fulfill({ json: [{ id: "sre", name: "SRE on call", memberIds: ["p1"] }] }));
+  await page.route("**/api/rules", (route) =>
+    route.fulfill({
+      json: [
+        {
+          id: "payments",
+          name: "Payments critical",
+          enabled: true,
+          when: "alert.severity = critical",
+          who: [{ recipients: [{ type: "group", id: "sre" }], force: ["ntfy"] }],
+          looks: { titleTemplate: "x", fields: [] },
+          createdAt: "",
+          updatedAt: "",
+        },
+      ],
+    }),
+  );
   await page.route("**/api/people/*/preferences", async (route) => {
     const id = new URL(route.request().url()).pathname.split("/")[3]!;
     if (route.request().method() === "PUT") {
@@ -36,9 +62,17 @@ for (const scheme of ["light", "dark"] as const) {
       await page.addInitScript(() => localStorage.setItem("alerting.profile", "p1"));
       await page.goto("/settings/notifications");
 
-      await expect(page.getByRole("heading", { name: "My notifications" })).toBeVisible();
+      await expect(page.getByRole("heading", { name: "Notification preferences" })).toBeVisible();
       await expect(page.getByRole("main").getByText("Ada Lovelace")).toBeVisible();
-      await expect(page.getByText(/Defaults apply/)).toBeVisible();
+      await expect(page.getByText(/defaults apply/)).toBeVisible();
+      // Not in the sidebar any more; the breadcrumb names the page.
+      await expect(page.getByRole("navigation", { name: "Main" }).getByText("My notifications")).toHaveCount(0);
+      await expect(page.getByRole("navigation", { name: "Breadcrumb" })).toContainText("Notification preferences");
+      // Columns come from /api/channels, so Email shows up; its status and the rule that reaches Ada are listed.
+      await expect(page.getByRole("checkbox", { name: "critical via Email" })).not.toBeChecked();
+      await expect(page.getByText("2 pending")).toBeVisible();
+      await expect(page.getByRole("link", { name: "Payments critical" })).toBeVisible();
+      await expect(page.getByText("Always: Phone")).toBeVisible();
       // defaults: ntfy topic present, so critical via ntfy is on
       await expect(page.getByRole("checkbox", { name: "critical via Phone" })).toBeChecked();
       await expect(page.getByRole("checkbox", { name: "info via Phone" })).not.toBeChecked();
@@ -46,9 +80,10 @@ for (const scheme of ["light", "dark"] as const) {
       await page.getByRole("checkbox", { name: "critical via Phone" }).uncheck();
       await page.getByRole("checkbox", { name: "warning via Dashboard" }).uncheck();
       await page.getByRole("checkbox", { name: "Enable quiet hours" }).check();
-      await page.getByRole("textbox", { name: "From", exact: true }).fill("23:00");
-      await page.getByRole("textbox", { name: "To", exact: true }).fill("06:30");
-      await page.getByRole("textbox", { name: "Timezone", exact: true }).fill("Europe/Berlin");
+      await page.getByLabel("From", { exact: true }).fill("23:00");
+      await page.getByLabel("To", { exact: true }).fill("06:30");
+      await page.getByLabel("Timezone", { exact: true }).selectOption("Europe/Berlin");
+      await expect(page.getByText("Unsaved changes")).toBeVisible();
       await page.getByRole("button", { name: "Save" }).click();
       await expect(page.getByText("Saved", { exact: true })).toBeVisible();
 
@@ -75,7 +110,7 @@ for (const scheme of ["light", "dark"] as const) {
 
       await page.reload();
       await expect(page.getByRole("checkbox", { name: "warning via Dashboard" })).not.toBeChecked();
-      await expect(page.getByRole("textbox", { name: "From", exact: true })).toHaveValue("23:00");
+      await expect(page.getByLabel("From", { exact: true })).toHaveValue("23:00");
     });
 
     test("follows the signed-in account", async ({ page }) => {
