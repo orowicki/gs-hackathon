@@ -1,0 +1,52 @@
+services:
+  app:
+    build: .
+    ports:
+      - "3000:3000"
+    environment:
+      PORT: "3000"
+      DATABASE_URL: ${DATABASE_URL:-postgres://alerting:alerting@postgres:5432/alerting}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379}
+      NTFY_URL: ${NTFY_URL:-http://ntfy:80}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-alerting}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-alerting}
+      POSTGRES_DB: ${POSTGRES_DB:-alerting}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  ntfy:
+    image: binwiederhier/ntfy
+    command: serve
+    ports:
+      - "8080:80"
+
+volumes:
+  pgdata:
