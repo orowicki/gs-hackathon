@@ -46,7 +46,6 @@ export function SourcesListPage() {
 
   return (
     <main className="page">
-      <Link to="/">← Back to alerts</Link>
       <div className="src-head">
         <h1>Sources</h1>
         <button type="button" className="btn" onClick={() => setImportOpen((o) => !o)}>

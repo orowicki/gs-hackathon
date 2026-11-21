@@ -12,6 +12,7 @@ import type { FeedSource } from "./data";
 import { FilterBar } from "../../components/filter-bar";
 import { fieldNames, filterAlerts, newStarred, parseFilter, starredTexts, upsertAlert, valuesFor } from "./helpers";
 import { ProfilePicker, StarredList } from "./ProfilePicker";
+import { StatPanels } from "./StatPanels";
 
 const PROFILE_KEY = "alerting.profile";
 const STARRED_KEY = "alerting.starred.";
@@ -292,6 +293,15 @@ export function FeedPage() {
           </button>
         )}
       </header>
+      {alerts && alerts.length > 0 && (
+        <StatPanels
+          alerts={alerts}
+          onFilter={(text) => {
+            setQ(text);
+            applyText(text);
+          }}
+        />
+      )}
       {isDemoSource(source) && (
         <div className="live-bar" role="status">
           Demo data — API not reachable
