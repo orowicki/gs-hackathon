@@ -628,7 +628,7 @@ Example `anna` (Two starred filters (path id anna)):
 
 | status | media type | schema | description |
 | --- | --- | --- | --- |
-| 200 | `application/json` | [StarredFilter](#schema-starredfilter)[] | The stored starred filters |
+| 200 | `application/json` | [StarredFilter](#schema-starredfilter)[] | The stored starred filters (also recorded as an update of the person in GET /api/config/changes) |
 | 400 | `application/json` | [Error](#schema-error) | Bad request (invalid id, body, filter or parameter) |
 | 404 | `application/json` | [Error](#schema-error) | Not found |
 | 413 | `application/json` | [Error](#schema-error) | Payload too large |

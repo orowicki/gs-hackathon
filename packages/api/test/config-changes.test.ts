@@ -86,4 +86,14 @@ describe("config change log", () => {
     expect((await changes(base, "?limit=0")).status).toBe(400);
     expect((await changes(base, "?kind=bogus")).status).toBe(400);
   });
+
+  it("records a starred-filters PUT as a person update by the actor", async () => {
+    const base = await start();
+    const h = { "x-account": "anna" };
+    await fetch(`${base}/api/people`, send("POST", { id: "p1", name: "P", role: "dev" }, h));
+    const r = await fetch(`${base}/api/people/p1/starred-filters`, send("PUT", [], h));
+    expect(r.status).toBe(200);
+    const { body } = await changes(base, "?kind=person&id=p1");
+    expect(body.changes[0]).toMatchObject({ kind: "person", itemId: "p1", action: "update", actor: { id: "anna" } });
+  });
 });

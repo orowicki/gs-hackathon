@@ -243,6 +243,7 @@ async function handlePreferences(
   method: string,
   req: http.IncomingMessage,
   res: http.ServerResponse,
+  rec: RecordFn,
 ): Promise<boolean> {
   if (method !== "GET" && method !== "PUT") return false;
   if ((await store.get(owner, id)) === undefined) throw new HttpError(404, `${owner} not found: ${id}`);
@@ -266,6 +267,7 @@ async function handlePreferences(
   if (body.quietHours !== undefined && !isObj(body.quietHours)) throw bad('"quietHours" must be an object');
   const pref = { ...body, ownerType: owner, ownerId: id } as unknown as Preference;
   await store.upsert("preference", pref);
+  await rec(owner, id, "update");
   return send(res, 200, pref), true;
 }
 
@@ -275,6 +277,7 @@ async function handleStarred(
   method: string,
   req: http.IncomingMessage,
   res: http.ServerResponse,
+  rec: RecordFn,
 ): Promise<boolean> {
   if (method !== "GET" && method !== "PUT") return false;
   const person = (await store.get("person", id)) as (Record<string, unknown> & { id: string }) | undefined;
@@ -292,6 +295,7 @@ async function handleStarred(
     return { ...f, personId: id } as unknown as StarredFilter;
   });
   await store.upsert("person", { ...person, starredFilters: list } as never);
+  await rec("person", id, "update");
   return send(res, 200, list), true;
 }
 
@@ -493,9 +497,9 @@ export async function handleConfigRoute(
     if (b === "export") return await handleYaml(store, kind, id, req, res, rec);
     if (b === "runbook") return await handleRuleRunbook(store, id!, method, req, res, rec);
     if (b === "preferences") {
-      return await handlePreferences(store, coll === "people" ? "person" : "group", id!, method, req, res);
+      return await handlePreferences(store, coll === "people" ? "person" : "group", id!, method, req, res, rec);
     }
-    return await handleStarred(store, id!, method, req, res);
+    return await handleStarred(store, id!, method, req, res, rec);
   } catch (err) {
     if (res.headersSent) return true;
     if (err instanceof HttpError) {

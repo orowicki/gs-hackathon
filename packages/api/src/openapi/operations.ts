@@ -206,7 +206,7 @@ export const operationSpecs: Record<string, OperationSpec> = {
       description: "personId is optional but must match the path when present; each filter must be a JSON filter tree.",
       content: { [JSON_T]: list("StarredFilter") },
     },
-    success: json(200, "The stored starred filters", list("StarredFilter")),
+    success: json(200, "The stored starred filters (also recorded as an update of the person in GET /api/config/changes)", list("StarredFilter")),
     errors: [400, 404, 413, ...CFG],
   },
   "GET /api/config/changes": {
