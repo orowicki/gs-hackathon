@@ -81,7 +81,8 @@ const upsertSql = (input: string) => `WITH i AS (${input}),
        f AS (SELECT * FROM i WHERE NOT EXISTS (SELECT 1 FROM alerts a WHERE a.id = i.id)),
        k AS (
          INSERT INTO alert_open_keys AS k (rule_id, dedup_key, alert_id)
-         SELECT rule_id, dedup_key, id FROM f
+         -- fixed lock order, so two batches sharing keys cannot deadlock
+         SELECT rule_id, dedup_key, id FROM f ORDER BY rule_id, dedup_key
          ON CONFLICT (rule_id, dedup_key) DO UPDATE SET alert_id = k.alert_id
          RETURNING k.rule_id, k.dedup_key, k.alert_id
        ),
@@ -91,6 +92,9 @@ const upsertSql = (input: string) => `WITH i AS (${input}),
        ins AS (
          INSERT INTO alerts (id, rule_id, dedup_key, state, last_seen, data)
          SELECT id, rule_id, dedup_key, state, last_seen, data FROM fk WHERE open_id = id
+         ORDER BY rule_id, dedup_key
+         -- the same event id applied concurrently (redelivery race) on a new key: replay, not an error
+         ON CONFLICT (id) DO NOTHING
          RETURNING id, data
        ),
        upd AS (
@@ -106,7 +110,7 @@ const upsertSql = (input: string) => `WITH i AS (${input}),
              'severity', CASE
                WHEN COALESCE(array_position($7::text[], fk.data->>'severity'), 0) > COALESCE(array_position($7::text[], al.data->>'severity'), 0)
                THEN fk.data->>'severity' ELSE al.data->>'severity' END)
-         FROM fk
+         FROM (SELECT * FROM fk ORDER BY rule_id, dedup_key) fk
          WHERE fk.open_id <> fk.id AND al.id = fk.open_id AND al.state <> 'resolved'
          RETURNING fk.id AS input_id, al.data, al.severity_raised_by IS NOT DISTINCT FROM fk.id AS raised
        )
@@ -223,6 +227,7 @@ export function createPgAlertRepo(
         const row = byId.get(t.alert.id);
         if (!row || !row.fresh) continue; // replay: stays null
         if (row.created_data) out[t.i] = { alert: row.created_data, created: true, raised: false };
+        else if (row.open_id === t.alert.id) continue; // its own id won by a concurrent delivery: replay
         else if (row.bumped_data) out[t.i] = { alert: row.bumped_data, created: false, raised: row.raised };
         else {
           again.push(t);
