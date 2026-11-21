@@ -41,6 +41,11 @@ up:
 demo *args:
     node --experimental-strip-types --no-warnings scripts/demo/demo.ts {{args}}
 
+# 15-minute mixed run: known events, and from 10 s on also events of a schema nothing recognises
+# (eventName = md.feed.stale), e.g. to add that schema live. Flags as for `just demo`; yours win, e.g. `just longtest --rate 5`
+longtest *args:
+    node --experimental-strip-types --no-warnings scripts/demo/demo.ts {{args}} --duration 900 --unknown-after 10
+
 # Run the MCP server on stdio (builds first; API base URL from ALERTING_API_URL, default http://localhost:3000)
 mcp:
     @npm run build -w @alerting/mcp >&2

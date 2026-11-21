@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { nextEvent, oneOfEach, type DemoEvent } from "./events.ts";
+import { nextEvent, oneOfEach, unknownSchemaEvent, type DemoEvent } from "./events.ts";
 
 function lcg(seed: number) {
   let s = seed;
@@ -32,5 +32,18 @@ describe("demo events", () => {
     for (const k of ["workflow", "latency", "payments", "trade", "resolved", "junk"]) expect(kinds.has(k as never)).toBe(true);
     for (const e of gen(7)) if (e.kind !== "junk") expect(() => JSON.parse(e.line)).not.toThrow();
     for (const e of gen(7)) if (e.kind === "junk") expect(() => JSON.parse(e.line)).toThrow();
+  });
+
+  it("unknownSchemaEvent matches none of the seeded schemas", () => {
+    const rng = lcg(3);
+    for (let i = 0; i < 50; i++) {
+      const e = JSON.parse(unknownSchemaEvent(rng, now).line);
+      expect(e.eventName).toBe("md.feed.stale");
+      expect(["SEV1", "SEV2", "SEV3"]).toContain(e.level);
+      // Seeded schema matches: type = WORKFLOW_FAILED; alertname/labels.service/startsAt; meta.schema trade.rejected.*
+      expect(e.type).toBeUndefined();
+      expect(e.alertname ?? e.labels ?? e.startsAt ?? e.meta).toBeUndefined();
+      expect(e.detectedAt).toBe(Math.floor(now.getTime() / 1000));
+    }
   });
 });
