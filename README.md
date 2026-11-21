@@ -32,3 +32,8 @@ All variables have defaults, so the stack runs without any configuration. Overri
 | `POSTGRES_USER` | `alerting` | Postgres user created on first start |
 | `POSTGRES_PASSWORD` | `alerting` | Postgres password |
 | `POSTGRES_DB` | `alerting` | Postgres database name |
+
+## Performance
+
+Load test at 5000 ev/s for 60 s (local mode, one run each): 1 worker falls behind (e2e p50 576 ms, p99 1250 ms, 0 lost); 2 workers sustain the rate (processed 4999.2/s, e2e p50 9 ms, p99 796 ms, 0 lost). The p50 target (< 50 ms) is met with 2 workers, the p99 target (< 250 ms) is not.
+Details, caveats and how to re-run (`just loadtest`): [docs/performance.md](docs/performance.md). Raw results: [1 worker](results/loadtest-2026-11-21.json), [2 workers](results/loadtest-2026-11-21-workers2.json).
