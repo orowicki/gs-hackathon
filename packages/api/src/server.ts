@@ -140,19 +140,7 @@ export function createServer(deps: Deps): http.Server {
       send(res, 200, buildOpenApi());
       return;
     }
-    if (
-      deps.runbooks &&
-      (path.startsWith("/api/alerts/") || path === "/api/approvals" || path === "/api/audit")
-    ) {
-      const url = new URL(req.url ?? "/", "http://localhost");
-      deps.runbooks.handle(req, res, url).then(
-        (handled) => {
-          if (!handled) send(res, 404, { error: "not found" });
-        },
-        () => send(res, 500, { error: "internal error" }),
-      );
-      return;
-    }
+    const rest = (): void => {
     const retryMatch = /^\/api\/dead-letters\/([^/]+)\/retry$/.exec(path);
     const notConfigured = (): void => send(res, 503, { error: "delivery not configured" });
     const fail = (): void => send(res, 500, { error: "internal error" });
@@ -233,6 +221,21 @@ export function createServer(deps: Deps): http.Server {
       return;
     }
     send(res, 404, { error: "not found" });
+    };
+    if (
+      deps.runbooks &&
+      (path.startsWith("/api/alerts/") || path === "/api/approvals" || path === "/api/audit")
+    ) {
+      const url = new URL(req.url ?? "/", "http://localhost");
+      deps.runbooks.handle(req, res, url).then(
+        (handled) => {
+          if (!handled) rest(); // not a runbook route: fall through to the remaining routes
+        },
+        () => send(res, 500, { error: "internal error" }),
+      );
+      return;
+    }
+    rest();
   });
   server.requestTimeout = 30_000;
   return server;

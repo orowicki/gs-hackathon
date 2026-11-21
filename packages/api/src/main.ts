@@ -88,7 +88,8 @@ subRedis.on("message", (_ch: string, json: string) => {
 });
 
 // Runbooks: runs, approvals, audit. Lazy connections, so the API still starts when Postgres/Redis are down.
-migrateRunbooks(pool).catch((err: unknown) => console.error("runbooks migration failed:", (err as Error).message));
+const runbooksReady = migrateRunbooks(pool);
+runbooksReady.catch((err: unknown) => console.error("runbooks migration failed:", (err as Error).message));
 const configStore = createConfigStore({ pool, redis: deliveryRedis });
 const runbookRegistry = createRunbookRegistry(configStore, {
   onError: (err) => console.error("runbook registry:", err.message),
@@ -98,7 +99,7 @@ const notifyGroup = createGroupNotifier({
   enqueue: (n) => delivery.enqueue(n),
 });
 const runner = createRunner({
-  store: createPgRunStore(pool),
+  store: createPgRunStore(pool, { ready: runbooksReady }),
   actions: createDefaultActions({ notifyGroup }),
   onUpdate: (run) => {
     const push: UiPush = { type: "alert", alertId: run.alertId, kind: "updated" };
@@ -107,6 +108,11 @@ const runner = createRunner({
     });
   },
 });
+// Best effort: fail runs left "running" by a previous process.
+runbooksReady
+  .then(() => runner.recoverStale())
+  .then((n) => n > 0 && console.log(`runbooks: recovered ${n} interrupted run(s)`))
+  .catch((err: unknown) => console.error("runbooks stale-run recovery failed:", (err as Error).message));
 // The alert worker (startRunbookWorker) is wired here once alerts are persisted (needs loadAlert/loadEvent).
 
 const server = createServer({

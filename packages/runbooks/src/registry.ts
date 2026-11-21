@@ -12,7 +12,7 @@ export interface RunbookRegistry {
 
 export function createRunbookRegistry(
   store: Pick<ConfigStore, "list" | "onChange">,
-  opts: { onError?: (err: Error, id?: string) => void } = {},
+  opts: { onError?: (err: Error, id?: string) => void; retryBaseMs?: number; retryMaxMs?: number } = {},
 ): RunbookRegistry {
   const items = new Map<string, Runbook>();
   const report = (err: unknown, id?: string) => opts.onError?.(err instanceof Error ? err : new Error(String(err)), id);
@@ -37,12 +37,26 @@ export function createRunbookRegistry(
 
   let unsub: (() => void) | undefined;
   let closed = false;
-  const ready = (async () => {
-    unsub = await store.onChange("runbook", () => {
-      if (!closed) return schedule();
-    });
-    await schedule();
+  const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+  const ready: Promise<void> = (async () => {
+    let delay = opts.retryBaseMs ?? 1000;
+    const max = opts.retryMaxMs ?? 30_000;
+    while (!closed) {
+      try {
+        unsub = await store.onChange("runbook", () => {
+          if (!closed) return schedule();
+        });
+        if (closed) unsub();
+        break;
+      } catch (err) {
+        report(err);
+        await sleep(delay);
+        delay = Math.min(delay * 2, max);
+      }
+    }
+    if (!closed) await schedule();
   })();
+  ready.catch((err) => report(err));
 
   return {
     ready,

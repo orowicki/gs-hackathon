@@ -1,4 +1,5 @@
 import { evaluate, tryParse } from "@alerting/filter";
+import { parseDuration } from "./actions.js";
 import type { Alert, Event, FilterNode, Runbook } from "@alerting/shared";
 
 export interface MatchContext {
@@ -37,13 +38,15 @@ export function matchRunbooks(runbooks: Runbook[], ctx: MatchContext): Runbook[]
   });
 }
 
+export const DEFAULT_MAX_WAIT_MS = 15 * 60_000;
 const DURATION = /^\d+(ms|s|m|h)$/;
 const isStr = (v: unknown): v is string => typeof v === "string" && v.length > 0;
 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
 
 export type ValidateResult = { ok: true; runbook: Runbook } | { ok: false; error: string };
 
-export function validateRunbook(x: unknown): ValidateResult {
+export function validateRunbook(x: unknown, opts: { maxWaitMs?: number } = {}): ValidateResult {
+  const maxWaitMs = opts.maxWaitMs ?? DEFAULT_MAX_WAIT_MS;
   const fail = (error: string): ValidateResult => ({ ok: false, error });
   if (!isObj(x)) return fail("runbook must be an object");
   if (!isStr(x.id)) return fail("id must be a non-empty string");
@@ -69,6 +72,10 @@ export function validateRunbook(x: unknown): ValidateResult {
     if (raw.action === "escalate" && !isStr(raw.group)) return fail(`${at}: escalate step needs group`);
     if (raw.action === "wait" && !(typeof raw.duration === "string" && DURATION.test(raw.duration)))
       return fail(`${at}: wait step needs duration like 30s, 2m, 1h`);
+    if (raw.action === "wait") {
+      const ms = parseDuration(raw.duration as string);
+      if (ms > maxWaitMs) return fail(`${at}: wait duration ${raw.duration} exceeds the maximum of ${maxWaitMs}ms`);
+    }
     steps.push({ ...raw, approval });
   }
   return { ok: true, runbook: { ...x, matches, steps } as unknown as Runbook };

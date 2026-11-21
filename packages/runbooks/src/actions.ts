@@ -1,5 +1,5 @@
 import type { EscalateStep, HttpStep, RunbookStep, WaitStep } from "@alerting/shared";
-import { renderTemplate, type TemplateContext } from "./template.js";
+import { renderTemplate, renderUrl, type TemplateContext } from "./template.js";
 
 export interface ActionContext {
   template: TemplateContext;
@@ -45,6 +45,27 @@ export function parseDuration(d: string): number {
   return Number(m[1]) * mult;
 }
 
+const MAX_RESPONSE_BYTES = 64 * 1024;
+async function readLimited(res: Response, max: number): Promise<string> {
+  if (!res.body) return "";
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let out = "";
+  let size = 0;
+  try {
+    while (size < max) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      const v = size + value.length > max ? value.subarray(0, max - size) : value;
+      out += decoder.decode(v, { stream: true });
+      size += v.length;
+    }
+  } finally {
+    await reader.cancel().catch(() => undefined);
+  }
+  return out + decoder.decode();
+}
+
 export interface HttpActionOptions {
   fetch?: typeof globalThis.fetch;
   timeoutMs?: number;
@@ -56,10 +77,15 @@ export function httpAction(opts: HttpActionOptions = {}): ActionPlugin {
     type: "http",
     async execute(raw, ctx) {
       const step = raw as HttpStep;
-      const url = ctx.render(step.url);
+      let url: string;
+      try {
+        url = renderUrl(step.url, ctx.template);
+      } catch (e) {
+        return { ok: false, result: `${step.method} ${step.url} failed: ${errMsg(e)}` };
+      }
       const label = `${step.method} ${url}`;
       const headers: Record<string, string> = {};
-      for (const [k, v] of Object.entries(step.headers ?? {})) headers[k] = ctx.render(v);
+      for (const [k, v] of Object.entries(step.headers ?? {})) headers[k] = ctx.render(v).replace(/[\r\n]+/g, " ");
       const timeout = AbortSignal.timeout(timeoutMs);
       const signal = ctx.signal ? AbortSignal.any([ctx.signal, timeout]) : timeout;
       try {
@@ -68,8 +94,13 @@ export function httpAction(opts: HttpActionOptions = {}): ActionPlugin {
           headers,
           body: step.body !== undefined && !/^(GET|HEAD)$/i.test(step.method) ? ctx.render(step.body) : undefined,
           signal,
+          redirect: "manual",
         });
-        const text = truncate((await res.text()).trim(), 200);
+        if (res.status >= 300 && res.status < 400) {
+          await res.body?.cancel().catch(() => undefined);
+          return { ok: false, result: `redirect to ${res.headers.get("location") ?? "?"} not followed` };
+        }
+        const text = truncate((await readLimited(res, MAX_RESPONSE_BYTES)).trim(), 200);
         return { ok: res.status >= 200 && res.status < 300, result: `${label} → ${res.status}${text ? ` ${text}` : ""}` };
       } catch (e) {
         return { ok: false, result: `${label} failed: ${errMsg(e)}` };

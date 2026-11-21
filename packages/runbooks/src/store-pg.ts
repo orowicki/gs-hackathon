@@ -1,6 +1,6 @@
 import type { Pool } from "pg";
 import type { AuditEntry, PendingApproval } from "@alerting/shared";
-import { pendingOf, tail, type RunStore, type StoredRun } from "./store.js";
+import { clampLimit, pendingOf, tail, type RunStore, type StoredRun } from "./store.js";
 
 const RUNBOOKS_SQL = `
 CREATE TABLE IF NOT EXISTS runbook_runs (
@@ -38,39 +38,53 @@ export async function migrateRunbooks(pool: Pool): Promise<void> {
   }
 }
 
-export function createPgRunStore(pool: Pool): RunStore {
+export interface PgRunStoreOptions {
+  /** Awaited before every query (e.g. the migration promise), so early requests don't hit missing tables. */
+  ready?: Promise<unknown>;
+}
+
+export function createPgRunStore(pool: Pool, opts: PgRunStoreOptions = {}): RunStore {
+  const ready = opts.ready;
+  if (ready) ready.catch(() => undefined);
+  const q = pool.query.bind(pool);
+  const query = (async (...args: unknown[]) => {
+    if (ready) await ready;
+    return (q as (...a: unknown[]) => unknown)(...args);
+  }) as Pool["query"];
+  const poolQ = { query };
   const rows = (r: { rows: Array<{ data: StoredRun }> }) => r.rows.map((x) => x.data);
   return {
     async createRun(run) {
-      const r = await pool.query(
+      const r = await poolQ.query(
         "INSERT INTO runbook_runs (alert_id, runbook_id, data, status, created_at, updated_at) VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT DO NOTHING",
         [run.alertId, run.runbookId, JSON.stringify(run), run.status, run.createdAt, run.updatedAt],
       );
       return r.rowCount === 1;
     },
     async getRun(a, rb) {
-      return rows(await pool.query("SELECT data FROM runbook_runs WHERE alert_id=$1 AND runbook_id=$2", [a, rb]))[0];
+      return rows(await poolQ.query("SELECT data FROM runbook_runs WHERE alert_id=$1 AND runbook_id=$2", [a, rb]))[0];
     },
     async listRuns(a) {
-      return rows(await pool.query("SELECT data FROM runbook_runs WHERE alert_id=$1 ORDER BY created_at, runbook_id", [a]));
+      return rows(await poolQ.query("SELECT data FROM runbook_runs WHERE alert_id=$1 ORDER BY created_at, runbook_id", [a]));
     },
     async updateRun(run) {
       const next = { ...run, version: run.version + 1 };
-      const r = await pool.query(
+      const r = await poolQ.query(
         "UPDATE runbook_runs SET data=$3, status=$4, updated_at=$5 WHERE alert_id=$1 AND runbook_id=$2 AND (data->>'version')::int = $6",
         [run.alertId, run.runbookId, JSON.stringify(next), run.status, run.updatedAt, run.version],
       );
       return r.rowCount === 1;
     },
     async appendAudit(e: AuditEntry) {
-      await pool.query("INSERT INTO audit_log (id, alert_id, at, data) VALUES ($1,$2,$3,$4)", [
+      await poolQ.query("INSERT INTO audit_log (id, alert_id, at, data) VALUES ($1,$2,$3,$4)", [
         e.id,
         e.alertId,
         e.at,
         JSON.stringify(e),
       ]);
     },
-    async listAudit({ alertId, limit } = {}) {
+    async listAudit({ alertId, limit: rawLimit } = {}) {
+      const limit = rawLimit === undefined ? undefined : clampLimit(rawLimit);
       // newest `limit` rows, then returned oldest-first
       const params: unknown[] = [];
       let sql = "SELECT data FROM audit_log";
@@ -83,11 +97,14 @@ export function createPgRunStore(pool: Pool): RunStore {
         params.push(limit);
         sql += ` LIMIT $${params.length}`;
       }
-      const r = await pool.query<{ data: AuditEntry }>(sql, params);
+      const r = await poolQ.query<{ data: AuditEntry }>(sql, params);
       return tail(r.rows.map((x) => x.data).reverse(), limit);
     },
+    async listRunningRuns() {
+      return rows(await poolQ.query("SELECT data FROM runbook_runs WHERE status='running'"));
+    },
     async listPendingApprovals(): Promise<PendingApproval[]> {
-      return rows(await pool.query("SELECT data FROM runbook_runs WHERE status='awaiting_approval'")).flatMap(pendingOf);
+      return rows(await poolQ.query("SELECT data FROM runbook_runs WHERE status='awaiting_approval'")).flatMap(pendingOf);
     },
   };
 }

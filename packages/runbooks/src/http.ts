@@ -8,6 +8,8 @@ import { stepDisplayName } from "./actions.js";
 export interface RunbookRoutesDeps {
   runner: Runner;
   registry?: Pick<RunbookRegistry, "get">;
+  /** How long approve waits for the continuation before answering 202 (default 5000). */
+  respondWithinMs?: number;
 }
 
 export type PublicRun = RunbookRun & {
@@ -72,6 +74,7 @@ export function createRunbookRoutes(deps: RunbookRoutesDeps): {
   handle(req: IncomingMessage, res: ServerResponse, url: URL): Promise<boolean>;
 } {
   const { runner } = deps;
+  const respondWithinMs = deps.respondWithinMs ?? 5000;
   const dec = (s: string) => {
     try {
       return decodeURIComponent(s);
@@ -123,12 +126,31 @@ export function createRunbookRoutes(deps: RunbookRoutesDeps): {
       }
       const decision = (b.decision as string | undefined) ?? "approve";
       if (decision !== "approve" && decision !== "skip") throw new HttpError(400, "decision must be approve or skip", "bad_request");
-      const run = await runner.approve(alertId, stepIndex, {
+      const runbookId = (b.runbookId as string | undefined) || url.searchParams.get("runbookId") || undefined;
+      const pending = runner.approve(alertId, stepIndex, {
         actor: (b.actor as string | undefined) || url.searchParams.get("actor") || "anonymous",
-        runbookId: (b.runbookId as string | undefined) || url.searchParams.get("runbookId") || undefined,
+        runbookId,
         decision,
       });
-      send(res, 200, toPublicRun(run));
+      let timer: NodeJS.Timeout | undefined;
+      const timedOut = Symbol("timeout");
+      const first = await Promise.race([
+        pending,
+        new Promise<typeof timedOut>((r) => {
+          timer = setTimeout(() => r(timedOut), respondWithinMs);
+        }),
+      ]).finally(() => clearTimeout(timer));
+      if (first !== timedOut) {
+        send(res, 200, toPublicRun(first));
+        return true;
+      }
+      pending.catch((e: unknown) => console.error("runbook continuation failed:", e));
+      const runs = await runner.listRuns(alertId);
+      const cur =
+        runs.find((r) => (runbookId === undefined || r.runbookId === runbookId) && r.steps[stepIndex]?.state === "running") ??
+        runs.find((r) => runbookId === undefined || r.runbookId === runbookId);
+      if (!cur) throw new HttpError(404, "run not found", "not_found");
+      send(res, 202, toPublicRun(cur));
       return true;
     }
     return false;

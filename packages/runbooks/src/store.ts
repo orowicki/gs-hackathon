@@ -35,6 +35,8 @@ export interface RunStore {
   appendAudit(entry: AuditEntry): Promise<void>;
   listAudit(opts?: ListAuditOptions): Promise<AuditEntry[]>;
   listPendingApprovals(): Promise<PendingApproval[]>;
+  /** All runs with status "running". */
+  listRunningRuns(): Promise<StoredRun[]>;
 }
 
 export function pendingOf(run: StoredRun): PendingApproval[] {
@@ -47,6 +49,11 @@ export function pendingOf(run: StoredRun): PendingApproval[] {
       stepName: run.runbook.steps[s.index] ? stepDisplayName(run.runbook.steps[s.index]!, run.template) : undefined,
       requestedAt: s.at ?? run.updatedAt,
     }));
+}
+
+export const MAX_AUDIT_LIMIT = 1000;
+export function clampLimit(limit: number): number {
+  return Math.min(MAX_AUDIT_LIMIT, Math.max(1, Math.floor(limit)));
 }
 
 export function tail<T>(xs: T[], limit?: number): T[] {
@@ -83,10 +90,13 @@ export function createMemoryRunStore(): RunStore {
       audit.push(copy(e));
     },
     async listAudit({ alertId, limit } = {}) {
-      return tail(audit.filter((e) => alertId === undefined || e.alertId === alertId), limit).map(copy);
+      return tail(audit.filter((e) => alertId === undefined || e.alertId === alertId), limit === undefined ? undefined : clampLimit(limit)).map(copy);
     },
     async listPendingApprovals() {
       return [...runs.values()].flatMap(pendingOf);
+    },
+    async listRunningRuns() {
+      return [...runs.values()].filter((r) => r.status === "running").map(copy);
     },
   };
 }

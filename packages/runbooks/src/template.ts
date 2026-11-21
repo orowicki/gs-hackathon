@@ -59,3 +59,23 @@ export function templateFields(text: string): string[] {
   }
   return out;
 }
+
+/**
+ * Render a URL template: every substitution is encodeURIComponent-encoded, and placeholders are
+ * rejected in the scheme/userinfo/host/port part (everything before the first `/`, `?` or `#` after `://`).
+ */
+export function renderUrl(template: string, ctx: TemplateContext): string {
+  const schemeAt = template.indexOf("://");
+  let originEnd = template.length;
+  if (schemeAt >= 0) {
+    const rest = template.slice(schemeAt + 3);
+    const m = /[/?#]/.exec(rest);
+    if (m) originEnd = schemeAt + 3 + m.index;
+  } else {
+    originEnd = template.length;
+  }
+  return template.replace(PLACEHOLDER, (_m, path: string, offset: number) => {
+    if (offset < originEnd) throw new Error("placeholder not allowed in URL origin");
+    return encodeURIComponent(path ? render(resolvePath(path, ctx)) : "");
+  });
+}

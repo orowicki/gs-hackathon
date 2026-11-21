@@ -33,6 +33,8 @@ export interface Runner {
   listRuns(alertId: string): Promise<StoredRun[]>;
   listAudit(opts?: ListAuditOptions): Promise<AuditEntry[]>;
   listPendingApprovals(): Promise<PendingApproval[]>;
+  /** Fail runs stuck in "running" (e.g. after a restart) whose updatedAt is older than the threshold. Returns the count. */
+  recoverStale(opts?: { olderThanMs?: number }): Promise<number>;
 }
 
 export function createRunner(opts: RunnerOptions): Runner {
@@ -87,6 +89,7 @@ export function createRunner(opts: RunnerOptions): Runner {
       }
     }
     setStep(run, i, res.ok ? "done" : "failed", res.result);
+    await save(run); // CAS first: no audit entry for a result that was not recorded
     await audit(run, {
       actor,
       action: "step_executed",
@@ -98,15 +101,21 @@ export function createRunner(opts: RunnerOptions): Runner {
   }
 
   async function skipRest(run: StoredRun, failed: number): Promise<void> {
+    const skipped: number[] = [];
     for (const s of run.steps) {
       if (s.state !== "pending") continue;
       setStep(run, s.index, "skipped", `skipped after step ${failed} failed`);
+      skipped.push(s.index);
+    }
+    if (skipped.length === 0) return;
+    await save(run);
+    for (const i of skipped) {
       await audit(run, {
         actor: "system",
         action: "step_skipped",
-        stepIndex: s.index,
-        result: s.result,
-        detail: stepDisplayName(run.runbook.steps[s.index]!, run.template),
+        stepIndex: i,
+        result: run.steps[i]!.result,
+        detail: stepDisplayName(run.runbook.steps[i]!, run.template),
       });
     }
   }
@@ -198,5 +207,34 @@ export function createRunner(opts: RunnerOptions): Runner {
     listRuns: (alertId) => store.listRuns(alertId),
     listAudit: (o) => store.listAudit(o),
     listPendingApprovals: () => store.listPendingApprovals(),
+
+    async recoverStale({ olderThanMs = 10 * 60_000 } = {}) {
+      const cutoff = now().getTime() - olderThanMs;
+      let n = 0;
+      for (const run of await store.listRunningRuns()) {
+        if (new Date(run.updatedAt).getTime() > cutoff) continue;
+        try {
+          const stuck = run.steps.filter((s) => s.state === "running").map((s) => s.index);
+          for (const i of stuck) setStep(run, i, "failed", "interrupted (process restarted)");
+          const failedAt = stuck[0] ?? run.steps.find((s) => s.state === "pending")?.index ?? 0;
+          run.status = "failed";
+          await save(run);
+          for (const i of stuck) {
+            await audit(run, {
+              actor: "system",
+              action: "step_executed",
+              stepIndex: i,
+              result: run.steps[i]!.result,
+              detail: stepDisplayName(run.runbook.steps[i]!, run.template),
+            });
+          }
+          await skipRest(run, failedAt);
+          n++;
+        } catch {
+          /* modified concurrently: not stale after all */
+        }
+      }
+      return n;
+    },
   };
 }

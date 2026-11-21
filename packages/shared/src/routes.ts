@@ -61,7 +61,7 @@ export const ROUTES: RouteDef[] = [
   { method: "POST", path: "/api/alerts/{id}/ack", summary: "Acknowledge an alert", tag: "alerts", response: "Alert" },
   { method: "POST", path: "/api/alerts/{id}/resolve", summary: "Resolve an alert", tag: "alerts", response: "Alert" },
   { method: "GET", path: "/api/alerts/{id}/audit", summary: "Audit log of an alert", tag: "alerts", response: "AuditEntry[]" },
-  { method: "POST", path: "/api/alerts/{id}/runbook-steps/{stepIndex}/approve", summary: "Approve a runbook step awaiting approval", tag: "runbooks", response: "AuditEntry" },
+  { method: "POST", path: "/api/alerts/{id}/runbook-steps/{stepIndex}/approve", summary: "Approve a runbook step awaiting approval", tag: "runbooks", response: "RunbookRun" },
 
   { method: "POST", path: "/api/alerts/{id}/suggestions", summary: "Suggest a change (attached to the alert's rule)", tag: "suggestions", request: "{ text: string }", response: "Suggestion" },
   { method: "POST", path: "/api/rules/{id}/suggestions", summary: "Suggest a change to a rule", tag: "suggestions", request: "{ text: string }", response: "Suggestion" },
