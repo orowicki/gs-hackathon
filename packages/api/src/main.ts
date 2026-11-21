@@ -35,10 +35,10 @@ const server = createServer({
 server.listen(port, () => console.log(`api listening on :${port}`));
 
 function shutdown(): void {
+  setTimeout(() => process.exit(0), 3000).unref();
   server.close();
-  void pool.end().catch(() => undefined);
-  redis.disconnect();
-  setTimeout(() => process.exit(0), 500).unref();
+  server.closeAllConnections?.();
+  void Promise.allSettled([pool.end(), redis.quit()]).then(() => process.exit(0));
 }
 process.on("SIGTERM", shutdown);
 process.on("SIGINT", shutdown);
