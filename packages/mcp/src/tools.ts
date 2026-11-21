@@ -5,6 +5,8 @@ export interface ToolDef {
   name: string;
   description: string;
   shape: ZodRawShape;
+  /** Pass keys not in `shape` through to the API (get -> edit -> update keeps stored fields). */
+  extraKeys?: boolean;
   /** Map validated tool input to the HTTP request. */
   request(args: Record<string, unknown>): ApiRequest;
 }
@@ -12,6 +14,7 @@ export interface ToolDef {
 const seg = (v: unknown) => encodeURIComponent(String(v));
 
 const id = z.string().min(1).describe("Entity id");
+const actor = z.string().min(1).optional().describe("Who is acting (audit log)");
 const filterText = z.string().describe("Filter expression text, e.g. `alert.severity = critical AND alert.source = payments-api`");
 const filterNode: z.ZodType<Record<string, unknown>> = z.record(z.string(), z.unknown());
 const filterOrTree = z.union([z.string(), filterNode]).describe("Filter as text or as the JSON filter tree");
@@ -91,14 +94,16 @@ function crud(kind: string, plural: string, base: string, shape: ZodRawShape): T
     },
     {
       name: `create_${kind}`,
-      description: `Create a ${kind}.`,
+      description: `Create a ${kind}. Unknown fields are passed through.`,
       shape,
+      extraKeys: true,
       request: (a) => ({ method: "POST", path: base, body: a }),
     },
     {
       name: `update_${kind}`,
-      description: `Replace a ${kind} (full object, same id).`,
+      description: `Replace a ${kind} (full object, same id). Unknown fields (e.g. createdAt) are passed through.`,
       shape,
+      extraKeys: true,
       request: (a) => ({ method: "PUT", path: `${base}/${seg(a.id)}`, body: a }),
     },
     {
@@ -116,7 +121,7 @@ export const TOOLS: ToolDef[] = [
   ...crud("rule", "rules", "/api/rules", ruleShape),
   {
     name: "validate_filter",
-    description: "Parse and validate a filter expression. Returns the JSON tree, or an error with the position.",
+    description: "Parse and validate a filter expression. Returns `{ tree }` (the JSON filter tree), or an error with the position.",
     shape: { text: filterText },
     request: (a) => ({ method: "POST", path: "/api/filters/parse", body: { text: a.text } }),
   },
@@ -129,7 +134,7 @@ export const TOOLS: ToolDef[] = [
   {
     name: "list_alerts",
     description:
-      "List alerts. Default order is lastSeen desc, paged with `before` (x-next-before). Another sort/order is paged with `offset`; combining `before` with it is an error.",
+      "List alerts. Returns `{ items, nextBefore?, nextOffset? }`: pass nextBefore as `before` (default sort) or nextOffset as `offset` (other sorts) to get the next page. Default order is lastSeen desc, paged with `before` (x-next-before). Another sort/order is paged with `offset`; combining `before` with it is an error.",
     shape: {
       filter: filterText.optional(),
       state: z.enum(["open", "acknowledged", "resolved"]).optional(),
@@ -151,18 +156,27 @@ export const TOOLS: ToolDef[] = [
         order: a.order as string | undefined,
         offset: a.offset as number | undefined,
       },
+      paging: true,
     }),
   },
   {
     name: "acknowledge_alert",
-    description: "Acknowledge an alert. Returns the updated alert.",
-    shape: { id },
-    request: (a) => ({ method: "POST", path: `/api/alerts/${seg(a.id)}/ack` }),
+    description: "Acknowledge an alert. Returns the updated alert. Optional `actor` is recorded in the audit log.",
+    shape: { id, actor },
+    request: (a) => ({
+      method: "POST",
+      path: `/api/alerts/${seg(a.id)}/ack`,
+      ...(a.actor === undefined ? {} : { body: { actor: a.actor } }),
+    }),
   },
   {
     name: "resolve_alert",
-    description: "Resolve an alert. Returns the updated alert.",
-    shape: { id },
-    request: (a) => ({ method: "POST", path: `/api/alerts/${seg(a.id)}/resolve` }),
+    description: "Resolve an alert. Returns the updated alert. Optional `actor` is recorded in the audit log.",
+    shape: { id, actor },
+    request: (a) => ({
+      method: "POST",
+      path: `/api/alerts/${seg(a.id)}/resolve`,
+      ...(a.actor === undefined ? {} : { body: { actor: a.actor } }),
+    }),
   },
 ];

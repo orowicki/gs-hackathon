@@ -25,7 +25,18 @@ beforeAll(async () => {
       res.setHeader("content-type", "application/json");
       if (req.url === "/api/filters/parse" && text.includes("bad")) {
         res.statusCode = 400;
-        res.end(JSON.stringify({ error: "unexpected token", position: 5 }));
+        res.end(JSON.stringify({ error: "unexpected token at position 5", position: 5 }));
+        return;
+      }
+      if (req.url === "/api/alerts" || req.url?.startsWith("/api/alerts?")) {
+        res.setHeader("x-next-before", "cur123");
+        res.setHeader("x-next-offset", "30");
+        res.end(JSON.stringify([{ id: "a1" }]));
+        return;
+      }
+      if (req.url === "/api/alerts/conflict/ack") {
+        res.statusCode = 409;
+        res.end(JSON.stringify({ error: "cannot acknowledge an alert in this state", state: "resolved" }));
         return;
       }
       res.end(JSON.stringify({ ok: true }));
@@ -81,6 +92,9 @@ const cases: [string, Record<string, unknown>, Seen][] = [
       body: undefined,
     },
   ],
+  ["get_source", { id: "a/b" }, { method: "GET", path: "/api/sources/a%2Fb", body: undefined }],
+  ["acknowledge_alert", { id: "a1", actor: "anna" }, { method: "POST", path: "/api/alerts/a1/ack", body: { actor: "anna" } }],
+  ["resolve_alert", { id: "a1", actor: "anna" }, { method: "POST", path: "/api/alerts/a1/resolve", body: { actor: "anna" } }],
   ["acknowledge_alert", { id: "a1" }, { method: "POST", path: "/api/alerts/a1/ack", body: undefined }],
   ["resolve_alert", { id: "a1" }, { method: "POST", path: "/api/alerts/a1/resolve", body: undefined }],
 ];
@@ -97,7 +111,7 @@ describe("mcp server", () => {
     const res = await client.callTool({ name, arguments: args });
     expect(res.isError).toBeFalsy();
     expect(seen).toEqual([expected]);
-    expect((res.content as { text: string }[])[0]?.text).toBe('{"ok":true}');
+    if (name !== "list_alerts") expect((res.content as { text: string }[])[0]?.text).toBe('{"ok":true}');
   });
 
   it("turns an API 4xx into a tool error with the API message", async () => {
@@ -106,5 +120,30 @@ describe("mcp server", () => {
     const text = (res.content as { text: string }[])[0]?.text;
     expect(text).toContain("unexpected token");
     expect(text).toContain("400");
+    expect(text?.match(/position/g)).toHaveLength(1);
+  });
+
+  it("surfaces extra error fields such as state", async () => {
+    const res = await client.callTool({ name: "acknowledge_alert", arguments: { id: "conflict" } });
+    expect(res.isError).toBe(true);
+    const text = (res.content as { text: string }[])[0]?.text;
+    expect(text).toContain("409");
+    expect(text).toContain("state: resolved");
+  });
+
+  it("passes unknown entity keys through", async () => {
+    seen = [];
+    const withExtra = { ...rule, createdAt: "2026-01-01T00:00:00Z", updatedAt: "2026-01-02T00:00:00Z" };
+    await client.callTool({ name: "update_rule", arguments: withExtra });
+    expect(seen[0]?.body).toEqual(withExtra);
+  });
+
+  it("returns paging cursors from list_alerts", async () => {
+    const res = await client.callTool({ name: "list_alerts", arguments: {} });
+    expect(JSON.parse((res.content as { text: string }[])[0]!.text)).toEqual({
+      items: [{ id: "a1" }],
+      nextBefore: "cur123",
+      nextOffset: 30,
+    });
   });
 });
