@@ -186,3 +186,279 @@ a:hover {
 .empty p {
   margin: 0;
 }
+
+/* Live feed */
+.feed-page {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.feed-page .topbar {
+  align-items: flex-start;
+}
+
+.feed {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.live-bar {
+  padding: var(--space-1) var(--space-4);
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--muted);
+  font-size: var(--text-sm);
+}
+
+.new-pill {
+  position: sticky;
+  top: var(--space-2);
+  z-index: 5;
+  display: block;
+  margin: var(--space-2) auto 0;
+  padding: var(--space-1) var(--space-3);
+  background: var(--accent);
+  color: var(--bg);
+  border: 0;
+  border-radius: 999px;
+  font: inherit;
+  font-size: var(--text-sm);
+  font-weight: var(--weight-strong);
+  cursor: pointer;
+  box-shadow: var(--shadow);
+}
+
+.link-btn {
+  align-self: flex-start;
+  padding: 0;
+  background: none;
+  border: 0;
+  color: var(--accent);
+  font: inherit;
+  cursor: pointer;
+}
+
+.link-btn:hover {
+  text-decoration: underline;
+}
+
+.alert-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  font-size: var(--text-sm);
+}
+
+.row {
+  position: relative;
+  border-bottom: 1px solid var(--border);
+}
+
+.row-head {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 36px;
+  padding: 0 var(--space-4) 0 var(--space-4);
+  cursor: pointer;
+}
+
+.row-head:hover {
+  background: var(--surface);
+}
+
+.row-flash {
+  position: absolute;
+  inset: 0;
+  background: var(--accent);
+  opacity: 0;
+  pointer-events: none;
+  animation: row-flash 1500ms ease-out;
+}
+
+@keyframes row-flash {
+  from {
+    opacity: 0.18;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+.sev-bar {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: var(--info);
+}
+
+.sev-critical .sev-bar {
+  background: var(--critical);
+}
+.sev-error .sev-bar {
+  background: var(--error);
+}
+.sev-warning .sev-bar {
+  background: var(--warning);
+}
+
+.sev-label {
+  flex: none;
+  width: 36px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: var(--weight-strong);
+  color: var(--info);
+}
+
+.sev-critical .sev-label {
+  color: var(--critical);
+}
+.sev-error .sev-label {
+  color: var(--error);
+}
+.sev-warning .sev-label {
+  color: var(--warning);
+}
+
+.chevron {
+  display: inline-flex;
+  flex: none;
+  color: var(--muted);
+  transition: transform var(--motion-duration) var(--motion-ease);
+}
+
+.chevron.open {
+  transform: rotate(90deg);
+}
+
+.row-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.row-source,
+.row-time {
+  flex: none;
+}
+
+.row-count {
+  flex: none;
+  min-width: 28px;
+  text-align: right;
+}
+
+.row-body {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-4) var(--space-3) calc(var(--space-4) + 52px);
+  animation: panel-in var(--motion-duration) var(--motion-ease);
+}
+
+.row-body dl {
+  align-self: stretch;
+  display: grid;
+  gap: var(--space-1);
+  margin: 0;
+}
+
+.fact {
+  display: flex;
+  gap: var(--space-3);
+}
+
+.fact dt {
+  flex: none;
+  width: 112px;
+}
+
+.fact dd {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.skeleton {
+  display: flex;
+  align-items: center;
+  height: 36px;
+  padding: 0 var(--space-4);
+}
+
+.skeleton-bar {
+  height: 10px;
+  background: var(--border);
+  border-radius: var(--radius);
+}
+
+.filter-stub {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.filter-stub-error {
+  margin: 0;
+  color: var(--critical);
+  font-size: var(--text-sm);
+}
+
+.profile-list,
+.starred-list {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.profile-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: var(--space-1) 0;
+  background: none;
+  border: 0;
+  color: var(--text);
+  font: inherit;
+  font-size: var(--text-sm);
+  text-align: left;
+  cursor: pointer;
+}
+
+.profile-text {
+  display: flex;
+  flex-direction: column;
+}
+
+.starred-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.starred-apply {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 0;
+  background: none;
+  border: 0;
+  color: var(--text);
+  font-size: var(--text-sm);
+  cursor: pointer;
+}
