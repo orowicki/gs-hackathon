@@ -81,6 +81,10 @@ describe("demo showcase", () => {
     expect([...fired].sort()).toEqual(data.rule.map((r) => r.id).sort());
   });
 
+  it("relies on the four seeded rules only", () => {
+    expect(data.rule.length).toBe(4);
+  });
+
   it("keeps all events of one dedup key on the same sink", () => {
     const sinkOf = new Map<string, string>();
     for (const step of showcase(new Date())) {

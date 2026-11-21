@@ -198,26 +198,26 @@ export function showcase(now: Date): ShowcaseStep[] {
     m("http", "payments-api", "HighErrorRate", "critical", pay, "firing"),
     m("http", "payments-api", "HighErrorRate", "critical", pay, "firing"),
     m("http", "payments-api", "HighErrorRate", "critical", pay, "firing"),
-    // warning, pricing-engine-emea: fires, then resolves (resolved alert)
+    // critical, payments-api, staging (Anna's rule does not check the environment); resolved at the end
+    m("redis_stream", "payments-api", "ConnectionPoolExhausted", "critical", "Connection pool exhausted", "firing", "staging"),
+    // pricing-engine-*: warning (resolved later), warning, error, critical (repeated), staging warning
     m("file_tail", "pricing-engine-emea", "HighLatency", "warning", "p99 latency 840 ms over the last 5 minutes", "firing"),
     m("redis_stream", "pricing-engine-emea", "CacheMissRate", "warning", "Cache miss rate 38%", "firing"),
-    // critical, pricing-engine-apac, repeated once
+    m("http", "pricing-engine-emea", "QuoteErrors", "error", "Quote error rate 6%", "firing"),
     m("redis_stream", "pricing-engine-apac", "HighLatency", "critical", "p99 latency 1700 ms over the last 5 minutes", "firing"),
     m("redis_stream", "pricing-engine-apac", "HighLatency", "critical", "p99 latency 1700 ms over the last 5 minutes", "firing"),
-    // settlement workflows, prod: error (repeated), warning, critical
+    m("file_tail", "pricing-engine-staging", "HighLatency", "warning", "p99 latency 610 ms over the last 5 minutes", "firing", "staging"),
+    // settlement workflows, prod: error (repeated), error, warning, critical
     wf("http", "1", "order-settlement", "confirm-settlement", "ERROR", "prod"),
     wf("http", "2", "order-settlement", "confirm-settlement", "ERROR", "prod"),
-    wf("file_tail", "3", "order-settlement", "notify-custodian", "WARN", "prod"),
-    wf("file_tail", "4", "order-settlement", "book-trade", "CRITICAL", "prod"),
-    // staging: a workflow error and a payments warning that resolves
-    wf("http", "5", "report-export", "validate-counterparty", "ERROR", "staging"),
-    m("redis_stream", "payments-api", "HighErrorRate", "warning", "Error rate 8% over the last 5 minutes", "firing", "staging"),
-    // info: rejected trades (the big rates one also reaches Team Rates)
+    wf("file_tail", "3", "order-settlement", "validate-counterparty", "ERROR", "prod"),
+    wf("file_tail", "4", "order-settlement", "notify-custodian", "WARN", "prod"),
+    wf("redis_stream", "5", "order-settlement", "book-trade", "CRITICAL", "prod"),
+    // info: big rejected rates trades (Team Rates; trade-rejected maps to severity info)
     trade("http", "T-SHOW-1", "rates", 25_000_000, "LIMIT_BREACH"),
-    trade("redis_stream", "T-SHOW-2", "fx", 2_500_000, "INVALID_PRICE"),
-    trade("file_tail", "T-SHOW-3", "credit", 900_000, "CREDIT_LIMIT"),
+    trade("redis_stream", "T-SHOW-2", "rates", 18_500_000, "CREDIT_LIMIT"),
     // resolves, through the same sink as their firing event, after the firing ones were sent
     m("file_tail", "pricing-engine-emea", "HighLatency", "warning", "p99 latency back to 120 ms", "resolved", undefined, 300),
-    m("redis_stream", "payments-api", "HighErrorRate", "warning", "Error rate back to 0%", "resolved", "staging", 300),
+    m("redis_stream", "payments-api", "ConnectionPoolExhausted", "critical", "Connection pool recovered", "resolved", "staging", 300),
   ];
 }

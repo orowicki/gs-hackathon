@@ -249,7 +249,6 @@ describe.skipIf(!enabled)("demo path: events get a schema and raise realistic al
     const byRule = new Map(alerts.map((a) => [a.ruleId, a]));
     expect([...byRule.keys()].sort()).toEqual([
       "anna-payments-critical",
-      "info-digest",
       "pricing-engine-warnings",
       "rates-trade-rejected",
       "settlements-workflow-failed",
