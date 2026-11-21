@@ -293,24 +293,24 @@ Retry a dead letter now
 
 ### GET `/api/events`
 
-**NOT IMPLEMENTED YET** (issue #108): the server currently answers 404.
-
 List stored events (filter, limit, before)
 
 **Parameters**
 
 | name | in | type | required | description |
 | --- | --- | --- | --- | --- |
-| `filter` | query | string | no | Filter expression text |
+| `filter` | query | string | no | Filter expression text (takes precedence over `tree`) |
+| `tree` | query | string | no | Filter tree as a JSON-encoded string |
 | `limit` | query | integer | no | Page size (default 50); clamped to 1..200, a non-numeric value falls back to the default |
-| `before` | query | string | no | Opaque cursor from the x-next-before response header of the previous page (events) |
+| `before` | query | string | no | Opaque cursor from the x-next-before response header of the previous page (events). Base64url JSON of the last row's receivedAt and id; an invalid cursor is a 400 |
 
 **Responses**
 
 | status | media type | schema | description |
 | --- | --- | --- | --- |
-| 200 | `application/json` | [Event](#schema-event)[] | Stored events, newest first |
+| 200 | `application/json` | [Event](#schema-event)[] | Stored events, newest first (receivedAt desc, id desc). With a filter, at most 5000 events are scanned per request; x-next-before is then sent whenever the scan stopped early |
 | 400 | `application/json` | [Error](#schema-error) | Bad request (invalid id, body, filter or parameter) |
+| 503 | `application/json` | [Error](#schema-error) | Dependency or component not configured |
 
 ### GET `/api/events/recent`
 
@@ -1794,8 +1794,6 @@ Example `metricBreach` (Prometheus style metric breach):
 
 ### POST `/api/schemas/test`
 
-**NOT IMPLEMENTED YET** (issue #108): the server currently answers 404.
-
 Try a schema/mapping against a pasted sample; returns the mapped common fields
 
 **Request body** (required)
@@ -1881,6 +1879,7 @@ Example `workflowFailed` (Try the workflow schema on the Appendix A sample):
 | --- | --- | --- | --- |
 | 200 | `application/json` | [SchemaTestResponse](#schema-schematestresponse) | Whether the sample matched and the mapped common fields |
 | 400 | `application/json` | [Error](#schema-error) | Bad request (invalid id, body, filter or parameter) |
+| 413 | `application/json` | [Error](#schema-error) | Payload too large |
 
 ### GET `/api/schemas/{id}`
 
@@ -2099,8 +2098,6 @@ Example `redisStream` (Redis stream source):
 
 ### POST `/api/sources/test`
 
-**NOT IMPLEMENTED YET** (issue #108): the server currently answers 404.
-
 Try a parser on a sample line; returns the parsed fields
 
 **Request body** (required)
@@ -2135,6 +2132,7 @@ Example `logfmt` (logfmt parser):
 | --- | --- | --- | --- |
 | 200 | `application/json` | [SourceTestResponse](#schema-sourcetestresponse) | The parsed fields |
 | 400 | `application/json` | [Error](#schema-error) | Bad request (invalid id, body, filter or parameter) |
+| 413 | `application/json` | [Error](#schema-error) | Payload too large |
 
 ### GET `/api/sources/{id}`
 
@@ -2217,8 +2215,6 @@ Delete a Source
 
 ### GET `/api/sources/{id}/preview`
 
-**NOT IMPLEMENTED YET** (issue #108): the server currently answers 404.
-
 Live preview of incoming raw and parsed messages (SSE)
 
 **Parameters**
@@ -2232,7 +2228,9 @@ Live preview of incoming raw and parsed messages (SSE)
 | status | media type | schema | description |
 | --- | --- | --- | --- |
 | 200 | `text/event-stream` | string | Server-sent events: each `data:` line is JSON with the raw and parsed message |
+| 400 | `application/json` | [Error](#schema-error) | Bad request (invalid id, body, filter or parameter) |
 | 404 | `application/json` | [Error](#schema-error) | Not found |
+| 503 | `application/json` | [Error](#schema-error) | Dependency or component not configured |
 
 ## stream
 

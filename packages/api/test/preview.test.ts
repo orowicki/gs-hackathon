@@ -116,7 +116,7 @@ describe.skipIf(!process.env.REDIS_URL)("createRedisPreview (real Redis)", () =>
     const stream = `test:preview:${Date.now()}:${Math.random().toString(36).slice(2)}`;
     const dups: Redis[] = [];
     const spy = { duplicate: () => { const d = redis.duplicate(); dups.push(d); return d; } };
-    const p = createRedisPreview({ redis: spy, config: { get: async () => source }, stream, blockMs: 500 });
+    const p = createRedisPreview({ redis: spy, config: { get: (async () => source) as never }, stream, blockMs: 500 });
     const got: RawMessage[] = [];
     const ac = new AbortController();
     const add = (sourceId: string, raw: string) =>

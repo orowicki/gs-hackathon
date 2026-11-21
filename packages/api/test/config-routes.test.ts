@@ -142,15 +142,15 @@ describe("config CRUD", () => {
     }
   });
 
-  it("does not answer /test routes (with or without a store)", async () => {
+  it("answers /test routes from the try routes, not as config ids (with or without a store)", async () => {
     for (const store of [undefined, memoryStore()]) {
       const url = await start(store);
       for (const p of ["/api/schemas/test", "/api/sources/test"]) {
         const r = await fetch(url + p, json("POST", {}));
-        expect(r.status, p).toBe(404);
-        expect(await r.json()).toEqual({ error: "not found" });
+        expect(r.status, p).toBe(400);
+        expect(typeof ((await r.json()) as { error: string }).error).toBe("string");
       }
-      expect((await fetch(`${url}/api/sources/s1/preview`)).status).toBe(404);
+      expect((await fetch(`${url}/api/sources/s1/preview`)).status).toBe(503);
       await new Promise((r) => server!.close(r));
     }
   });
