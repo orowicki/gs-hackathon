@@ -62,3 +62,7 @@ replay log:
 # Spend so far (from the ledger)
 spend:
     {{_ap_py}} -m autopilot.ledger
+
+# Load test: 1 then 2 workers (docker). Flags: --workers N --smoke --local --rate R --duration S
+loadtest *args:
+    bash scripts/loadtest/loadtest.sh {{args}}
