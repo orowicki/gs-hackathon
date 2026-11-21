@@ -31,11 +31,21 @@ export interface AlertHookResult {
   notify: boolean;
   /** Defaults to "created". */
   kind?: AlertEvent["kind"];
+  /** Nothing to do for this match (no alert in the result, no notification, no publish). */
+  skip?: boolean;
+}
+
+export interface EnqueueHookContext extends AlertHookContext {
+  alert: Alert;
+  kind: AlertEvent["kind"];
+  entryId: string;
 }
 
 export interface EngineHooks {
   /** Seam for dedup/persistence: may replace the alert and suppress notifications. */
   onAlert?(alert: Alert, ctx: AlertHookContext): Promise<AlertHookResult | void> | AlertHookResult | void;
+  /** Called before each enqueue: return the notification to send (possibly changed) or null to drop it. */
+  beforeEnqueue?(n: Notification, ctx: EnqueueHookContext): Promise<Notification | null> | Notification | null;
 }
 
 export interface ProcessDeps {
@@ -108,6 +118,7 @@ export async function processEvent(event: Event, deps: ProcessDeps): Promise<Pro
       let notify = true;
       let kind: AlertEvent["kind"] = "created";
       const hooked = await deps.hooks?.onAlert?.(alert, { event, rule: compiled });
+      if (hooked?.skip) continue;
       if (hooked) {
         alert = hooked.alert;
         notify = hooked.notify;
@@ -124,7 +135,17 @@ export async function processEvent(event: Event, deps: ProcessDeps): Promise<Pro
           logger,
           ...(deps.publicUrl !== undefined ? { publicUrl: deps.publicUrl } : {}),
         });
-        for (const n of ns) {
+        for (const routed of ns) {
+          const n = deps.hooks?.beforeEnqueue
+            ? await deps.hooks.beforeEnqueue(routed, {
+                event,
+                rule: compiled,
+                alert,
+                kind,
+                entryId: deps.entryId ?? event.id,
+              })
+            : routed;
+          if (!n) continue;
           await deps.enqueue(n);
           result.notifications.push(n);
         }
