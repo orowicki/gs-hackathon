@@ -122,3 +122,12 @@
   color: var(--critical);
   font-size: var(--text-sm);
 }
+
+/* Main star: filled in Grafana's favourite yellow when the current filter is starred. */
+.star-btn.on {
+  color: var(--warning);
+}
+
+.star-btn.on svg {
+  fill: currentColor;
+}

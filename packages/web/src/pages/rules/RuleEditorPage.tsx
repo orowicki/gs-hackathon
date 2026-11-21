@@ -5,6 +5,9 @@ import type { RecipientRef, Rule } from "@alerting/shared";
 import { FilterBar } from "../../components/filter-bar";
 import { Icon } from "../../components/Icon";
 import { useStarredFilters } from "../../starred";
+import { MultiSelect } from "../../components/MultiSelect";
+import { useFieldCatalog } from "./fields";
+import { TemplateInput } from "./TemplateInput";
 import {
   acceptSuggestion,
   createRule,
@@ -77,8 +80,6 @@ const SEV_LABEL: Record<string, string> = {
   info: "Info",
 };
 
-const VARS = ["alert.title", "alert.source", "alert.environment", "alert.severity", "failedStep", "workflowName", "payload.desk", "payload.notional"];
-const FIELD_OPTIONS = ["alert.source", "alert.environment", "alert.schema", "failedStep", "errorMessage", "payload.desk", "payload.notional"];
 const DEDUP_OPTIONS = ["source", "title", "environment", "severity"];
 const COLOURS: { value: string; label: string }[] = [
   { value: "", label: "Severity colour (default)" },
@@ -89,23 +90,6 @@ const COLOURS: { value: string; label: string }[] = [
   { value: "#7399c6", label: "Brand blue" },
   { value: "#b877d9", label: "Purple" },
 ];
-
-/** Appends {{v}}, with a space unless the text is empty or already ends in whitespace. */
-const joinVar = (text: string, v: string) => `${text}${text === "" || /\s$/.test(text) ? "" : " "}{{${v}}}`;
-
-/** Click to append a {{variable}} to a template. */
-function VarChips({ onInsert }: { onInsert: (v: string) => void }) {
-  return (
-    <div className="var-chips" aria-label="Insert a variable">
-      <span className="re-hint">Insert:</span>
-      {VARS.map((v) => (
-        <button key={v} type="button" className="var-chip" onClick={() => onInsert(v)}>
-          {v}
-        </button>
-      ))}
-    </div>
-  );
-}
 
 /** Comma-separated list edited as toggles, with an optional box for other values. */
 function ListToggles({
@@ -357,6 +341,7 @@ export function RuleEditorPage({ initial }: { initial?: RuleDraft } = {}) {
   const location = useLocation();
   const dir = useDirectory();
   const starredFilters = useStarredFilters();
+  const catalog = useFieldCatalog();
   const [loadedRule, setLoadedRule] = useState<Rule | undefined>(undefined);
   const [idTouched, setIdTouched] = useState(initial !== undefined);
   const isNew = id === undefined;
@@ -620,24 +605,22 @@ export function RuleEditorPage({ initial }: { initial?: RuleDraft } = {}) {
             <AlertPreview draft={draft} />
             <div className="field">
               <label htmlFor="looks-title" className="field-label">
-                Title template
+                Title
               </label>
-              <input id="looks-title" type="text" className="mono" value={draft.titleTemplate} onChange={(e) => set({ titleTemplate: e.target.value })} />
-              <VarChips onInsert={(v) => set((d) => ({ titleTemplate: joinVar(d.titleTemplate, v) }))} />
+              <TemplateInput id="looks-title" value={draft.titleTemplate} onChange={(v) => set({ titleTemplate: v })} fields={catalog} />
             </div>
             <div className="field">
               <label htmlFor="looks-body" className="field-label">
                 Message
               </label>
-              <textarea
+              <TemplateInput
                 id="looks-body"
-                className="mono"
-                rows={3}
+                multiline
                 placeholder="{{alert.source}} reported {{alert.title}} in {{alert.environment}}."
                 value={draft.bodyTemplate}
-                onChange={(e) => set({ bodyTemplate: e.target.value })}
+                onChange={(v) => set({ bodyTemplate: v })}
+                fields={catalog}
               />
-              <VarChips onInsert={(v) => set((d) => ({ bodyTemplate: joinVar(d.bodyTemplate, v) }))} />
             </div>
             <div className="field">
               <span className="field-label">Severity</span>
@@ -658,12 +641,13 @@ export function RuleEditorPage({ initial }: { initial?: RuleDraft } = {}) {
             </div>
             <div className="field">
               <span className="field-label">Fields to show when expanded</span>
-              <ListToggles
+              <MultiSelect
                 label="Fields to show"
-                value={draft.fields}
-                options={FIELD_OPTIONS}
-                onChange={(v) => set({ fields: v })}
+                options={catalog}
+                selected={splitList(draft.fields)}
+                onChange={(next) => set({ fields: next.join(", ") })}
                 allowCustom
+                placeholder="Choose fields…"
               />
             </div>
             <div className="re-grid-2">

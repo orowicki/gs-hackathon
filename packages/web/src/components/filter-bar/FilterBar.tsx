@@ -1,9 +1,16 @@
-import { tryParse } from "@alerting/filter";
+import { print, tryParse } from "@alerting/filter";
 import { ChevronDown, Star } from "lucide-react";
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Icon } from "../Icon";
 import { applyReplacement, computeSuggestions, formatError, type Suggestion } from "./suggestions";
 import "./filter-bar.css";
+
+/** Canonical text of a filter, so "a=b" and "a = b" count as the same starred filter. */
+function canonical(text: string): string {
+  const t = text.trim();
+  const r = tryParse(t);
+  return r.ok && r.tree ? print(r.tree) : t;
+}
 
 export interface FilterBarProps {
   value: string;
@@ -112,7 +119,8 @@ export function FilterBar(props: FilterBarProps) {
     setCursor(el.selectionStart ?? el.value.length);
   }
 
-  const isStarred = starred.includes(trimmed);
+  const starredSet = useMemo(() => new Set(starred.map(canonical)), [starred]);
+  const isStarred = trimmed !== "" && starredSet.has(canonical(trimmed));
   const optionId = (i: number) => `${id}-opt-${i}`;
 
   return (
@@ -153,11 +161,11 @@ export function FilterBar(props: FilterBarProps) {
         />
         <button
           type="button"
-          className="icon-btn"
-          aria-label="Star filter"
+          className={isStarred ? "icon-btn star-btn on" : "icon-btn star-btn"}
+          aria-label={isStarred ? "Unstar filter" : "Star filter"}
           aria-pressed={isStarred}
           disabled={trimmed === "" || error !== null}
-          onClick={() => onToggleStar(trimmed)}
+          onClick={() => onToggleStar(canonical(trimmed))}
         >
           <Icon as={Star} />
         </button>
@@ -225,7 +233,7 @@ export function FilterBar(props: FilterBarProps) {
                 {(() => {
                   const text = resultingText(s);
                   if (!text) return null;
-                  const on = starred.includes(text);
+                  const on = starredSet.has(canonical(text));
                   return (
                     <button
                       type="button"
