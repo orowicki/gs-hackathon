@@ -1,36 +1,362 @@
+/* Rules list and rule editor. Shared controls live in styles/components.css. */
 .rules-page {
-  max-width: 880px;
-  margin: 0 auto;
-  padding: var(--space-4);
+  max-width: 1280px;
+}
+
+.rules-page .muted {
+  color: var(--muted);
+}
+
+.rules-page .error {
+  color: var(--critical);
+  font-size: var(--text-sm);
+}
+
+.rules-page .warn {
+  color: var(--warning);
+}
+
+.rules-page ul.plain {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+/* ---- List ------------------------------------------------------------------------- */
+.rules-table tr.clickable {
+  cursor: pointer;
+}
+
+.rules-table td:first-child a {
+  color: var(--text-strong);
+  font-weight: var(--weight-strong);
+}
+
+.rules-table .cond {
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
   color: var(--text);
 }
-.rules-page h1 { margin: 0; font-size: var(--text-lg); font-weight: var(--weight-strong); }
-.rules-page h2 { margin: var(--space-4) 0 var(--space-2); font-size: var(--text-md); font-weight: var(--weight-strong); }
-.rules-page .bar { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); margin-bottom: var(--space-3); }
-.rules-page .actions { display: flex; gap: var(--space-2); flex-wrap: wrap; align-items: center; }
-.rules-page ul.plain { list-style: none; margin: 0; padding: 0; }
-.rules-page li.row, .rules-page .who-row, .rules-page section.step {
+
+/* ---- New rule: examples and import -------------------------------------------- */
+.example-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: var(--space-2);
+}
+
+.example {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-3);
+  background: var(--bg);
+  color: var(--text);
   border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: var(--space-2) var(--space-3);
-  margin-bottom: var(--space-2);
-  background: var(--surface);
-}
-.rules-page li.row { display: flex; justify-content: space-between; gap: var(--space-3); align-items: baseline; }
-.rules-page .muted { color: var(--muted); font-size: var(--text-sm); }
-.rules-page label { display: flex; flex-direction: column; gap: var(--space-1); margin-bottom: var(--space-2); font-size: var(--text-sm); }
-.rules-page label.inline { flex-direction: row; align-items: center; }
-.rules-page input[type="text"], .rules-page textarea, .rules-page select {
+  border-radius: var(--radius-lg);
   font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.example:hover {
+  border-color: var(--accent-bg);
+}
+
+.example-name {
+  color: var(--text-strong);
+  font-weight: var(--weight-strong);
+}
+
+.example-what {
+  color: var(--muted);
+  font-size: var(--text-sm);
+}
+
+.example-when {
+  margin-top: var(--space-1);
+  color: var(--accent);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  overflow-wrap: anywhere;
+}
+
+.import-box {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.import-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+/* ---- Editor ----------------------------------------------------------------------- */
+.re-page {
+  padding-bottom: 0;
+}
+
+.re-page .re-layout {
+  padding-bottom: var(--space-2);
+}
+
+.re-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  gap: var(--space-4);
+  align-items: start;
+}
+
+.re-steps {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.re-step {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr);
+  gap: var(--space-3);
+  padding: var(--space-4);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+}
+
+.re-step-num {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--surface-2);
+  border: 1px solid var(--border-strong);
+  color: var(--text-strong);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-strong);
+}
+
+.re-step-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.re-step-body > .btn,
+.re-step-body > .re-inline {
+  align-self: flex-start;
+}
+
+.re-step-body h2 {
+  margin: 4px 0 0;
+  font-size: 15px;
+}
+
+.re-help {
+  margin: -8px 0 0;
+  color: var(--muted);
+  font-size: var(--text-sm);
+}
+
+.re-grid-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-3);
+}
+
+.re-inline {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.re-result {
+  color: var(--muted);
+  font-size: var(--text-sm);
+}
+
+.re-result.hit {
+  color: var(--valid);
+  font-weight: var(--weight-strong);
+}
+
+.re-empty {
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--text-sm);
+}
+
+.who-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  counter-reset: who;
+}
+
+.who-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+}
+
+.who-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.who-tools {
+  display: flex;
+  gap: 2px;
+}
+
+.who-tools .icon-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.re-hint {
+  color: var(--faint);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-regular);
+}
+
+.re-preview {
+  color: var(--muted);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-regular);
+}
+
+.re-preview strong {
+  color: var(--text-strong);
+  font-weight: var(--weight-strong);
+}
+
+.re-more summary {
+  color: var(--accent);
+  font-size: var(--text-sm);
+  cursor: pointer;
+  margin-bottom: var(--space-2);
+}
+
+.re-more[open] {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.re-more textarea {
+  min-height: 90px;
+}
+
+.re-suggestions {
+  padding: var(--space-4);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+}
+
+.re-suggestions h2 {
+  margin: 0 0 var(--space-2);
+}
+
+.sug {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-2) 0;
+  border-top: 1px solid var(--border);
+}
+
+/* Summary: the rule in one sentence, beside the steps. */
+.re-summary {
+  position: sticky;
+  top: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-top: 2px solid var(--brand);
+  border-radius: var(--radius-lg);
+}
+
+.re-summary h2 {
+  margin: 0;
+  font-size: var(--text-md);
+}
+
+.re-sentence {
+  margin: 0;
+  line-height: 1.6;
   color: var(--text);
+}
+
+.re-sentence code {
+  padding: 1px 4px;
   background: var(--bg);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  padding: var(--space-1) var(--space-2);
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  color: var(--accent);
+  overflow-wrap: anywhere;
 }
-.rules-page textarea { min-height: 6em; font-family: var(--font-mono, monospace); }
-/* buttons: styles/components.css */
-.rules-page .error { color: var(--error); font-size: var(--text-sm); }
-.rules-page .result { font-size: var(--text-sm); }
-.rules-page .warn { color: var(--warning); }
-.rules-page pre { overflow: auto; border: 1px solid var(--border); padding: var(--space-2); }
+
+.re-facts {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border);
+}
+
+.re-facts div {
+  display: grid;
+  grid-template-columns: 88px 1fr;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+}
+
+.re-facts dt {
+  color: var(--muted);
+}
+
+.re-facts dd {
+  margin: 0;
+  color: var(--text-strong);
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 1000px) {
+  .re-layout {
+    grid-template-columns: 1fr;
+  }
+  .re-summary {
+    position: static;
+  }
+  .re-grid-2 {
+    grid-template-columns: 1fr;
+  }
+}
