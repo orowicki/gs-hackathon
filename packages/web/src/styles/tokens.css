@@ -37,6 +37,13 @@
   --info-tint: rgba(87, 148, 242, 0.15);
   --valid-tint: rgba(115, 191, 105, 0.15);
 
+  /* Alert lifecycle state (Grafana palette), deliberately unlike any severity colour:
+     acknowledged = Grafana purple, resolved = Grafana "Normal" green. */
+  --state-acknowledged: #b877d9;
+  --state-resolved: #73bf69;
+  --state-acknowledged-tint: rgba(184, 119, 217, 0.14);
+  --state-resolved-tint: rgba(115, 191, 105, 0.12);
+
   --shadow: 0 8px 24px rgba(1, 4, 9, 0.75);
 
   /* Type: Inter is Grafana's face. 12 / 14 / 18 / 28 px, weights 400 and 500. */
@@ -92,6 +99,10 @@
   --warning-tint: rgba(156, 124, 0, 0.12);
   --info-tint: rgba(31, 98, 224, 0.1);
   --valid-tint: rgba(26, 127, 75, 0.1);
+  --state-acknowledged: #8a3fb3;
+  --state-resolved: #1a7f4b;
+  --state-acknowledged-tint: rgba(138, 63, 179, 0.1);
+  --state-resolved-tint: rgba(26, 127, 75, 0.08);
   --shadow: 0 8px 24px rgba(24, 26, 27, 0.18);
 }
 
