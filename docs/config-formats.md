@@ -260,7 +260,7 @@ memberIds: [tomasz, anna]
 
 ## Preferences
 
-Kind `preference`. Files go in `config/preferences/` (for example `person-anna.yaml`; the file name is free). The same entity can be stored through the API (`PUT /api/people/{id}/preferences` or `PUT /api/groups/{id}/preferences`, JSON body). The file has no `id`: the id comes from `ownerType` and `ownerId`, so a file with a missing or invalid owner is reported and skipped. The YAML below is Anna's demo preference (`config/preferences/person-anna.yaml`, used by the seed). One preference per person or group; its storage id is `person:<ownerId>` or `group:<ownerId>`.
+Kind `preference`. Files go in `config/preferences/` (for example `person-anna.yaml`; the file name is free). The same entity can be stored through the API (`PUT /api/people/{id}/preferences` or `PUT /api/groups/{id}/preferences`, JSON body). The file has no `id`: the id comes from `ownerType` and `ownerId`, so a file with a missing or invalid owner, or a body the API would reject (`rules` not a list, a rule without `when`/`channels`, `quietHours` not a mapping), is reported and skipped. The watcher does not check that the person or group exists. The YAML below is Anna's demo preference (`config/preferences/person-anna.yaml`, used by the seed). One preference per person or group; its storage id is `person:<ownerId>` or `group:<ownerId>`.
 
 | Field | Type | Required | Notes |
 |---|---|---|---|

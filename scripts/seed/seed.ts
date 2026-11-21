@@ -87,7 +87,10 @@ export function loadConfigDir(dir: string): SeedData {
       if (value === null || typeof value !== "object" || Array.isArray(value)) {
         throw new Error(`${join(pd, f)}: expected a YAML mapping`);
       }
-      data.preference.push({ id: `${String(value.ownerType)}:${String(value.ownerId)}`, entity: value });
+      if (typeof value.ownerType !== "string" || typeof value.ownerId !== "string") {
+        throw new Error(`${join(pd, f)}: preference needs ownerType and ownerId`);
+      }
+      data.preference.push({ id: `${value.ownerType}:${value.ownerId}`, entity: value });
     }
   }
   return data;
@@ -134,7 +137,9 @@ export function httpClient(baseUrl: string): SeedClient {
   return {
     async get(kind, id) {
       if (kind === "preference") {
-        const [owner, ownerId] = id.split(":") as [string, string];
+        const i = id.indexOf(":");
+        const owner = id.slice(0, i);
+        const ownerId = id.slice(i + 1);
         const r = await call("GET", `/api/${owner === "group" ? "groups" : "people"}/${encodeURIComponent(ownerId)}/preferences`);
         if (!r.ok) return fail(`GET preference ${id}`, r);
         const p = (await r.json()) as Entity;
@@ -148,7 +153,9 @@ export function httpClient(baseUrl: string): SeedClient {
     },
     async put(kind, id, entity) {
       if (kind === "preference") {
-        const [owner, ownerId] = id.split(":") as [string, string];
+        const i = id.indexOf(":");
+        const owner = id.slice(0, i);
+        const ownerId = id.slice(i + 1);
         const r = await call("PUT", `/api/${owner === "group" ? "groups" : "people"}/${encodeURIComponent(ownerId)}/preferences`, entity);
         if (!r.ok) await fail(`PUT preference ${id}`, r);
         return;

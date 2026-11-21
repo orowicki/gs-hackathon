@@ -5,6 +5,24 @@ import { entityId } from "./store.js";
 import type { ConfigStore, Kind, KindMap } from "./store.js";
 import { fromYaml } from "./yaml.js";
 
+const isObj = (v: unknown): v is Record<string, unknown> =>
+  typeof v === "object" && v !== null && !Array.isArray(v);
+
+/** Same shape checks as the API's PUT .../preferences (owner existence is not checked). */
+function checkPreference(v: unknown): void {
+  if (!isObj(v)) return; // entityId reports it
+  if (!Array.isArray(v.rules))
+    throw new Error('invalid preference: needs a "rules" array');
+  for (const r of v.rules) {
+    if (!isObj(r) || !isObj(r.when) || !Array.isArray(r.channels))
+      throw new Error(
+        'invalid preference: each rule needs a "when" filter and a "channels" array',
+      );
+  }
+  if (v.quietHours !== undefined && !isObj(v.quietHours))
+    throw new Error('invalid preference: "quietHours" must be an object');
+}
+
 /** Directory name under the config dir -> entity kind. */
 export const KIND_DIRS: Record<string, Kind> = {
   sources: "source",
@@ -129,6 +147,7 @@ export function watchConfigDir(
           value = { ...v, id: basename(file, extname(file)) };
       }
       const id = entityId(kind, value);
+      if (kind === "preference") checkPreference(value);
       const key = `${kind}/${id}`;
       const other = [...(owners.get(key) ?? [])].find((f) => f !== file);
       if (other)

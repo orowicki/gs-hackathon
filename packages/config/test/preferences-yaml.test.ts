@@ -71,4 +71,21 @@ describe("config/preferences/*.yaml", () => {
     await until(() => errors.some((m) => /duplicate preference id 'person:anna'/.test(m)));
     await w.close();
   });
+
+  it("moves the entity when ownerId changes, and rejects a malformed body", async () => {
+    dir = await mkdtemp(join(tmpdir(), "cfg-"));
+    await mkdir(join(dir, "preferences"));
+    const file = join(dir, "preferences", "p.yaml");
+    await writeFile(file, body());
+    const store = fakeStore();
+    const errors: string[] = [];
+    const w = watchConfigDir(store, dir, { onError: (e) => errors.push(e.message), debounceMs: 20 });
+    await w.ready;
+    await writeFile(file, body().replace("anna", "bob"));
+    await until(() => store.data.has("preference/person:bob") && !store.data.has("preference/person:anna"));
+    await writeFile(join(dir, "preferences", "norules.yaml"), "ownerType: person\nownerId: carl\n");
+    await until(() => errors.some((m) => /"rules" array/.test(m)));
+    expect(store.data.has("preference/person:carl")).toBe(false);
+    await w.close();
+  });
 });
