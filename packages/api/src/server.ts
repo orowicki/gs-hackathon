@@ -1,5 +1,6 @@
 import http from "node:http";
 import type { ChannelStatus, DeadLetter, Notification } from "@alerting/shared";
+import { HttpIngestRegistry, handleHttpIngest } from "@alerting/ingest";
 import { buildOpenApi } from "./openapi.js";
 import { serveStatic } from "./static.js";
 
@@ -44,8 +45,83 @@ function send(res: http.ServerResponse, status: number, body: unknown): void {
   res.end(payload);
 }
 
+export const MAX_INGEST_BYTES = 10 * 1024 * 1024;
+
+/** Read the request body as UTF-8 text; resolves undefined (and destroys the request) when it exceeds the limit. */
+function readBody(
+  req: http.IncomingMessage,
+  limit: number,
+  onTooBig: () => void,
+): Promise<string | undefined> {
+  return new Promise((resolve, reject) => {
+    const chunks: Buffer[] = [];
+    let size = 0;
+    let done = false;
+    req.on("data", (c: Buffer) => {
+      if (done) return;
+      size += c.length;
+      if (size > limit) {
+        done = true;
+        chunks.length = 0;
+        onTooBig();
+        resolve(undefined);
+        return;
+      }
+      chunks.push(c);
+    });
+    req.on("end", () => {
+      if (!done) resolve(Buffer.concat(chunks).toString("utf8"));
+    });
+    req.on("error", (e) => (done ? undefined : reject(e)));
+  });
+}
+
+function tooLarge(req: http.IncomingMessage, res: http.ServerResponse): void {
+  const payload = JSON.stringify({ error: "payload too large" });
+  res.writeHead(413, {
+    "content-type": "application/json",
+    "content-length": Buffer.byteLength(payload),
+    connection: "close",
+  });
+  res.end(payload, () => req.destroy());
+}
+
+async function handleIngest(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  sourceId: string,
+): Promise<void> {
+  try {
+    if (!HttpIngestRegistry.has(sourceId))
+      return send(res, 404, { error: "unknown source" });
+    const declared = Number(req.headers["content-length"]);
+    if (Number.isFinite(declared) && declared > MAX_INGEST_BYTES)
+      return tooLarge(req, res);
+    let overflow = false;
+    const body = await readBody(req, MAX_INGEST_BYTES, () => {
+      overflow = true;
+      tooLarge(req, res);
+    });
+    if (overflow || body === undefined) return;
+    const type = req.headers["content-type"];
+    const out = await handleHttpIngest(sourceId, body, type);
+    if ("error" in out) {
+      if (out.error === "unknown_source")
+        return send(res, 404, { error: "unknown source" });
+      if (out.error === "empty") return send(res, 400, { error: "empty body" });
+      if (!("message" in out)) return send(res, 500, { error: "internal error" });
+      console.error("ingest emit failed:", out.message);
+      return send(res, 500, { accepted: out.accepted, error: "emit failed" });
+    }
+    send(res, 202, out);
+  } catch (err) {
+    console.error("ingest route failed:", err);
+    send(res, 500, { error: "internal error" });
+  }
+}
+
 export function createServer(deps: Deps): http.Server {
-  return http.createServer((req, res) => {
+  const server = http.createServer((req, res) => {
     const path = (req.url ?? "").split("?")[0];
     if (req.method === "GET" && path === "/health") {
       void (async () => {
@@ -120,6 +196,17 @@ export function createServer(deps: Deps): http.Server {
       res.on("error", cleanup);
       return;
     }
+    const m = req.method === "POST" ? /^\/ingest\/([^/]+)$/.exec(path) : null;
+    if (m) {
+      let id: string;
+      try {
+        id = decodeURIComponent(m[1]!);
+      } catch {
+        return send(res, 400, { error: "bad source id" });
+      }
+      void handleIngest(req, res, id);
+      return;
+    }
     const webDist = deps.webDist ?? process.env.WEB_DIST;
     if (
       webDist &&
@@ -132,4 +219,6 @@ export function createServer(deps: Deps): http.Server {
     }
     send(res, 404, { error: "not found" });
   });
+  server.requestTimeout = 30_000;
+  return server;
 }

@@ -10,6 +10,9 @@ services:
       NTFY_URL: ${NTFY_URL:-http://ntfy:80}
       # Must be reachable from the phone: ntfy action buttons call back to this URL.
       PUBLIC_URL: ${PUBLIC_URL:-http://localhost:3000}
+      CONFIG_DIR: /app/config
+    volumes:
+      - ./config:/app/config
     depends_on:
       postgres:
         condition: service_healthy

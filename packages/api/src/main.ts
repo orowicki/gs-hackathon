@@ -2,6 +2,7 @@ import pg from "pg";
 import { Redis } from "ioredis";
 import { CHANNEL_UI_PUSH } from "@alerting/shared";
 import { createDeliveryQueue, createNtfyChannel, createUiChannel, registerChannel } from "@alerting/delivery";
+import { startIngestService, type IngestService } from "@alerting/ingest";
 import { createServer } from "./server.js";
 
 const port = Number(process.env.PORT ?? 3000);
@@ -94,12 +95,24 @@ const server = createServer({
 
 server.listen(port, () => console.log(`api listening on :${port}`));
 
+// Ingest (sources, http route registry, parse worker) runs in-process: the http plugin registry is per process.
+let ingest: IngestService | undefined;
+if (process.env.DATABASE_URL && process.env.REDIS_URL) {
+  startIngestService({ databaseUrl: process.env.DATABASE_URL, redisUrl: process.env.REDIS_URL })
+    .then((s) => {
+      ingest = s;
+    })
+    .catch((err: unknown) => console.error("ingest failed to start:", err));
+} else {
+  console.log("ingest disabled: DATABASE_URL and REDIS_URL not both set");
+}
+
 function shutdown(): void {
   setTimeout(() => process.exit(0), 3000).unref();
   stopping = true;
   server.close();
   server.closeAllConnections?.();
-  void Promise.allSettled([delivery.stop()])
+  void Promise.allSettled([delivery.stop(), ingest?.stop()])
     .then(() => Promise.allSettled([pool.end(), redis.quit(), deliveryRedis.quit(), subRedis.quit()])).then(() => process.exit(0));
 }
 process.on("SIGTERM", shutdown);
