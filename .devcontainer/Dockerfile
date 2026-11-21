@@ -7,13 +7,15 @@ ENV TZ=${TZ}
 RUN apt-get update && apt-get install -y --no-install-recommends \
       git ca-certificates curl iptables ipset iproute2 dnsutils aggregate jq sudo \
       python3 gh tzdata less procps \
+      postgresql postgresql-client redis-server \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=ghcr.io/astral-sh/uv:0.9.5 /uv /uvx /usr/local/bin/
 RUN npm install -g @anthropic-ai/claude-code rust-just
 
 COPY init-firewall.sh /usr/local/bin/init-firewall.sh
-RUN chmod 755 /usr/local/bin/init-firewall.sh \
+COPY start-services.sh /usr/local/bin/start-services.sh
+RUN chmod 755 /usr/local/bin/init-firewall.sh /usr/local/bin/start-services.sh \
     && echo "node ALL=(root) NOPASSWD: /usr/local/bin/init-firewall.sh" > /etc/sudoers.d/firewall \
     && chmod 0440 /etc/sudoers.d/firewall
 
