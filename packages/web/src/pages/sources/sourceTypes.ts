@@ -1,9 +1,8 @@
-// Mirrors packages/ingest/src/plugins/schemas.ts (no route serves these schemas).
+// Config schemas are NOT kept here: they come from GET /api/source-types (see useSourceTypes).
 // Types mirror packages/shared/src/types/source.ts (web does not depend on @alerting/shared).
 
-export type SourceType = "http" | "file_tail" | "redis_stream";
-export type ParserType = "json" | "logfmt" | "regex" | "raw";
-export const PARSER_TYPES: ParserType[] = ["json", "logfmt", "regex", "raw"];
+export type SourceType = string;
+export type ParserType = string;
 
 export interface ParserConfig {
   type: ParserType;
@@ -35,44 +34,25 @@ export interface JsonSchemaObject {
   additionalProperties?: boolean;
 }
 
-const DRAFT = "https://json-schema.org/draft/2020-12/schema";
-
-export const HTTP_CONFIG_SCHEMA: JsonSchemaObject = {
-  $schema: DRAFT,
-  type: "object",
-  properties: {},
-  additionalProperties: false,
-};
-
-export const FILE_TAIL_CONFIG_SCHEMA: JsonSchemaObject = {
-  $schema: DRAFT,
-  type: "object",
-  properties: { path: { type: "string", title: "Path or glob", minLength: 1 } },
-  required: ["path"],
-  additionalProperties: false,
-};
-
-export const REDIS_STREAM_CONFIG_SCHEMA: JsonSchemaObject = {
-  $schema: DRAFT,
-  type: "object",
-  properties: {
-    stream: { type: "string", title: "Stream key", minLength: 1 },
-    consumerGroup: { type: "string", title: "Consumer group", minLength: 1 },
-  },
-  required: ["stream", "consumerGroup"],
-  additionalProperties: false,
-};
-
-export const SOURCE_TYPE_SCHEMAS: Record<SourceType, JsonSchemaObject> = {
-  http: HTTP_CONFIG_SCHEMA,
-  file_tail: FILE_TAIL_CONFIG_SCHEMA,
-  redis_stream: REDIS_STREAM_CONFIG_SCHEMA,
-};
-
-export const SOURCE_TYPE_LABELS: Record<SourceType, string> = {
+/** Optional display labels (UI metadata only); unknown types fall back to the type id. */
+const SOURCE_TYPE_LABELS: Record<string, string> = {
   http: "HTTP ingest",
   file_tail: "File tail",
   redis_stream: "Redis stream",
 };
+
+export function sourceTypeLabel(type: string): string {
+  return SOURCE_TYPE_LABELS[type] ?? type;
+}
+
+export interface SourceTypeInfo {
+  type: string;
+  configSchema: JsonSchemaObject;
+}
+
+export interface SourceTypesResponse {
+  sourceTypes: SourceTypeInfo[];
+  parserConfigSchema: JsonSchemaObject;
+}
 
 export const RESERVED_IDS = ["import", "export", "test"];

@@ -80,7 +80,7 @@ export function SchemasListPage() {
         </p>
       )}
       {importOpen && (
-        <section className="panel" aria-label="Import schema">
+        <section className="cfg-panel" aria-label="Import schema">
           <div className="field">
             <label htmlFor="import-yaml">Schema YAML</label>
             <textarea
@@ -216,7 +216,7 @@ function ValueMapEditor({
         Value map: translate source values (from) into common values (to).
       </span>
       {entries.map(([from, to], i) => (
-        <div className="field-row" key={i}>
+        <div className="cfg-row" key={i}>
           <input
             type="text"
             aria-label={`${field} value map from ${i + 1}`}
@@ -346,7 +346,7 @@ function MappingRow({
           <Icon as={Trash2} />
         </button>
       </h3>
-      <div className="field-row">
+      <div className="cfg-row">
         <select
           aria-label={`Kind for ${name}`}
           value={mapping.kind}
@@ -368,7 +368,7 @@ function MappingRow({
       {mapping.kind === "template" && (
         <span className="hint">{TEMPLATE_HINT}</span>
       )}
-      <div className="field-row">
+      <div className="cfg-row">
         <label htmlFor={`default-${name}`} className="hint">
           Default
         </label>
@@ -666,7 +666,7 @@ function SchemaEditForm() {
         </pre>
       )}
 
-      <section className="panel" aria-label="Schema settings">
+      <section className="cfg-panel" aria-label="Schema settings">
         <div className="field">
           <label htmlFor="sch-id">Id</label>
           <input
@@ -696,7 +696,7 @@ function SchemaEditForm() {
       </section>
 
       <div className="sch-grid">
-        <section className="panel" aria-label="Sample event">
+        <section className="cfg-panel" aria-label="Sample event">
           <div className="field">
             <label htmlFor="sch-sample">Sample event (JSON)</label>
             <textarea
@@ -732,7 +732,7 @@ function SchemaEditForm() {
           )}
         </section>
 
-        <section className="panel" aria-label="Field mappings">
+        <section className="cfg-panel" aria-label="Field mappings">
           <h2>Common fields</h2>
           <div className="field">
             <label htmlFor="sch-add-field">Common field to map</label>
@@ -779,7 +779,7 @@ function SchemaEditForm() {
         </section>
       </div>
 
-      <section className="panel" aria-label="Test result">
+      <section className="cfg-panel" aria-label="Test result">
         <h2>Test result</h2>
         {!sample.obj && (
           <p className="muted">Paste a sample event to see how it maps.</p>

@@ -13,6 +13,51 @@ interface Src {
   config: Record<string, unknown>;
 }
 
+const DRAFT = "https://json-schema.org/draft/2020-12/schema";
+
+// Fixtures equal to what GET /api/source-types serves (packages/ingest/src/plugins/schemas.ts).
+const SOURCE_TYPES_RESPONSE = {
+  sourceTypes: [
+    {
+      type: "http",
+      configSchema: { $schema: DRAFT, type: "object", properties: {}, additionalProperties: false },
+    },
+    {
+      type: "file_tail",
+      configSchema: {
+        $schema: DRAFT,
+        type: "object",
+        properties: { path: { type: "string", title: "Path or glob", minLength: 1 } },
+        required: ["path"],
+        additionalProperties: false,
+      },
+    },
+    {
+      type: "redis_stream",
+      configSchema: {
+        $schema: DRAFT,
+        type: "object",
+        properties: {
+          stream: { type: "string", title: "Stream key", minLength: 1 },
+          consumerGroup: { type: "string", title: "Consumer group", minLength: 1 },
+        },
+        required: ["stream", "consumerGroup"],
+        additionalProperties: false,
+      },
+    },
+  ],
+  parserConfigSchema: {
+    $schema: DRAFT,
+    type: "object",
+    properties: {
+      type: { type: "string", enum: ["json", "logfmt", "regex", "raw"] },
+      pattern: { type: "string", title: "Regex with named groups (regex parser only)" },
+    },
+    required: ["type"],
+    additionalProperties: false,
+  },
+};
+
 const YAML = "id: web-logs\nname: Web logs\nenabled: true\n";
 
 async function mockApi(page: Page) {
@@ -35,6 +80,7 @@ async function mockApi(page: Page) {
     const m = req.method();
     const json = (status: number, body: unknown) =>
       route.fulfill({ status, contentType: "application/json", body: JSON.stringify(body) });
+    if (p === "/api/source-types" && m === "GET") return json(200, SOURCE_TYPES_RESPONSE);
     if (p === "/api/sources" && m === "GET") return json(200, sources);
     if (p === "/api/sources" && m === "POST") {
       const s = req.postDataJSON() as Src;
@@ -94,7 +140,7 @@ for (const scheme of ["light", "dark"] as const) {
       await page.getByRole("button", { name: "Save" }).click();
       await expect(page.getByText("This field is required.")).toBeVisible();
       await page.getByLabel("Path or glob").fill("/tmp/x.log");
-      await page.getByLabel("Parser", { exact: true }).selectOption("logfmt");
+      await page.locator("#parser-type").selectOption("logfmt");
       await page.getByLabel("Sample line").fill("level=warn msg=hi");
       await expect(page.getByLabel("Parsed result")).toContainText('"level": "warn"');
       await page.getByRole("button", { name: "Save" }).click();

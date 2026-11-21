@@ -5,13 +5,12 @@ import { Icon } from "../../components/Icon";
 import { getJson, getText, sendJson, sendText } from "./api";
 import { SchemaForm, validateConfig } from "./SchemaForm";
 import {
-  PARSER_TYPES,
   RESERVED_IDS,
-  SOURCE_TYPE_LABELS,
-  SOURCE_TYPE_SCHEMAS,
+  sourceTypeLabel,
+  type JsonSchemaObject,
   type ParserConfig,
   type Source,
-  type SourceType,
+  type SourceTypesResponse,
 } from "./sourceTypes";
 import "./sources.css";
 
@@ -59,7 +58,7 @@ export function SourcesListPage() {
       </div>
       {error && <p className="form-error" role="alert">{error}</p>}
       {importOpen && (
-        <section className="panel" aria-label="Import source">
+        <section className="cfg-panel" aria-label="Import source">
           <div className="field">
             <label htmlFor="import-yaml">Source YAML</label>
             <textarea id="import-yaml" value={yaml} onChange={(e) => setYaml(e.target.value)} />
@@ -91,7 +90,7 @@ export function SourcesListPage() {
                 <Link to={`/config/sources/${encodeURIComponent(s.id)}`}>{s.name}</Link>
                 <div className="muted mono">{s.id}</div>
               </div>
-              <span className="badge">{SOURCE_TYPE_LABELS[s.type]}</span>
+              <span className="badge">{sourceTypeLabel(s.type)}</span>
               <span className="badge">{s.parser.type}</span>
               <span className={s.enabled ? "badge on" : "badge"}>{s.enabled ? "Enabled" : "Disabled"}</span>
             </li>
@@ -100,6 +99,25 @@ export function SourcesListPage() {
       )}
     </main>
   );
+}
+
+/** Fetches GET /api/source-types once; `reload` retries after an error. */
+function useSourceTypes() {
+  const [data, setData] = useState<SourceTypesResponse | null>(null);
+  const [error, setError] = useState("");
+  const [attempt, setAttempt] = useState(0);
+  useEffect(() => {
+    let live = true;
+    setError("");
+    getJson<SourceTypesResponse>("/api/source-types").then(
+      (r) => live && setData(r),
+      (e: Error) => live && setError(e.message),
+    );
+    return () => {
+      live = false;
+    };
+  }, [attempt]);
+  return { data, error, reload: () => setAttempt((a) => a + 1) };
 }
 
 function blank(): Source {
@@ -170,7 +188,7 @@ function MessageStream({ id, parser }: { id: string; parser: ParserConfig }) {
     return () => es.close();
   }, [id]);
   return (
-    <section className="panel" aria-label="Incoming messages">
+    <section className="cfg-panel" aria-label="Incoming messages">
       <h2>Incoming messages</h2>
       {lines.length === 0 ? (
         <p className="muted">Waiting for messages…</p>
@@ -214,19 +232,48 @@ function SourceEditForm() {
     };
   }, [isNew, routeId]);
 
+  const types = useSourceTypes();
+  const firstType = types.data?.sourceTypes[0]?.type;
+  useEffect(() => {
+    // New source: default to the first type the server offers.
+    if (!isNew || !types.data) return;
+    setSrc((cur) =>
+      cur && !types.data!.sourceTypes.some((t) => t.type === cur.type) && firstType
+        ? { ...cur, type: firstType, config: {} }
+        : cur,
+    );
+  }, [isNew, types.data, firstType]);
+
   const parsed = useParsed(src?.parser ?? { type: "json" }, sample);
 
-  if (!src) {
+  if (!src || !types.data) {
+    const msg = error || types.error;
     return (
       <main className="page">
         <Link to="/config/sources">← Back to sources</Link>
-        {error ? <p className="form-error" role="alert">{error}</p> : <p className="muted">Loading…</p>}
+        {msg ? (
+          <>
+            <p className="form-error" role="alert">{msg}</p>
+            {types.error && !error && (
+              <div className="actions">
+                <button type="button" className="btn" onClick={types.reload}>
+                  Retry
+                </button>
+              </div>
+            )}
+          </>
+        ) : (
+          <p className="muted">Loading…</p>
+        )}
       </main>
     );
   }
+  const sourceTypes = types.data.sourceTypes;
+  const parserTypes = types.data.parserConfigSchema.properties.type?.enum?.map(String) ?? [];
 
   const patch = (p: Partial<Source>) => setSrc({ ...src, ...p } as Source);
-  const schema = SOURCE_TYPE_SCHEMAS[src.type];
+  const emptySchema: JsonSchemaObject = { type: "object", properties: {} };
+  const schema = sourceTypes.find((t) => t.type === src.type)?.configSchema ?? emptySchema;
 
   const save = async () => {
     setError("");
@@ -297,7 +344,7 @@ function SourceEditForm() {
       {error && <p className="form-error" role="alert">{error}</p>}
       {yaml && <pre className="preview" aria-label="Exported YAML">{yaml}</pre>}
 
-      <section className="panel" aria-label="Source settings">
+      <section className="cfg-panel" aria-label="Source settings">
         <div className="field">
           <label htmlFor="src-id">Id</label>
           <input
@@ -325,14 +372,17 @@ function SourceEditForm() {
             value={src.type}
             onChange={(e) => {
               setFieldErrors({});
-              patch({ type: e.target.value as SourceType, config: {} });
+              patch({ type: e.target.value, config: {} });
             }}
           >
-            {(Object.keys(SOURCE_TYPE_SCHEMAS) as SourceType[]).map((t) => (
-              <option key={t} value={t}>
-                {SOURCE_TYPE_LABELS[t]}
+            {sourceTypes.map((t) => (
+              <option key={t.type} value={t.type}>
+                {sourceTypeLabel(t.type)}
               </option>
             ))}
+            {!sourceTypes.some((t) => t.type === src.type) && (
+              <option value={src.type}>{sourceTypeLabel(src.type)}</option>
+            )}
           </select>
         </div>
         <SchemaForm
@@ -344,18 +394,18 @@ function SourceEditForm() {
         />
       </section>
 
-      <section className="panel" aria-label="Parser">
+      <section className="cfg-panel" aria-label="Parser">
         <div className="field">
           <label htmlFor="parser-type">Parser</label>
           <select
             id="parser-type"
             value={src.parser.type}
             onChange={(e) => {
-              const type = e.target.value as ParserConfig["type"];
+              const type = e.target.value;
               patch({ parser: type === "regex" ? { type, pattern: src.parser.pattern ?? "" } : { type } });
             }}
           >
-            {PARSER_TYPES.map((p) => (
+            {(parserTypes.includes(src.parser.type) ? parserTypes : [...parserTypes, src.parser.type]).map((p) => (
               <option key={p} value={p}>
                 {p}
               </option>

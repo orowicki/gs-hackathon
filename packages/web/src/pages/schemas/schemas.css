@@ -69,10 +69,10 @@
   gap: var(--space-2);
   align-items: center;
 }
-.sch-map .field-row > * {
+.sch-map .cfg-row > * {
   min-width: 0;
 }
-.sch-map .field-row input {
+.sch-map .cfg-row input {
   flex: 1;
   font: inherit;
   color: var(--text);
@@ -81,7 +81,7 @@
   border-radius: var(--radius);
   padding: var(--space-1) var(--space-2);
 }
-.sch-map .field-row select {
+.sch-map .cfg-row select {
   font: inherit;
   color: var(--text);
   background: var(--bg);
