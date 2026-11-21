@@ -194,11 +194,9 @@ export function FeedPage() {
 
   const selectProfile = (id: string) => {
     setProfileId(id);
-    try {
-      localStorage.setItem(PROFILE_KEY, id);
-    } catch {
-      /* ignore */
-    }
+    // readLocal() parses JSON, so store JSON (a raw id made every reload fall back
+    // to the first person, and that person's starred filters).
+    writeLocal(PROFILE_KEY, id);
   };
 
   const setQ = useCallback(

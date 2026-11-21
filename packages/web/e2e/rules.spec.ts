@@ -83,6 +83,17 @@ for (const scheme of ["light", "dark"] as const) {
       await page.getByRole("button", { name: /Failed settlement workflows/ }).click();
       await expect(page.getByLabel("Name", { exact: true })).toHaveValue("Failed settlement workflows");
 
+      // Paste YAML opens the editor for review; nothing is saved until Save rule.
+      await page.getByRole("radio", { name: /Paste YAML/ }).click();
+      await page.getByLabel("Rule YAML").fill("id: pasted\nname: Pasted rule\nwhen: alert.severity = critical\n");
+      await page.getByRole("button", { name: "Review rule" }).click();
+      await expect(page.getByLabel("Name", { exact: true })).toHaveValue("Pasted rule");
+      await expect(page.getByText("Imported. Check the rule below, then save it.")).toBeVisible();
+      expect(saves.length).toBe(2);
+      await page.getByRole("button", { name: "Save rule" }).click();
+      await expect.poll(() => saves.length).toBe(3);
+      expect(saves[2]).toMatchObject({ id: "pasted", name: "Pasted rule", when: "alert.severity = critical" });
+
       await page.goto("/rules/r1");
       await page.getByRole("button", { name: "Accept" }).click();
       await expect(page.getByText("Also page the DBA group")).toHaveCount(0);

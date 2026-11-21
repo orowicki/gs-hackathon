@@ -8,6 +8,7 @@ import {
 } from "./api";
 import { relativeTime, statusColor } from "./format";
 import "./channels.css";
+import { channelLabel } from "../../channels";
 
 export function ChannelsPage() {
   const [channels, setChannels] = useState<ChannelStatus[]>([]);
@@ -105,7 +106,7 @@ export function ChannelsPage() {
           <tbody>
             {channels.map((c) => (
               <tr key={c.id}>
-                <td className="mono">{c.id}</td>
+                <td>{channelLabel(c.id)}</td>
                 <td
                   className="channels-status"
                   style={{ color: statusColor(c.healthy) }}
@@ -149,7 +150,7 @@ export function ChannelsPage() {
             {letters.map((d) => (
               <tr key={d.id}>
                 <td title={d.failedAt}>{relativeTime(d.failedAt)}</td>
-                <td className="mono">{d.notification.channel}</td>
+                <td>{channelLabel(d.notification.channel)}</td>
                 <td className="mono">{d.notification.recipientId}</td>
                 <td>{d.notification.title || d.notification.id}</td>
                 <td>{d.error}</td>

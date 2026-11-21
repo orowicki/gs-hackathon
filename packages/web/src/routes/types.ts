@@ -22,4 +22,6 @@ export interface RouteDef {
   element: ReactNode;
   order?: number;
   nav?: NavEntry;
+  /** Last breadcrumb for a page that isn't in the sidebar ("New rule" under Rules). */
+  crumb?: string;
 }

@@ -123,7 +123,7 @@ export function PeoplePage() {
                 <th>Name</th>
                 <th>Role</th>
                 <th>Can create rules</th>
-                <th>ntfy topic</th>
+                <th>Phone topic</th>
                 <th>
                   <span className="sr-only">Actions</span>
                 </th>
@@ -290,7 +290,7 @@ function PersonForm(props: { initial: PersonDraft; busy: boolean; onSave: (d: Pe
         Can create rules
       </label>
       <label>
-        ntfy topic
+        Phone topic (ntfy)
         <input
           type="text"
           className="mono"

@@ -16,6 +16,7 @@ import {
   type QuietForm,
 } from "./grid";
 import "./my-notifications.css";
+import { channelLabel } from "../../channels";
 
 const PROFILE_KEY = "alerting.profile";
 
@@ -159,12 +160,12 @@ export function MyNotificationsPage() {
           )}
           {defaultsHint && (
             <p className="muted">
-              No preferences saved yet. Defaults apply: ui always, ntfy for error and critical when you have an ntfy topic.
+              No preferences saved yet. Defaults apply: Dashboard always, Phone for error and critical when you have a phone topic.
             </p>
           )}
           {lossy && <p className="mn-note">Some rules can't be shown in the grid; they are kept after the grid rules.</p>}
 
-          {!person.ntfyTopic && <p className="muted">Set an ntfy topic in People &amp; groups to use ntfy</p>}
+          {!person.ntfyTopic && <p className="muted">Set a phone topic in People &amp; groups to get alerts on your phone</p>}
 
           <table className="mn-grid">
             <thead>
@@ -172,7 +173,7 @@ export function MyNotificationsPage() {
                 <th scope="col">Severity</th>
                 {CHANNELS.map((c) => (
                   <th key={c} scope="col">
-                    {c}
+                    {channelLabel(c)}
                   </th>
                 ))}
               </tr>
@@ -187,7 +188,7 @@ export function MyNotificationsPage() {
                     <td key={c}>
                       <input
                         type="checkbox"
-                        aria-label={`${sev} via ${c}`}
+                        aria-label={`${sev} via ${channelLabel(c)}`}
                         checked={grid[sev].includes(c)}
                         disabled={gridDisabled || (c === "ntfy" && !person.ntfyTopic)}
                         onChange={(e) => setCell(sev, c, e.target.checked)}
@@ -243,12 +244,12 @@ export function MyNotificationsPage() {
                     <label key={c} className="mn-inline">
                       <input
                         type="checkbox"
-                        aria-label={`allow ${c} during quiet hours`}
+                        aria-label={`allow ${channelLabel(c)} during quiet hours`}
                         checked={quiet.allowChannels.includes(c)}
                         disabled={c === "ntfy" && !person.ntfyTopic}
                         onChange={(e) => patchQuiet({ allowChannels: toggle(quiet.allowChannels, c, e.target.checked) })}
                       />
-                      <span>{c}</span>
+                      <span>{channelLabel(c)}</span>
                     </label>
                   ))}
                 </div>
