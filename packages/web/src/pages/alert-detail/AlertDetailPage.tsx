@@ -146,11 +146,14 @@ function StepList({
   steps,
   run,
   busy,
+  locked,
   onDecide,
 }: {
   steps: Array<{ index: number; name?: string; approval?: string; if?: string; retries?: number }>;
   run?: RunbookRun;
   busy: boolean;
+  /** The alert is resolved: waiting steps can no longer be decided. */
+  locked?: boolean;
   onDecide(index: number, decision: "approve" | "skip"): void;
 }) {
   return (
@@ -177,7 +180,9 @@ function StepList({
                 </span>
               ) : null}
               {st?.result ? <span className="muted step-result">{st.result}</span> : null}
-              {state === "awaiting_approval" ? (
+              {state === "awaiting_approval" && locked ? (
+                <span className="muted step-result">Not decided: the alert was resolved.</span>
+              ) : state === "awaiting_approval" ? (
                 <span className="actions step-actions">
                   <button type="button" className="btn primary solid" disabled={busy} onClick={() => onDecide(planned.index, "approve")}>
                     Approve
@@ -204,12 +209,14 @@ function Runbooks({
   alertId,
   matched,
   runs,
+  resolved,
   onRun,
   onRemovedChange,
 }: {
   alertId: string;
   matched: MatchedRunbook[] | null;
   runs: RunbookRun[] | null;
+  resolved?: boolean;
   onRun(run: RunbookRun): void;
   onRemovedChange(runbookId: string, removed: boolean): void;
 }) {
@@ -309,6 +316,7 @@ function Runbooks({
                     steps={m.steps ?? []}
                     run={run}
                     busy={busy !== null}
+                    locked={resolved}
                     onDecide={(i, d) => runAction(`${m.id}:${i}`, () => decideStep(alertId, m.id, i, d))}
                   />
                 )}
@@ -325,6 +333,7 @@ function Runbooks({
                 steps={r.steps.map((st) => ({ index: st.index, name: st.name }))}
                 run={r}
                 busy={busy !== null}
+                locked={resolved}
                 onDecide={(i, d) => runAction(`${r.runbookId}:${i}`, () => decideStep(alertId, r.runbookId, i, d))}
               />
             </li>
@@ -1012,6 +1021,7 @@ export function AlertDetailPage() {
         alertId={id}
         matched={matched}
         runs={runs}
+        resolved={state === "resolved"}
         onRun={upsertRun}
         onRemovedChange={(runbookId, removed) => {
           setMatched((prev) => prev?.map((m) => (m.id === runbookId ? { ...m, removed } : m)) ?? prev);

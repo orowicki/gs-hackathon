@@ -21,7 +21,13 @@ describe("runbook http routes", () => {
     actions: createDefaultActions({ notifyGroup: async (g) => (notified.push(g), `notified group ${g} (3 people)`) }),
     retryDelayMs: 0,
   });
-  const routes = createRunbookRoutes({ runner: r });
+  // Alerts the routes know about; a-res is resolved. Unknown ids are 404.
+  const alerts = new Map<string, Alert>();
+  const routes = createRunbookRoutes({
+    runner: r,
+    loadAlert: async (id) => alerts.get(id),
+    getGroup: async (id) => (id === "settlements-oncall" ? { memberIds: ["p-alice", "bob"] } : undefined),
+  });
 
   beforeAll(async () => {
     demo = await loadDemo();
@@ -36,7 +42,9 @@ describe("runbook http routes", () => {
     runbook = v.runbook as AutomationRunbook;
     server = http.createServer((req, res) => {
       const url = new URL(req.url ?? "/", "http://x");
-      routes.handle(req, res, url).then((h) => {
+      // Stands in for the API's accounts hook (signed-in account).
+      const account = req.headers["x-account"] as string | undefined;
+      routes.handle(req, res, url, account).then((h) => {
         if (!h) {
           res.writeHead(404);
           res.end();
@@ -51,20 +59,21 @@ describe("runbook http routes", () => {
     await demo.close();
   });
 
-  const startRun = (id: string) => {
-    const alert = { ...(workflowAlert() as Alert), id };
+  const startRun = (id: string, state: Alert["state"] = "open") => {
+    const alert = { ...(workflowAlert() as Alert), id, state };
+    alerts.set(id, alert);
     return r.start(runbook, { alert, event: workflowEvent() });
   };
   const get = async (p: string) => {
     const res = await fetch(base + p);
     return { status: res.status, type: res.headers.get("content-type"), json: (await res.json()) as any };
   };
-  const post = async (p: string, body?: string) => {
-    const res = await fetch(base + p, { method: "POST", body });
+  const post = async (p: string, body?: string, account: string | null = "p-alice") => {
+    const res = await fetch(base + p, { method: "POST", body, headers: account ? { "x-account": account } : {} });
     return { status: res.status, json: (await res.json()) as any };
   };
 
-  it("lists runs and approvals, approves with empty body as anonymous", async () => {
+  it("lists runs and approvals, approves as the signed-in member", async () => {
     await startRun("a-1");
     const runs = await get("/api/alerts/a-1/runbook-runs");
     expect(runs.status).toBe(200);
@@ -77,21 +86,22 @@ describe("runbook http routes", () => {
 
     const appr = await get("/api/approvals");
     expect(appr.json.map((a: any) => [a.alertId, a.stepIndex])).toContainEqual(["a-1", 2]);
+    expect(appr.json.find((a: any) => a.alertId === "a-1").approvers).toBe("settlements-oncall");
 
     const ok = await post("/api/alerts/a-1/runbook-steps/2/approve");
     expect(ok.status).toBe(200);
     expect(ok.json.status).toBe("done");
     const audit = { json: (await store.listAudit({ alertId: "a-1" })) as any[] };
-    expect(audit.json.find((e: any) => e.action === "step_approved").actor).toBe("anonymous");
+    expect(audit.json.find((e: any) => e.action === "step_approved").actor).toBe("p-alice");
 
     const again = await post("/api/alerts/a-1/runbook-steps/2/approve");
     expect(again.status).toBe(409);
     expect(again.json.code).toBe("not_awaiting");
   });
 
-  it("records the actor in the audit log", async () => {
+  it("records the signed-in account in the audit log, not a claimed body actor", async () => {
     await startRun("a-2");
-    const ok = await post("/api/alerts/a-2/runbook-steps/2/approve", JSON.stringify({ actor: "p-alice" }));
+    const ok = await post("/api/alerts/a-2/runbook-steps/2/approve", JSON.stringify({ actor: "mallory" }));
     expect(ok.status).toBe(200);
     const audit = { json: (await store.listAudit({ alertId: "a-2" })) as any[] };
     expect(audit.json.filter((e: any) => e.action === "step_executed")).toHaveLength(4); // health, retry attempt 1, retry attempt 2, escalate
@@ -106,7 +116,7 @@ describe("runbook http routes", () => {
 
   it("supports skip, query params and error codes", async () => {
     await startRun("a-3");
-    const skipped = await post("/api/alerts/a-3/runbook-steps/2/approve?actor=bob", JSON.stringify({ decision: "skip" }));
+    const skipped = await post("/api/alerts/a-3/runbook-steps/2/approve?actor=mallory", JSON.stringify({ decision: "skip" }), "bob");
     expect(skipped.status).toBe(200);
     expect(skipped.json.steps[2].state).toBe("skipped");
     const audit = { json: (await store.listAudit({ alertId: "a-3" })) as any[] };
@@ -119,5 +129,56 @@ describe("runbook http routes", () => {
     expect(nf.status).toBe(404);
     expect(nf.json.code).toBe("not_found");
     expect((await post("/api/alerts/a-3/runbook-steps/2/approve?runbookId=zzz")).status).toBe(404);
+  });
+
+  it("refuses anyone not signed in or outside the approvers group, without touching the step", async () => {
+    await startRun("a-4");
+    for (const [body, account] of [
+      [undefined, null],
+      [JSON.stringify({ actor: "p-alice" }), null],
+      [JSON.stringify({ decision: "skip" }), null],
+    ] as const) {
+      const res = await post("/api/alerts/a-4/runbook-steps/2/approve", body, account);
+      expect(res.status).toBe(403);
+      expect(res.json.code).toBe("forbidden");
+    }
+    for (const decision of ["approve", "skip"]) {
+      const res = await post("/api/alerts/a-4/runbook-steps/2/approve", JSON.stringify({ decision }), "p-carol");
+      expect(res.status).toBe(403);
+      expect(res.json.code).toBe("forbidden");
+    }
+    const runs = await get("/api/alerts/a-4/runbook-runs");
+    expect(runs.json[0].steps[2].state).toBe("awaiting_approval");
+    const audit = await store.listAudit({ alertId: "a-4" });
+    expect(audit.some((e) => e.action === "step_approved" || e.action === "step_skipped")).toBe(false);
+    // A member still can.
+    expect((await post("/api/alerts/a-4/runbook-steps/2/approve", undefined, "bob")).status).toBe(200);
+  });
+
+  it("fails closed when the approvers group is unknown", async () => {
+    const orphan: AutomationRunbook = {
+      ...runbook,
+      id: "rb-orphan-group",
+      steps: [{ action: "wait", name: "Hold", duration: "0s", approval: "required", approvers: "no-such-group" }],
+    };
+    const alert = { ...(workflowAlert() as Alert), id: "a-5", state: "open" as const };
+    alerts.set("a-5", alert);
+    await r.start(orphan, { alert, event: workflowEvent() });
+    const res = await post("/api/alerts/a-5/runbook-steps/0/approve", JSON.stringify({ runbookId: orphan.id }));
+    expect(res.status).toBe(403);
+  });
+
+  it("drops steps of resolved alerts from approvals and refuses to approve them", async () => {
+    await startRun("a-6");
+    await startRun("a-7");
+    alerts.set("a-6", { ...alerts.get("a-6")!, state: "resolved" });
+    alerts.delete("a-7"); // gone entirely
+    const ids = (await get("/api/approvals")).json.map((a: any) => a.alertId);
+    expect(ids).not.toContain("a-6");
+    expect(ids).not.toContain("a-7");
+    const res = await post("/api/alerts/a-6/runbook-steps/2/approve");
+    expect(res.status).toBe(409);
+    expect(res.json.code).toBe("alert_resolved");
+    expect((await get("/api/alerts/a-6/runbook-runs")).json[0].steps[2].state).toBe("awaiting_approval");
   });
 });

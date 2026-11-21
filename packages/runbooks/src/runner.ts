@@ -5,7 +5,7 @@ import type { ListAuditOptions, RunStore, StoredRun } from "./store.js";
 import { renderTemplate, type TemplateContext } from "./template.js";
 import { conditionContext, evaluateCondition } from "./conditions.js";
 
-export type RunnerErrorCode = "not_found" | "not_awaiting" | "ambiguous";
+export type RunnerErrorCode = "not_found" | "not_awaiting" | "ambiguous" | "forbidden";
 export class RunnerError extends Error {
   constructor(
     public readonly code: RunnerErrorCode,
@@ -33,6 +33,11 @@ export interface ApproveOptions {
   actor: string;
   runbookId?: string;
   decision?: "approve" | "skip";
+  /**
+   * Checked once the waiting step is found and before anything changes; throw (e.g. RunnerError "forbidden")
+   * to refuse. Sees the run's runbook snapshot, so the approvers that apply are the ones the run started with.
+   */
+  authorize?: (run: StoredRun, stepIndex: number) => void | Promise<void>;
 }
 export interface Runner {
   start(runbook: AutomationRunbook, template: TemplateContext & { alert: Alert }): Promise<StoredRun>;
@@ -269,6 +274,7 @@ export function createRunner(opts: RunnerOptions): Runner {
       if (run.steps[stepIndex]?.state !== "awaiting_approval") {
         throw new RunnerError("not_awaiting", `step ${stepIndex} of ${run.runbookId} is not awaiting approval`);
       }
+      if (o.authorize) await o.authorize(structuredClone(run), stepIndex);
       const name = stepDisplayName(run.runbook.steps[stepIndex]!, run.template);
       if (decision === "skip") {
         setStep(run, stepIndex, "skipped", `skipped by ${o.actor}`);

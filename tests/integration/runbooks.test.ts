@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
 import type { AddressInfo } from "node:net";
-import type { Server } from "node:http";
+import type { IncomingMessage, Server, ServerResponse } from "node:http";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import pg from "pg";
 import { Redis } from "ioredis";
@@ -222,7 +222,17 @@ describe.skipIf(!DATABASE_URL || !REDIS_URL)("Appendix B runbooks end to end (SP
     server = createServer({
       checkPostgres: async () => true,
       checkRedis: async () => true,
-      runbooks: createRunbookRoutes({ runner, registry: { get: (id) => runbooks.find((r) => r.id === id) } }),
+      // No config store here, so there is no accounts hook: stand in for it with the X-Account header.
+      runbooks: ((routes) => ({
+        handle: (req: IncomingMessage, res: ServerResponse, url: URL) =>
+          routes.handle(req, res, url, req.headers["x-account"] as string | undefined),
+      }))(
+        createRunbookRoutes({
+          runner,
+          registry: { get: (id) => runbooks.find((r) => r.id === id) },
+          getGroup: async (id) => (id === "settlements-oncall" ? { memberIds: ["p-alice"] } : undefined),
+        }),
+      ),
       alerts: { ...stores, events, publish: () => {} },
     });
     await new Promise<void>((r) => server!.listen(0, r));
@@ -233,8 +243,8 @@ describe.skipIf(!DATABASE_URL || !REDIS_URL)("Appendix B runbooks end to end (SP
 
     const res = await fetch(`${base}/api/alerts/${alert.id}/runbook-steps/2/approve`, {
       method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ actor: "p-alice" }),
+      headers: { "content-type": "application/json", "x-account": "p-alice" },
+      body: "{}",
     });
     expect(res.status).toBe(200);
     expect((await runner.listRuns(alert.id))[0]!.status).toBe("done");
