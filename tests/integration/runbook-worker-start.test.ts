@@ -130,17 +130,19 @@ describe.skipIf(!DATABASE_URL || !REDIS_URL)("runbook worker process (two instan
     const alertId = res.alerts[0]!.id;
     alertIds.push(alertId);
 
+    // Poll until the run finished and its step audit exists.
     await waitFor(async () => {
-      const r = await pool.query("SELECT 1 FROM runbook_runs WHERE alert_id = $1", [alertId]);
-      return r.rowCount ? true : undefined;
-    });
-    // Give a second consumer the chance to (wrongly) pick the entry up too.
-    await new Promise((r) => setTimeout(r, 1500));
+      const r = await pool.query("SELECT status FROM runbook_runs WHERE alert_id = $1", [alertId]);
+      return r.rows[0]?.status === "done" ? true : undefined;
+    }, 15_000);
+    const stepAudit = () =>
+      pool.query("SELECT 1 FROM alert_audit WHERE alert_id = $1 AND action = 'step_executed'", [alertId]);
+    await waitFor(async () => ((await stepAudit()).rowCount ? true : undefined), 15_000);
 
     const runs = await pool.query("SELECT runbook_id FROM runbook_runs WHERE alert_id = $1", [alertId]);
     expect(runs.rows.map((r: { runbook_id: string }) => r.runbook_id)).toEqual([runbookId]);
-    const audit = await pool.query("SELECT 1 FROM alert_audit WHERE alert_id = $1 AND action = 'step_executed'", [alertId]);
-    expect(audit.rowCount).toBeGreaterThan(0);
+    // runner.start is idempotent, so a second handler would not add a run; it would execute the step again.
+    expect((await stepAudit()).rowCount).toBe(1);
     expect(errors).toEqual([]);
   });
 });

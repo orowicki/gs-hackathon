@@ -1,3 +1,4 @@
+import { hostname } from "node:os";
 import pg from "pg";
 import { Redis } from "ioredis";
 import { createConfigStore, migrate } from "@alerting/config";
@@ -10,7 +11,7 @@ export interface RunbookWorkerProcessOptions {
   databaseUrl: string;
   /** Consumer group on the alerts stream (default "runbooks"; each alert's runbooks run once per group). */
   group?: string;
-  /** Unique per instance (default host-pid). */
+  /** Unique per instance (default: hostname, stable across restarts so pending entries are re-read). */
   consumer?: string;
   onError?: (err: unknown) => void;
 }
@@ -41,7 +42,7 @@ export async function startRunbookWorkerProcess(o: RunbookWorkerProcessOptions):
       loadAlert: runtime.loadAlert,
       loadEvent: runtime.loadEvent,
       group: o.group,
-      consumer: o.consumer,
+      consumer: o.consumer ?? hostname(),
       onError,
     });
   } catch (err) {
