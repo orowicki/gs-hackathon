@@ -678,6 +678,8 @@ a.crumb:hover {
 .stat.lit.sev-critical { background: var(--critical-fill); }
 .stat.lit.sev-error { background: var(--error-fill); }
 .stat.lit.sev-warning { background: var(--warning-fill); }
+.stat.lit.sev-warning .stat-label,
+.stat.lit.sev-warning .stat-value { color: var(--on-warning-fill); }
 .stat.lit.sev-info { background: var(--info-fill); }
 
 /* The panel matching the current filter: a ring in the text colour. Others step back. */

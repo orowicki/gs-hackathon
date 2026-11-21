@@ -118,7 +118,7 @@
 .sev-badge { font-family: var(--font-mono); color: var(--on-fill); background: var(--info-fill); }
 .sev-badge.sev-critical { background: var(--critical-fill); }
 .sev-badge.sev-error { background: var(--error-fill); }
-.sev-badge.sev-warning { background: var(--warning-fill); }
+.sev-badge.sev-warning { background: var(--warning-fill); color: var(--on-warning-fill); }
 
 .state-pill { border: 1px solid currentColor; color: var(--muted); }
 .state-pill.state-open { color: var(--critical); }

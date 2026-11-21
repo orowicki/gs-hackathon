@@ -233,12 +233,12 @@ The single source is `packages/web/src/styles/tokens.css`; never hard-code colou
 | Role | Dark | Light |
 |---|---|---|
 | Brand / highlight (links, focus, active nav, primary buttons) | `#7399C6` (links `#8FB2DD`, buttons `#3E6AA6`) | `#2F5D97` |
-| Critical (text / fill) | `#F0646B` / `#B93A42` | `#B4232C` / pale red |
-| Error | `#EE9A57` / `#B8682C` | `#A5510F` / pale orange |
-| Warning | `#CFB158` / `#6E5C26` (calm ochre, never bright yellow) | `#8A6D12` / pale ochre |
-| Info (the GS blue) | `#8FB2DD` / `#3E6AA6` | `#2F5D97` / pale blue |
-| OK / healthy, resolved | `#6FBF8B` | `#1A7F4B` |
-| Acknowledged | `#A98BD6` | `#6F4FA8` |
+| Critical (text / fill) | Grafana red `#F2495C` / dark-red `#E02F44` | `#C4162A` / `#E02F44` |
+| Error | orange `#FF9830` / dark-orange `#FA6400` | `#C25400` / `#FA6400` |
+| Warning | semi-dark-yellow `#F2CC0C` / dark-yellow `#E0B400` (dark text) | `#946D00` / `#E0B400` |
+| Info | blue `#5794F2` / dark-blue `#3274D9` | `#1F60C4` / `#3274D9` |
+| OK / healthy, resolved | green `#73BF69` | `#1A7F4B` |
+| Acknowledged | purple `#B877D9` | `#8F3BB8` |
 
 Severity colours are for severity only; decoration (badges, edges, icons) stays neutral.
 
