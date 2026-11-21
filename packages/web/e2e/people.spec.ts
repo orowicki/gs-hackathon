@@ -66,7 +66,7 @@ for (const scheme of ["light", "dark"] as const) {
       await expect(page.getByRole("heading", { name: "People & groups" })).toBeVisible();
 
       const people = page.getByRole("table", { name: "People" });
-      await expect(people.getByRole("cell", { name: "Ada Admin" })).toBeVisible();
+      await expect(people.getByRole("cell", { name: "Ada Admin", exact: true })).toBeVisible();
 
       // create
       await page.getByRole("button", { name: "Add person" }).click();
@@ -74,14 +74,14 @@ for (const scheme of ["light", "dark"] as const) {
       await page.getByRole("textbox", { name: "Role", exact: true }).fill("Dev");
       await page.getByRole("textbox", { name: "ntfy topic", exact: true }).fill("bob");
       await page.getByRole("button", { name: "Save" }).click();
-      await expect(people.getByRole("cell", { name: "Bob Builder" })).toBeVisible();
+      await expect(people.getByRole("cell", { name: "Bob Builder", exact: true })).toBeVisible();
 
       // edit
       await page.getByRole("button", { name: "Edit Bob Builder" }).click();
       await page.getByRole("textbox", { name: "Role", exact: true }).fill("Lead");
       await page.getByRole("checkbox", { name: "Can create rules" }).check();
       await page.getByRole("button", { name: "Save" }).click();
-      await expect(people.getByRole("cell", { name: "Lead" })).toBeVisible();
+      await expect(people.getByRole("cell", { name: "Lead", exact: true })).toBeVisible();
 
       // group with a member
       await page.getByRole("button", { name: "Add group" }).click();
@@ -89,15 +89,15 @@ for (const scheme of ["light", "dark"] as const) {
       await page.getByRole("group", { name: "Members" }).getByLabel("Bob Builder").check();
       await page.getByRole("button", { name: "Save" }).click();
       const groups = page.getByRole("table", { name: "Groups" });
-      await expect(groups.getByRole("cell", { name: "On-call" })).toBeVisible();
-      await expect(groups.getByRole("cell", { name: "Bob Builder" })).toBeVisible();
+      await expect(groups.getByRole("cell", { name: "On-call", exact: true })).toBeVisible();
+      await expect(groups.getByRole("cell", { name: "Bob Builder", exact: true })).toBeVisible();
 
       await page.screenshot({ path: path.join(shots, `people-${scheme}.png`) });
 
       // delete
       page.once("dialog", (d) => d.accept());
       await page.getByRole("button", { name: "Delete Bob Builder" }).click();
-      await expect(people.getByRole("cell", { name: "Bob Builder" })).toHaveCount(0);
+      await expect(people.getByRole("cell", { name: "Bob Builder", exact: true })).toHaveCount(0);
     });
 
     test("load error is shown inline", async ({ page }) => {
