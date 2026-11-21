@@ -106,6 +106,8 @@ Notification push stats are missing for some windows because notifications are e
 - One `XACK` per tick instead of one per entry.
 - `ENGINE_PG_POOL_MAX` env var for the engine Postgres pool (default 10; mind `max_connections` times the number of engines).
 
+The published numbers were measured on `37330d5` (the partial unique index version). A 30 s confirming run on `36bcd9e` (`alert_open_keys`) gave p50 51 ms, p99 131 ms, 0 lost, not overloaded and repeat-keys ok; it is not in the published files.
+
 ### After the dedup merge, before #137 (commit `dd583dd`)
 
 Measured after the engine dedup/throttle from #61 and before #137, local mode, 5000 ev/s target for 60 s, 0 rejected, 0 HTTP errors. Both configurations were **overloaded**: the drain did not finish within the 60 s drain cap, so only 1 of 3 planned windows ran for each and the numbers below are a single window. The raw files were replaced by the current run (the file names are reused); the old JSON is in git history, for example `git show 394e05f:results/loadtest-2026-11-21.json`. Backlog and lost are defined in the [loadtest README](../scripts/loadtest/README.md): `backlogAtEnd` is what is still queued in the streams at the end of the drain (late, not lost), `lost = max(0, unprocessedAtEnd - backlogAtEnd)`, and `processedPerSec` is alerts observed per second over send window plus drain, i.e. the sustainable rate.
