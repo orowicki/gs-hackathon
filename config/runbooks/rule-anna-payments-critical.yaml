@@ -1,0 +1,29 @@
+# Anna's personal rule (critical payments-api alerts). Automation with two approval gates:
+# nothing disruptive happens until Anna approves it on the alert page.
+id: rule-anna-payments-critical
+ruleId: anna-payments-critical
+matches: alert.ruleId = "anna-payments-critical"
+name: Payments API first response
+type: automation
+steps:
+  - name: "Check {{labels.service}} health in {{labels.region}}"
+    action: http
+    method: GET
+    url: http://demo-service:4100/health
+
+  - name: "Restart {{labels.service}} in {{labels.region}}"
+    action: http
+    method: POST
+    url: "http://demo-service:4100/restart/{{labels.service}}-{{labels.region}}"
+    body: '{"reason":"{{alertname}}","summary":"{{annotations.summary}}"}'
+    approval: required
+
+  - name: Wait a minute before deciding to escalate
+    action: wait
+    duration: 1m
+
+  # Only if it is still bad: Anna approves or skips.
+  - name: Escalate to the settlements on-call
+    action: escalate
+    group: settlements-oncall
+    approval: required
