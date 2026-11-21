@@ -1,5 +1,5 @@
 import { Route, Routes } from "react-router-dom";
-import { AlertDetailPage } from "./pages/AlertDetailPage";
+import { AlertDetailPage } from "./pages/alert-detail/AlertDetailPage";
 import { LandingPage } from "./pages/LandingPage";
 import { NewRulePage } from "./pages/NewRulePage";
 
