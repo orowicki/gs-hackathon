@@ -69,6 +69,12 @@ registerSourcePlugin(heartbeat);
 - `redis_stream` source: consumer name `INGEST_CONSUMER` or `ingest-<hostname>` (stable across restarts). A trimmed
   pending entry (`[id, null]`) is acked and skipped. If `emit` throws, the source re-reads its pending list from id `0`
   after 500 ms.
+- `kafka` source (kafkajs): config `brokers` (comma-separated), `topic`, `groupId` (default `alerting`), `fromBeginning`
+  (default false). Auto-commit is off; an offset is committed after `emit` resolves (null-value tombstones are skipped
+  and committed). If `emit` throws, nothing is committed, the partition is paused and rewound to that message and
+  resumed after 500 ms. Broker outages: kafkajs retries and `restartOnFailure` always restarts the consumer; a failed
+  first connect is retried every 2 s without failing `start`. Config is validated in `start` (the API does not validate
+  it against `configSchema`).
 - `file_tail`: rotation is detected via inode/device change (or size shrink) and the offset resets to 0. A line whose
   `emit` failed is not skipped: the file is retried next tick. `stop()` awaits any in-flight scan.
 - `POST /ingest/:sourceId`: 404 for unknown source before reading the body, 413 early on `Content-Length` above 10 MB

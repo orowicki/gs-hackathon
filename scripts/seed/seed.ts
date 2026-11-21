@@ -50,6 +50,16 @@ export const DEMO_SOURCES: Entity[] = [
     type: "redis_stream",
     config: { stream: "demo:events", consumerGroup: "alerting" },
   },
+  {
+    id: "demo-kafka",
+    name: "Demo (Kafka)",
+    enabled: true,
+    parser: { type: "json" },
+    type: "kafka",
+    // The address as seen from the app/worker containers (the seed itself runs on the host, so this is
+    // not KAFKA_BROKERS, which tests use for the host-visible listener).
+    config: { brokers: process.env.SEED_KAFKA_BROKERS ?? "redpanda:9092", topic: "demo.events", groupId: "alerting" },
+  },
 ];
 
 /** Anna: critical alerts also to ntfy; quiet hours 20:00-08:00 leave only the UI. */
