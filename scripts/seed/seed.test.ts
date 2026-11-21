@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { createConfigStore, type Kind } from "@alerting/config";
+import pg from "pg";
+import { Redis } from "ioredis";
+import { createConfigStore, migrate, type Kind } from "@alerting/config";
 import { loadConfigDir, seed, REPO_ROOT, KIND_ORDER } from "./seed.ts";
 import type { Entity, SeedClient, SeedKind } from "./seed.ts";
 import { join } from "node:path";
@@ -63,10 +65,10 @@ const STORE_KIND: Record<SeedKind, Kind> = {
 
 describe.skipIf(!process.env.DATABASE_URL || !process.env.REDIS_URL)("seed (real config store)", () => {
   it("second run creates 0 and leaves the store unchanged", async () => {
-    const store = createConfigStore({
-      databaseUrl: process.env.DATABASE_URL!,
-      redisUrl: process.env.REDIS_URL!,
-    });
+    const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
+    const redis = new Redis(process.env.REDIS_URL!);
+    await migrate(pool);
+    const store = createConfigStore({ pool, redis });
     const client: SeedClient = {
       get: async (kind, id) => (await store.get(STORE_KIND[kind], id)) as Entity | undefined,
       put: async (kind, _id, entity) => {
@@ -77,14 +79,22 @@ describe.skipIf(!process.env.DATABASE_URL || !process.env.REDIS_URL)("seed (real
       Object.fromEntries(
         await Promise.all(KIND_ORDER.map(async (k) => [k, await store.list(STORE_KIND[k])] as const)),
       );
+    let createdIds: string[] = [];
     try {
-      await seed(client, data);
+      createdIds = (await seed(client, data)).createdIds;
       const before = await snapshot();
       const again = await seed(client, data);
       expect(again.created).toBe(0);
       expect(await snapshot()).toEqual(before);
     } finally {
+      // Remove only what this test created; pre-existing entities stay.
+      for (const key of createdIds) {
+        const i = key.indexOf("/");
+        await store.delete(STORE_KIND[key.slice(0, i) as SeedKind], key.slice(i + 1));
+      }
       await store.close();
+      await pool.end().catch(() => undefined);
+      redis.disconnect();
     }
   }, 30_000);
 });

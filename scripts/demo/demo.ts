@@ -97,12 +97,16 @@ async function main(): Promise<void> {
       console.log(`demo: ~${rate} events/s for ${count === Infinity ? `${duration} s` : `${count} events`} (Ctrl-C to stop)`);
       const recent: DemoEvent[] = [];
       const end = Date.now() + duration * 1000;
+      const interval = 1000 / rate;
       for (let i = 0; i < count && (count !== Infinity || Date.now() < end); i++) {
+        const started = Date.now();
         const e = nextEvent(Math.random, new Date(), recent);
         recent.push(e);
         if (recent.length > 10) recent.shift();
         await emit(sinks[i % sinks.length] as Sink, e);
-        await new Promise((r) => setTimeout(r, (1000 / rate) * (0.5 + Math.random())));
+        // Pace by elapsed time; never sleep past the end of the duration.
+        const wait = Math.max(0, interval * (0.5 + Math.random()) - (Date.now() - started));
+        await new Promise((r) => setTimeout(r, count === Infinity ? Math.min(wait, Math.max(0, end - Date.now())) : wait));
       }
     }
   } finally {

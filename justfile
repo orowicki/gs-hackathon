@@ -29,7 +29,11 @@ up:
       exit 1
     fi
     # Seed demo data (only creates what is missing; safe to run on every `just up`).
-    [ -d node_modules ] || npm ci --no-audit --no-fund || exit 1
+    if ! node -e 'const [a,b]=process.versions.node.split(".").map(Number);process.exit(a>22||(a===22&&b>=6)?0:1)'; then
+      echo "Node 22.6+ is required on the host for seeding (found $(node -v)); the stack is up, rerun 'just up' after upgrading" >&2
+      exit 1
+    fi
+    [ -d node_modules/yaml ] || npm ci --no-audit --no-fund || exit 1
     node --experimental-strip-types --no-warnings scripts/seed/seed.ts || { echo "seeding failed" >&2; exit 1; }
     echo "ready: http://localhost:3000 (run 'just demo' for sample traffic)"
 
