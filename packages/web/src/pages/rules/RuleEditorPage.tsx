@@ -87,8 +87,8 @@ const DEDUP_OPTIONS = ["source", "title", "environment", "severity"];
 const COLOURS: { value: string; label: string }[] = [
   { value: "", label: "Severity colour (default)" },
   { value: "#f2495c", label: "Red" },
-  { value: "#ff9830", label: "Orange" },
-  { value: "#f2cc0c", label: "Yellow" },
+  { value: "#ff7b3a", label: "Orange" },
+  { value: "#f2a60d", label: "Amber" },
   { value: "#73bf69", label: "Green" },
   { value: "#7399c6", label: "Brand blue" },
   { value: "#b877d9", label: "Purple" },

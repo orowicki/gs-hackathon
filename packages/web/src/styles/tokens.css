@@ -21,29 +21,31 @@
      use a deeper shade of it so white text stays readable. */
   --brand: #7399c6;
   --accent: #8fb2dd;
-  --accent-bg: #3e6aa6;
-  --accent-bg-hover: #4a78b6;
+  /* Filled buttons: a deep GS blue so white text reads easily (~7:1); hover stays dark. */
+  --accent-bg: #2c5a94;
+  --accent-bg-hover: #34659f;
   --on-accent: #ffffff;
 
-  /* Severity: Grafana's own named palette (red, orange, semi-dark-yellow, blue), vivid.
+  /* Severity: Grafana-style vivid red / red-orange / amber / blue. No yellow: every solid fill
+     carries white text (contrast >= 4:1).
      *-fill = solid stat panels / badges, Grafana's "dark-" shades; --on-fill is their text
-     (warning gets dark text). The GS blue stays the brand highlight, not a severity. */
+     The GS blue stays the brand highlight, not a severity. */
   --critical: #f2495c;
-  --error: #ff9830;
-  --warning: #f2cc0c;
+  --error: #ff7b3a;
+  --warning: #f2a60d;
   --info: #5794f2;
   --valid: #73bf69;
   --critical-tint: rgba(242, 73, 92, 0.16);
-  --error-tint: rgba(255, 152, 48, 0.16);
-  --warning-tint: rgba(242, 204, 12, 0.14);
+  --error-tint: rgba(255, 123, 58, 0.16);
+  --warning-tint: rgba(242, 166, 13, 0.15);
   --info-tint: rgba(87, 148, 242, 0.16);
   --valid-tint: rgba(115, 191, 105, 0.15);
   --critical-fill: #e02f44;
-  --error-fill: #fa6400;
-  --warning-fill: #e0b400;
+  --error-fill: #d9500b;
+  --warning-fill: #ad7300;
   --info-fill: #3274d9;
   --on-fill: #ffffff;
-  --on-warning-fill: #1f1a00;
+  --on-warning-fill: #ffffff;
 
   /* Alert lifecycle state (Grafana purple and green), unlike any severity colour. */
   --state-acknowledged: #b877d9;
@@ -93,26 +95,26 @@
   --faint: #8e939c;
   --brand: #5f87b8;
   --accent: #2f5d97;
-  --accent-bg: #2f5d97;
-  --accent-bg-hover: #284f81;
+  --accent-bg: #2c5a94;
+  --accent-bg-hover: #244c7f;
   --on-accent: #ffffff;
   /* Light: the same vivid Grafana fills; text shades deepened to stay readable on white. */
   --critical: #c4162a;
-  --error: #c25400;
-  --warning: #946d00;
+  --error: #b8440a;
+  --warning: #8f5e00;
   --info: #1f60c4;
   --valid: #1a7f4b;
   --critical-tint: rgba(224, 47, 68, 0.1);
-  --error-tint: rgba(250, 100, 0, 0.1);
-  --warning-tint: rgba(224, 180, 0, 0.14);
+  --error-tint: rgba(217, 80, 11, 0.1);
+  --warning-tint: rgba(173, 115, 0, 0.12);
   --info-tint: rgba(50, 116, 217, 0.1);
   --valid-tint: rgba(26, 127, 75, 0.1);
   --critical-fill: #e02f44;
-  --error-fill: #fa6400;
-  --warning-fill: #e0b400;
+  --error-fill: #d9500b;
+  --warning-fill: #ad7300;
   --info-fill: #3274d9;
   --on-fill: #ffffff;
-  --on-warning-fill: #1f1a00;
+  --on-warning-fill: #ffffff;
   --state-acknowledged: #8f3bb8;
   --state-resolved: #1a7f4b;
   --state-acknowledged-tint: rgba(143, 59, 184, 0.1);

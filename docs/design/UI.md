@@ -234,12 +234,13 @@ The single source is `packages/web/src/styles/tokens.css`; never hard-code colou
 |---|---|---|
 | Brand / highlight (links, focus, active nav, primary buttons) | `#7399C6` (links `#8FB2DD`, buttons `#3E6AA6`) | `#2F5D97` |
 | Critical (text / fill) | Grafana red `#F2495C` / dark-red `#E02F44` | `#C4162A` / `#E02F44` |
-| Error | orange `#FF9830` / dark-orange `#FA6400` | `#C25400` / `#FA6400` |
-| Warning | semi-dark-yellow `#F2CC0C` / dark-yellow `#E0B400` (dark text) | `#946D00` / `#E0B400` |
+| Error | red-orange `#FF7B3A` / `#D9500B` | `#B8440A` / `#D9500B` |
+| Warning | amber `#F2A60D` / `#AD7300` (no yellow) | `#8F5E00` / `#AD7300` |
 | Info | blue `#5794F2` / dark-blue `#3274D9` | `#1F60C4` / `#3274D9` |
 | OK / healthy, resolved | green `#73BF69` | `#1A7F4B` |
 | Acknowledged | purple `#B877D9` | `#8F3BB8` |
 
+Every solid severity fill carries white text (contrast >= 4:1), so there is no yellow.
 Severity colours are for severity only; decoration (badges, edges, icons) stays neutral.
 
 ### Do not
