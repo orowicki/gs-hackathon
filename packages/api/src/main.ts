@@ -1,7 +1,14 @@
 import pg from "pg";
 import { Redis } from "ioredis";
 import { CHANNEL_UI_PUSH, type UiPush } from "@alerting/shared";
-import { createDeliveryQueue, createNtfyChannel, createUiChannel, registerChannel } from "@alerting/delivery";
+import {
+  createDeliveryQueue,
+  createEmailChannel,
+  createNtfyChannel,
+  createUiChannel,
+  emailConfigFromEnv,
+  registerChannel,
+} from "@alerting/delivery";
 import {
   createDefaultActions,
   createGroupNotifier,
@@ -54,6 +61,7 @@ registerChannel(
     publicUrl: process.env.PUBLIC_URL ?? "http://localhost:3000",
   }),
 );
+registerChannel(createEmailChannel(emailConfigFromEnv()));
 const delivery = createDeliveryQueue(deliveryRedis);
 let stopping = false;
 async function startWorker(): Promise<void> {

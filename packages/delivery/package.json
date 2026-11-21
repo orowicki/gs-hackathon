@@ -11,9 +11,13 @@
   },
   "dependencies": {
     "@alerting/shared": "*",
-    "ioredis": "^5.4.1"
+    "ioredis": "^5.4.1",
+    "nodemailer": "^10.6.1"
   },
   "devDependencies": {
-    "ioredis-mock": "^8.13.1"
+    "@types/nodemailer": "^8.0.2",
+    "@types/smtp-server": "^3.5.13",
+    "ioredis-mock": "^8.13.1",
+    "smtp-server": "^3.21.7"
   }
 }
