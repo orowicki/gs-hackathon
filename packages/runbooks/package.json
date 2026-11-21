@@ -6,8 +6,14 @@
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "exports": {
-    ".": { "types": "./dist/index.d.ts", "default": "./dist/index.js" },
-    "./template": { "types": "./dist/template.d.ts", "default": "./dist/template.js" }
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./template": {
+      "types": "./dist/template.d.ts",
+      "default": "./dist/template.js"
+    }
   },
   "scripts": {
     "build": "tsc -b",
@@ -16,6 +22,11 @@
   "dependencies": {
     "@alerting/config": "*",
     "@alerting/filter": "*",
-    "@alerting/shared": "*"
+    "@alerting/shared": "*",
+    "pg": "^8.12.0"
+  },
+  "devDependencies": {
+    "@types/pg": "^8.11.6",
+    "yaml": "^2.5.0"
   }
 }
