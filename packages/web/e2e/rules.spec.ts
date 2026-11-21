@@ -72,7 +72,7 @@ for (const scheme of ["light", "dark"] as const) {
 
       await page.goto("/rules/new");
       await page.getByLabel("Name").fill("Brand New");
-      await expect(page.getByLabel("Id")).toHaveValue("brand-new");
+      await expect(page.getByLabel("Id", { exact: true })).toHaveValue("brand-new");
       await page.getByRole("button", { name: "Save rule" }).click();
       await expect.poll(() => saves.length).toBe(2);
       expect(saves[1]).toMatchObject({ id: "brand-new", name: "Brand New" });
