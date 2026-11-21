@@ -119,7 +119,8 @@ export function createConfigStore(opts: ConfigStoreOptions): ConfigStore {
 
   function ensureSub(): Promise<Redis> {
     if (subPromise) return subPromise;
-    const s = redis.duplicate();
+    // Subscriber must queue commands until connected, even if the publisher fails fast.
+    const s = redis.duplicate({ enableOfflineQueue: true, maxRetriesPerRequest: null });
     sub = s;
     s.on("message", (_channel: string, message: string) => {
       let change: ConfigChange;

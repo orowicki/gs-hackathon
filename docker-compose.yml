@@ -60,5 +60,15 @@ services:
       timeout: 3s
       retries: 10
 
+  demo-service:
+    image: node:22-alpine
+    command: node /srv/server.mjs
+    environment:
+      PORT: "4100"
+    volumes:
+      - ./fixtures/demo-service:/srv:ro
+    expose:
+      - "4100"
+
 volumes:
   pgdata:
