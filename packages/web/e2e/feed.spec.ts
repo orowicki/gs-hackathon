@@ -10,10 +10,27 @@ for (const scheme of ["light", "dark"] as const) {
     test.use({ colorScheme: scheme, viewport: { width: 1280, height: 800 } });
 
     test("landing page feed", async ({ page }) => {
+      // The mock source pushes a new alert every 15 s (MOCK_PUSH_INTERVAL_MS); a tick mid-test
+      // changes the row count. Disable that one interval so counts stay stable.
+      await page.addInitScript(() => {
+        const real = window.setInterval.bind(window);
+        window.setInterval = ((fn: TimerHandler, ms?: number, ...args: unknown[]) =>
+          ms === 15_000 ? 0 : real(fn, ms, ...args)) as typeof window.setInterval;
+      });
       await page.goto("/");
       const rows = page.locator(".alert-list .row");
       await expect(rows.first()).toBeVisible();
-      const total = await rows.count();
+      // Rows render in more than one pass; take the count only once it stops changing.
+      let total = -1;
+      await expect
+        .poll(async () => {
+          const before = await rows.count();
+          await page.waitForTimeout(300);
+          const after = await rows.count();
+          total = after;
+          return before === after;
+        })
+        .toBe(true);
       expect(total).toBeGreaterThan(3);
 
       const filter = page.getByRole("combobox", { name: "Filter" });
