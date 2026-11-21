@@ -24,11 +24,11 @@ function memoryClient(): SeedClient & { dump(): Record<string, Entity> } {
 describe("seed data", () => {
   it("covers people, groups, schemas, rules, runbooks, sources and a preference", () => {
     expect(data.person.map((p) => p.id)).toContain("anna");
-    expect(data.group.length).toBe(3);
+    expect(data.group.length).toBe(4);
     expect(data.schema.length).toBe(3);
     expect(data.rule.length).toBe(4);
     expect(data.runbook.length).toBe(7);
-    expect(data.source.map((s) => s.entity.type).sort()).toEqual(["file_tail", "http", "redis_stream"]);
+    expect(data.source.map((s) => s.entity.type).sort()).toEqual(["file_tail", "http", "kafka", "redis_stream"]);
     expect(data.preference.map((p) => p.id)).toEqual(["person:anna"]);
   });
 });

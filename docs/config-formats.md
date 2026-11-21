@@ -35,12 +35,35 @@ Directory `config/sources/` (kind `source`). Where events come from and how a ra
 | `id` | string | yes (or file name) | |
 | `name` | string | yes | Display name. |
 | `enabled` | boolean | yes | Disabled sources do not ingest. |
-| `type` | `http` \| `file_tail` \| `redis_stream` | yes | Selects the source plugin. |
+| `type` | `http` \| `file_tail` \| `redis_stream` \| `kafka` | yes | Selects the source plugin. |
 | `parser.type` | `json` \| `logfmt` \| `regex` \| `raw` | yes | |
 | `parser.pattern` | string | only for `regex` | Pattern with named groups. |
 | `config` | object | yes | Depends on `type`, see below. |
 
-`config` by type: `http` takes `{}` (events are posted to `POST /ingest/{sourceId}`); `file_tail` takes `path` (string, required, path or glob); `redis_stream` takes `stream` and `consumerGroup` (both strings, both required). Details: [source-plugin.md](autopilot/interfaces/source-plugin.md).
+`config` by type: `http` takes `{}` (events are posted to `POST /ingest/{sourceId}`); `file_tail` takes `path` (string, required, path or glob); `redis_stream` takes `stream` and `consumerGroup` (both strings, both required); `kafka` takes `brokers` (comma-separated `host:port`, required), `topic` (required), `groupId` (required in the schema, defaults to `alerting` when omitted) and `fromBeginning` (boolean, default `false`; only matters when the group has no committed offset). Details: [source-plugin.md](autopilot/interfaces/source-plugin.md).
+
+A Kafka source (shown as text: the config examples in this file are checked against the shared source types) consumes one topic as a consumer group, so several instances with the same `groupId` share the partitions. Each message value is one raw event; the offset is committed only after the event was accepted (at-least-once), and a failed message is retried after 500 ms, never skipped (so a message whose processing keeps failing blocks its partition).
+
+```text
+id: orders-kafka
+name: Orders (Kafka)
+enabled: true
+type: kafka
+parser:
+  type: json
+config:
+  brokers: kafka-1:9092,kafka-2:9092
+  topic: orders.events
+  groupId: alerting
+  fromBeginning: false
+```
+
+Send a test message to the bundled Redpanda broker (topic `demo.events`, source `demo-kafka`):
+
+```sh
+echo '{"alertname":"HighErrorRate","labels":{"service":"payments-api","region":"eu-west","severity":"critical"},"annotations":{"summary":"Error rate 27%"},"startsAt":"2026-11-21T10:00:00Z","status":"firing"}' \
+  | docker compose exec -T redpanda rpk topic produce demo.events
+```
 
 <!-- kind: sources -->
 ```yaml

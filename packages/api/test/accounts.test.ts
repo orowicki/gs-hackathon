@@ -104,8 +104,34 @@ describe("accounts and sessions", () => {
     expect((await fetch(`${base}/api/people`, post(person, h))).status).toBe(403);
     const self = { id: "ewa", name: "Ewa", role: "eng", canCreateRules: true };
     expect((await fetch(`${base}/api/people/ewa`, { ...post(self, h), method: "PUT" })).status).toBe(403);
-    expect((await fetch(`${base}/api/people`, post({ ...person, canCreateRules: false }, h))).status).toBe(201);
+    // Without canCreateRules no one can add people at all (only edit their own person).
+    expect((await fetch(`${base}/api/people`, post({ ...person, canCreateRules: false }, h))).status).toBe(403);
     expect((await fetch(`${base}/api/people/ewa`, { ...post({ ...self, canCreateRules: false, role: "x" }, h), method: "PUT" })).status).toBe(200);
     expect((await fetch(`${base}/api/people`, post({ ...person, id: "x2" }, { "x-account": "anna" }))).status).toBe(201);
+  });
+
+  it("403 on people and group writes and on deletes without canCreateRules; own person may be edited", async () => {
+    const { base, config } = await start();
+    await config.upsert("group", { id: "g1", name: "G", memberIds: ["anna"] } as never);
+    await config.upsert("rule", { ...rule } as never);
+    const ewa = { "x-account": "ewa" };
+    const anna = { "x-account": "anna" };
+    const put = (body: unknown, headers: Record<string, string>): RequestInit => ({ ...post(body, headers), method: "PUT" });
+    const del = (headers: Record<string, string>): RequestInit => ({ method: "DELETE", headers });
+    const group = { id: "g1", name: "G2", memberIds: ["anna", "ewa"] };
+
+    expect((await fetch(`${base}/api/groups`, post({ ...group, id: "g2" }, ewa))).status).toBe(403);
+    expect((await fetch(`${base}/api/groups/g1`, put(group, ewa))).status).toBe(403);
+    expect((await fetch(`${base}/api/groups/g1`, del(ewa))).status).toBe(403);
+    expect((await fetch(`${base}/api/people/anna`, put({ id: "anna", name: "A", role: "lead", canCreateRules: true }, ewa))).status).toBe(403);
+    expect((await fetch(`${base}/api/people/anna`, del(ewa))).status).toBe(403);
+    expect((await fetch(`${base}/api/people/ewa`, del(ewa))).status).toBe(403);
+    expect((await fetch(`${base}/api/rules/r1`, del(ewa))).status).toBe(403);
+    // Own person: name, role, ntfy topic.
+    expect((await fetch(`${base}/api/people/ewa`, put({ id: "ewa", name: "Ewa M", role: "eng", canCreateRules: false, ntfyTopic: "ewa-t" }, ewa))).status).toBe(200);
+
+    expect((await fetch(`${base}/api/groups/g1`, put(group, anna))).status).toBe(200);
+    expect((await fetch(`${base}/api/groups/g1`, del(anna))).status).toBe(204);
+    expect((await fetch(`${base}/api/rules/r1`, del(anna))).status).toBe(204);
   });
 });

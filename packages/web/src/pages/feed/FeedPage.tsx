@@ -4,7 +4,6 @@ import { Plus } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { Icon } from "../../components/Icon";
-import { SettingsMenu } from "../../components/SettingsPanel";
 import { withFilter } from "../../filterUrl";
 import { rangeNode, rangeOf, setRange, withoutRange, type TimeRange } from "../../timeRange";
 import { TimeRangePicker } from "../../components/time-range/TimeRangePicker";
@@ -34,7 +33,7 @@ import {
   type FeedSort,
   type FeedTab,
 } from "./helpers";
-import { ProfilePicker, StarredList } from "./ProfilePicker";
+import { useCurrentPerson } from "../../account";
 import { StatPanels, type SummaryCounts } from "./StatPanels";
 
 const PROFILE_KEY = "alerting.profile";
@@ -73,7 +72,7 @@ export function FeedPage() {
   const [live, setLive] = useState(true);
   const [applied, setApplied] = useState(q);
   const [people, setPeople] = useState<Person[]>([]);
-  const [profileId, setProfileId] = useState<string | null>(() => readLocal<string | null>(PROFILE_KEY, null));
+  const [profileId] = useState<string | null>(() => readLocal<string | null>(PROFILE_KEY, null));
   const [starred, setStarred] = useState<StarredFilter[]>([]);
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
   const [flash, setFlash] = useState<ReadonlyMap<string, number>>(new Map());
@@ -196,7 +195,9 @@ export function FeedPage() {
   }, []);
 
   // Profile and starred filters.
-  const person = people.find((p) => p.id === profileId) ?? people[0] ?? null;
+  // The signed-in account; the stored profile is only a fallback for pages without a provider.
+  const account = useCurrentPerson();
+  const person = account ?? people.find((p) => p.id === profileId) ?? people[0] ?? null;
   const personId = person?.id ?? null;
   useEffect(() => {
     if (!source || !personId) return;
@@ -224,13 +225,6 @@ export function FeedPage() {
     if (!personId) return;
     const hit = starred.find((s) => s.name === text || filterText(s.filter) === text);
     saveStarred(hit ? starred.filter((s) => s !== hit) : [...starred, newStarred(personId, text)]);
-  };
-
-  const selectProfile = (id: string) => {
-    setProfileId(id);
-    // readLocal() parses JSON, so store JSON (a raw id made every reload fall back
-    // to the first person, and that person's starred filters).
-    writeLocal(PROFILE_KEY, id);
   };
 
   const setQ = useCallback(
@@ -305,19 +299,6 @@ export function FeedPage() {
   const starredList = starredTexts(starred);
   const canCreate = person?.canCreateRules ?? false;
 
-  const settings = {
-    Profile: <ProfilePicker people={people} currentId={person?.id ?? null} onSelect={selectProfile} />,
-    "Starred filters": (
-      <StarredList
-        starred={starred}
-        onApply={(t) => {
-          setQ(t);
-          applyText(t);
-        }}
-        onRemove={(id) => saveStarred(starred.filter((s) => s.id !== id))}
-      />
-    ),
-  };
 
   function body() {
     if (error) {
@@ -380,7 +361,6 @@ export function FeedPage() {
   return (
     <div className="feed-page">
       <header className="topbar">
-        <SettingsMenu sections={settings} />
         <FilterBar
           value={q}
           onChange={setQ}

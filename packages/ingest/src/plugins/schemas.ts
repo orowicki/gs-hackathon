@@ -29,6 +29,43 @@ export const REDIS_STREAM_CONFIG_SCHEMA: JsonSchemaObject = {
   additionalProperties: false,
 };
 
+export const KAFKA_CONFIG_SCHEMA: JsonSchemaObject = {
+  $schema: DRAFT,
+  type: "object",
+  properties: {
+    brokers: {
+      type: "string",
+      title: "Brokers",
+      description:
+        "Comma-separated bootstrap brokers as host:port, e.g. redpanda:9092 or kafka-1:9092,kafka-2:9092.",
+      minLength: 1,
+    },
+    topic: {
+      type: "string",
+      title: "Topic",
+      description: "Topic to consume. Each message value is one raw event.",
+      minLength: 1,
+    },
+    groupId: {
+      type: "string",
+      title: "Consumer group",
+      description:
+        "Consumer group id. Instances with the same group share the topic's partitions; offsets are committed after an event is accepted.",
+      minLength: 1,
+      default: "alerting",
+    },
+    fromBeginning: {
+      type: "boolean",
+      title: "Start from the beginning",
+      description:
+        "When the group has no committed offset yet, read the topic from its start instead of only new messages.",
+      default: false,
+    },
+  },
+  required: ["brokers", "topic", "groupId"],
+  additionalProperties: false,
+};
+
 export const PARSER_CONFIG_SCHEMA: JsonSchemaObject = {
   $schema: DRAFT,
   type: "object",

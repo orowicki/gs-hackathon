@@ -1,6 +1,7 @@
-import { BookOpen, Check, CheckCircle2, ChevronDown, ChevronRight, FileCode2, Lock, MessageSquare, Play, Undo2 } from "lucide-react";
+import { BookOpen, Check, CheckCircle2, ChevronDown, ChevronRight, FileCode2, Lock, MessageSquare, Play } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Icon } from "../../components/Icon";
+import { useAccount } from "../../account";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import "./alert-detail.css";
 import {
@@ -286,6 +287,7 @@ function Runbooks({
 
 /** Audit log, folded away by default; the header shows how many entries and the latest one. */
 function Audit({ entries }: { entries: AuditEntry[] | null }) {
+  const { nameOf } = useAccount();
   const [open, setOpen] = useState(false);
   const last = entries && entries.length > 0 ? entries[entries.length - 1] : undefined;
   const lastAt = last ? parseTimestamp("at", last.at) : null;
@@ -298,7 +300,7 @@ function Audit({ entries }: { entries: AuditEntry[] | null }) {
         </h2>
         {!open && last ? (
           <span className="muted small-text audit-latest">
-            Latest: {last.actor} {(last.action ?? "").replace(/_/g, " ")}
+            Latest: {nameOf(last.actor)} {(last.action ?? "").replace(/_/g, " ")}
             {lastAt ? `, ${formatDate(lastAt)}` : ""}
           </span>
         ) : null}
@@ -314,7 +316,7 @@ function Audit({ entries }: { entries: AuditEntry[] | null }) {
             return (
               <li key={`${e.id ?? ""}-${i}`} className={`tl-${e.action ?? ""}`}>
                 <div className="tl-line">
-                  <strong>{e.actor ?? "unknown"}</strong> <span>{(e.action ?? "").replace(/_/g, " ")}</span>
+                  <strong>{nameOf(e.actor)}</strong> <span>{(e.action ?? "").replace(/_/g, " ")}</span>
                   <span className="muted tl-time">{d ? formatDate(d) : String(e.at ?? "—")}</span>
                 </div>
                 {e.detail || e.result ? <div className="tl-detail">{e.detail ?? e.result}</div> : null}
@@ -341,6 +343,8 @@ function RulebookThread({
   entries: RulebookEntry[];
   onAdded(e: RulebookEntry): void;
 }) {
+  const { nameOf, state } = useAccount();
+  const me = state.status === "signedIn" ? state.person : null;
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -382,11 +386,11 @@ function RulebookThread({
               return (
                 <li key={e.id} className="comment">
                   <span className="avatar" aria-hidden="true">
-                    {(e.updatedBy || "?").charAt(0).toUpperCase()}
+                    {nameOf(e.updatedBy).charAt(0).toUpperCase()}
                   </span>
                   <div className="comment-main">
                     <div className="comment-meta">
-                      <strong>{e.updatedBy}</strong>
+                      <strong>{nameOf(e.updatedBy)}</strong>
                       {d ? <span className="muted">{formatDate(d)}</span> : null}
                       {e.alertId && e.alertId !== alertId ? (
                         <Link className="muted" to={`/alerts/${encodeURIComponent(e.alertId)}`}>
@@ -412,6 +416,7 @@ function RulebookThread({
             onChange={(e) => setText(e.target.value)}
           />
           <div className="actions">
+            {me ? <span className="muted small-text comment-as">Commenting as {me.name}</span> : null}
             <button type="button" className="btn primary solid" disabled={busy || text.trim() === ""} onClick={post}>
               Comment
             </button>
@@ -557,6 +562,7 @@ function RuleRunbookPanel({ ruleId, onSaved }: { ruleId: string; onSaved(): void
 }
 
 function ResolutionCard({ alert }: { alert: Alert }) {
+  const { nameOf } = useAccount();
   const d = parseTimestamp("at", alert.resolvedAt);
   return (
     <section aria-label="Resolution" className="ad-panel">
@@ -566,7 +572,7 @@ function ResolutionCard({ alert }: { alert: Alert }) {
         </h2>
         {alert.resolvedBy || d ? (
           <span className="muted small-text">
-            {alert.resolvedBy ? `by ${alert.resolvedBy}` : ""}
+            {alert.resolvedBy ? `by ${nameOf(alert.resolvedBy)}` : ""}
             {alert.resolvedBy && d ? ", " : ""}
             {d ? formatDate(d) : ""}
           </span>
@@ -672,20 +678,23 @@ function StateActions({
   const acked = state === "acknowledged";
   return (
     <div className="actions head-actions" role="group" aria-label="Alert actions">
-      {acked ? (
-        <span className="btn-pair">
-          <button type="button" className="state-btn on" aria-pressed="true" disabled title="Acknowledged">
+      {/* One toggle: Acknowledge <-> ✓ Acknowledged (click again to undo). Both labels share a grid
+          cell, so the button keeps one width and nothing next to it moves. */}
+      <button
+        type="button"
+        className={acked ? "state-btn on" : "state-btn"}
+        aria-pressed={acked}
+        disabled={busy}
+        onClick={acked ? onUnack : onAck}
+        title={acked ? "Acknowledged. Click to undo" : "Acknowledge"}
+      >
+        <span className="stable-label">
+          <span className={acked ? undefined : "invisible"}>
             <Icon as={Check} /> Acknowledged
-          </button>
-          <button type="button" className="state-btn undo" disabled={busy} onClick={onUnack} title="Undo acknowledge">
-            <Icon as={Undo2} /> Undo
-          </button>
+          </span>
+          <span className={acked ? "invisible" : undefined}>Acknowledge</span>
         </span>
-      ) : (
-        <button type="button" className="state-btn" aria-pressed="false" disabled={busy} onClick={onAck}>
-          Acknowledge
-        </button>
-      )}
+      </button>
       <button
         type="button"
         className={resolving ? "state-btn resolve on" : "state-btn resolve"}
@@ -693,7 +702,14 @@ function StateActions({
         disabled={busy || resolving}
         onClick={onResolve}
       >
-        {resolving ? <Icon as={Check} /> : null} Resolve…
+        {/* Both labels share one grid cell, so the button keeps the width of the wider one
+            and doesn't grow when the check appears. */}
+        <span className="stable-label">
+          <span className={resolving ? undefined : "invisible"}>
+            <Icon as={Check} /> Resolve…
+          </span>
+          <span className={resolving ? "invisible" : undefined}>Resolve…</span>
+        </span>
       </button>
     </div>
   );
@@ -709,6 +725,7 @@ function Fact({ label, children, wide = false }: { label: string; children: Reac
 }
 
 export function AlertDetailPage() {
+  const { nameOf } = useAccount();
   const { id = "" } = useParams();
   const [alert, setAlert] = useState<Alert | null>(null);
   const [loadError, setLoadError] = useState<{ status: number; message: string } | null>(null);
@@ -855,7 +872,7 @@ export function AlertDetailPage() {
           </p>
           {state === "acknowledged" && (ackWho || ackAt) ? (
             <p className="muted small-text">
-              Acknowledged{ackWho ? ` by ${ackWho}` : ""}
+              Acknowledged{ackWho ? ` by ${nameOf(ackWho)}` : ""}
               {ackAt ? `, ${ackAt}` : ""}
             </p>
           ) : null}

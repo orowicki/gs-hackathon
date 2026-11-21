@@ -4,6 +4,7 @@ import { Link, matchPath, useLocation } from "react-router-dom";
 import { routes } from "../routes/registry";
 import type { NavEntry, RouteDef } from "../routes/types";
 import { Icon } from "./Icon";
+import { AccountMenu } from "./AccountMenu";
 import { ThemeToggle } from "./ThemeSwitch";
 
 const SECTIONS: { id: NavEntry["section"]; title: string }[] = [
@@ -98,6 +99,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           </nav>
           <div className="app-bar-actions">
             <ThemeToggle />
+            <AccountMenu />
           </div>
         </header>
         <div className="shell-content">{children}</div>
