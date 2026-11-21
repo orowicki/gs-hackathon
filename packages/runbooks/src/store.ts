@@ -47,6 +47,7 @@ export function pendingOf(run: StoredRun): PendingApproval[] {
       runbookId: run.runbookId,
       stepIndex: s.index,
       stepName: run.runbook.steps[s.index] ? stepDisplayName(run.runbook.steps[s.index]!, run.template) : undefined,
+      ...(run.runbook.steps[s.index]?.approvers ? { approvers: run.runbook.steps[s.index]!.approvers } : {}),
       requestedAt: s.at ?? run.updatedAt,
     }));
 }

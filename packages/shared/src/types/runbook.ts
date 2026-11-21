@@ -93,5 +93,7 @@ export interface PendingApproval {
   runbookId: Id;
   stepIndex: number;
   stepName?: string;
+  /** Group id whose members may approve or skip (from the run's runbook snapshot); absent = any signed-in account. */
+  approvers?: Id;
   requestedAt: string;
 }

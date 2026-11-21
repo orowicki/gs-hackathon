@@ -134,7 +134,14 @@ runbooksReady
 let publishWarned = false;
 
 const server = createServer({
-  runbooks: runbookRegistry ? createRunbookRoutes({ runner, registry: runbookRegistry, loadAlert: runtime.loadAlert, loadEvent: runtime.loadEvent }) : undefined,
+  runbooks: runbookRegistry ? createRunbookRoutes({
+        runner,
+        registry: runbookRegistry,
+        loadAlert: runtime.loadAlert,
+        loadEvent: runtime.loadEvent,
+        // Approvers check: only members of a step's `approvers` group may approve or skip it.
+        getGroup: async (id) => (config ? ((await config.get("group", id)) as { memberIds?: string[] } | undefined) : undefined),
+      }) : undefined,
   delivery,
   config,
   pool,

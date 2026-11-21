@@ -180,7 +180,7 @@ describe("approve responds 202 when the continuation is slow", () => {
     await runner.start(rb, tpl());
     const routes = createRunbookRoutes({ runner, respondWithinMs: 30 });
     const server = http.createServer((req, res) => {
-      routes.handle(req, res, new URL(req.url ?? "/", "http://x")).then((h) => h || res.writeHead(404).end());
+      routes.handle(req, res, new URL(req.url ?? "/", "http://x"), "p-alice").then((h) => h || res.writeHead(404).end());
     });
     await new Promise<void>((r) => server.listen(0, r));
     try {
