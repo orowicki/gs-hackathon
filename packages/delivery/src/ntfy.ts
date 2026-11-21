@@ -41,8 +41,10 @@ export function buildNtfyBody(n: QueuedNotification, o: Pick<NtfyOptions, "publi
   };
   const aid = encodeURIComponent(n.alertId);
   const topic = (o.topicFor ?? ((r: string) => `alerting-${r}`))(n.recipientId);
+  // Routing fans out to people only, so recipientId is a person id; the API resolves the actor from X-Account.
+  const who = typeof n.recipientId === "string" && n.recipientId ? { headers: { "X-Account": n.recipientId } } : {};
   const actions: Record<string, unknown>[] = [
-    { action: "http", label: "Acknowledge", url: `${pub}/api/alerts/${aid}/ack`, method: "POST", clear: true },
+    { action: "http", label: "Acknowledge", url: `${pub}/api/alerts/${aid}/ack`, method: "POST", ...who, clear: true },
   ];
   if (Number.isInteger(n.approveStepIndex) && (n.approveStepIndex as number) >= 0) {
     actions.push({
@@ -50,6 +52,7 @@ export function buildNtfyBody(n: QueuedNotification, o: Pick<NtfyOptions, "publi
       label: "Approve",
       url: `${pub}/api/alerts/${aid}/runbook-steps/${n.approveStepIndex}/approve`,
       method: "POST",
+      ...who,
       clear: true,
     });
   }
