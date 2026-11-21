@@ -820,3 +820,53 @@ input.mono,
   font-size: var(--text-md);
   max-width: 32ch;
 }
+
+/* Chooser after a pick: Grafana-style page tabs above the panel. */
+.chooser-tabs {
+  display: flex;
+  gap: var(--space-1);
+  border-bottom: 1px solid var(--border);
+}
+
+.chooser-tab {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  height: 40px;
+  padding: 0 var(--space-3);
+  background: transparent;
+  color: var(--muted);
+  border: 0;
+  font: inherit;
+  font-size: var(--text-md);
+  cursor: pointer;
+}
+
+.chooser-tab:hover {
+  color: var(--text-strong);
+}
+
+.chooser-tab.on {
+  color: var(--text-strong);
+  font-weight: var(--weight-strong);
+}
+
+.chooser-tab.on::after {
+  content: "";
+  position: absolute;
+  left: var(--space-2);
+  right: var(--space-2);
+  bottom: -1px;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--brand);
+}
+
+.chooser-tab.on svg {
+  color: var(--brand);
+}
+
+.chooser-tabs + .chooser-panel {
+  margin-top: calc(-1 * var(--space-2));
+}
