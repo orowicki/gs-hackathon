@@ -9,8 +9,8 @@
     "node": ">=20"
   },
   "scripts": {
-    "build": "tsc -b packages/shared packages/filter packages/api && npm run build -w @alerting/web",
-    "lint": "eslint . && tsc -b packages/shared packages/filter packages/api && tsc -p packages/api/tsconfig.test.json && tsc -p packages/filter/tsconfig.test.json && tsc -p packages/shared/test/tsconfig.json && npm run typecheck -w @alerting/web",
+    "build": "npm run build --workspaces --if-present",
+    "lint": "eslint . && npm run typecheck --workspaces --if-present",
     "test": "vitest run"
   },
   "devDependencies": {

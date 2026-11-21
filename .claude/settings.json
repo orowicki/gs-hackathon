@@ -111,6 +111,7 @@
     "autoAllowBashIfSandboxed": true,
     "allowUnsandboxedCommands": false,
     "network": {
+      "allowLocalBinding": true,
       "allowedDomains": [
         "api.anthropic.com",
         "pypi.org",
@@ -124,9 +125,7 @@
       ]
     },
     "filesystem": {
-      "allowWrite": [
-        "~/.cache/uv"
-      ],
+      "allowWrite": ["~/.cache/uv"],
       "denyWrite": [
         "./.claude/settings.json",
         "./.claude/hooks",
