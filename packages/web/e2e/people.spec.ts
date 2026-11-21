@@ -72,7 +72,7 @@ for (const scheme of ["light", "dark"] as const) {
       await page.getByRole("button", { name: "Add person" }).click();
       await page.getByRole("textbox", { name: "Name", exact: true }).fill("Bob Builder");
       await page.getByRole("textbox", { name: "Role", exact: true }).fill("Dev");
-      await page.getByRole("textbox", { name: "ntfy topic", exact: true }).fill("bob");
+      await page.getByRole("textbox", { name: "Phone topic (ntfy)", exact: true }).fill("bob");
       await page.getByRole("button", { name: "Save" }).click();
       await expect(people.getByRole("cell", { name: "Bob Builder", exact: true })).toBeVisible();
 

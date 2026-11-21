@@ -32,33 +32,71 @@ export function CreateChooser({
   /** Content for the selected option (paste box, file picker, examples...). */
   children?: ReactNode;
 }) {
+  const idle = !hasContent(children);
   return (
-    <div className="chooser">
+    <div className={idle ? "chooser idle" : "chooser"}>
       <header className="page-header">
         <div>
           <h1>{title}</h1>
           <p className="page-intro">{intro}</p>
         </div>
       </header>
-      <div className="chooser-grid" role="radiogroup" aria-label="How to create it">
-        {options.map((o) => (
-          <button
-            key={o.id}
-            type="button"
-            role="radio"
-            aria-checked={selected === o.id}
-            className={selected === o.id ? "choice selected" : "choice"}
-            onClick={() => onSelect(o.id)}
-          >
-            <span className="choice-icon">
-              <Icon as={o.icon} />
-            </span>
-            <span className="choice-title">{o.title}</span>
-            <span className="choice-text">{o.description}</span>
-          </button>
-        ))}
-      </div>
+      {idle ? (
+        <div className="chooser-grid" role="radiogroup" aria-label="How to create it">
+          {options.map((o) => (
+            <button
+              key={o.id}
+              type="button"
+              role="radio"
+              aria-checked={selected === o.id}
+              className={selected === o.id ? "choice selected" : "choice"}
+              onClick={() => onSelect(o.id)}
+            >
+              <span className="choice-icon">
+                <Icon as={o.icon} />
+              </span>
+              <span className="choice-title">{o.title}</span>
+              <span className="choice-text">{o.description}</span>
+            </button>
+          ))}
+        </div>
+      ) : (
+        <ChooserTabs options={options} selected={selected} onSelect={onSelect} />
+      )}
       {hasContent(children) && <div className="chooser-panel">{children}</div>}
+    </div>
+  );
+}
+
+/**
+ * The options as Grafana-style tabs: shown once a way is picked (also above the editor),
+ * so switching is one click and the chosen panel gets the page.
+ */
+export function ChooserTabs({
+  options,
+  selected,
+  onSelect,
+}: {
+  options: CreateOption[];
+  selected: string | null;
+  onSelect: (id: string) => void;
+}) {
+  return (
+    <div className="chooser-tabs" role="radiogroup" aria-label="How to create it">
+      {options.map((o) => (
+        <button
+          key={o.id}
+          type="button"
+          role="radio"
+          aria-checked={selected === o.id}
+          title={o.description}
+          className={selected === o.id ? "chooser-tab on" : "chooser-tab"}
+          onClick={() => onSelect(o.id)}
+        >
+          <Icon as={o.icon} />
+          {o.title}
+        </button>
+      ))}
     </div>
   );
 }
