@@ -3,6 +3,7 @@ WORKDIR /app
 COPY package.json package-lock.json tsconfig.base.json ./
 COPY packages/shared/package.json packages/shared/
 COPY packages/api/package.json packages/api/
+COPY packages/web/package.json packages/web/
 RUN npm ci
 COPY packages packages
 RUN npm run build
@@ -13,8 +14,11 @@ ENV NODE_ENV=production
 COPY package.json package-lock.json ./
 COPY packages/shared/package.json packages/shared/
 COPY packages/api/package.json packages/api/
+COPY packages/web/package.json packages/web/
 RUN npm ci --omit=dev
 COPY --from=build /app/packages/shared/dist packages/shared/dist
 COPY --from=build /app/packages/api/dist packages/api/dist
+COPY --from=build /app/packages/web/dist packages/web/dist
+ENV WEB_DIST=/app/packages/web/dist
 EXPOSE 3000
 CMD ["node", "packages/api/dist/main.js"]
