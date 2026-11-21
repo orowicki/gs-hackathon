@@ -238,6 +238,7 @@ export function createEngine(opts: EngineOptions): Engine {
       ackFlush = undefined;
       try {
         await opts.redis.xack(STREAM_EVENTS, GROUP_ENGINE, ...ids);
+        for (const id of ids) phantom.delete(id);
       } catch (err) {
         logger.error(`engine: ack of ${ids.length} entries (${ids[0]}..) failed: ${(err as Error).message}`);
       }
@@ -245,7 +246,12 @@ export function createEngine(opts: EngineOptions): Engine {
   };
 
   /** Process one stream entry; ack only on success, otherwise leave it pending for a retry. */
-  const handle = async (id: string, fields: string[], parsed?: { event: Event; matched: CompiledRule[] }) => {
+  /** Resolves true when the entry was acked (done), false when it was left pending for a retry. */
+  const handle = async (
+    id: string,
+    fields: string[],
+    parsed?: { event: Event; matched: CompiledRule[] },
+  ): Promise<boolean> => {
     let event: Event;
     try {
       if (parsed) event = parsed.event;
@@ -256,7 +262,7 @@ export function createEngine(opts: EngineOptions): Engine {
     } catch (err) {
       logger.error(`engine: event ${id} is not valid JSON, dropped: ${(err as Error).message}`);
       await ack(id);
-      return;
+      return true;
     }
     try {
       const res = await processEvent(event, {
@@ -272,14 +278,14 @@ export function createEngine(opts: EngineOptions): Engine {
       });
       if (res.failed.length > 0) {
         logger.error(`engine: event ${id} left pending, ${res.failed.length} rule(s) failed (will retry)`);
-        return;
+        return false;
       }
     } catch (err) {
       logger.error(`engine: event ${id} failed, left pending: ${(err as Error).message}`);
-      return;
+      return false;
     }
-    phantom.delete(id);
     await ack(id);
+    return true;
   };
 
   // Entries being processed by this engine. Entries that resolve to the same (rule, dedupKey) run one
@@ -306,6 +312,10 @@ export function createEngine(opts: EngineOptions): Engine {
     const waits = keys.map((k) => tails.get(k)).filter((p): p is Promise<void> => !!p);
     const done = (waits.length ? Promise.all(waits).then(() => undefined) : Promise.resolve())
       .then(() => handle(id, fields, parsed))
+      .then((acked) => {
+        // a left-pending entry keeps its adjustment for the reclaim that retries it
+        if (acked) phantom.delete(id);
+      })
       .finally(() => {
         for (const k of keys) if (tails.get(k) === done) tails.delete(k);
         active.delete(id);

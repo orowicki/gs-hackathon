@@ -29,7 +29,8 @@ const SEEN_PREFIX = `${PREFIX}dedupseen:`;
 
 const PENDING = "pending";
 // Lifetime of a claim. Must stay above the worst case of one apply(): the pg repo bounds an upsert to
-// maxWaitMs (30 s) queueing + one statement (statement_timeout 10 s in the engine), ~40 s.
+// maxWaitMs (30 s) queueing + waiting for a pool connection (connectionTimeoutMillis 5 s in the
+// engine) + one statement (statement_timeout 10 s), ~45 s.
 const PENDING_MS = 60_000;
 
 interface Outcome {
