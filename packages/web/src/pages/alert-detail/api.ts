@@ -28,12 +28,13 @@ export interface Alert {
   acknowledgedBy?: string;
   /** What the resolver wrote. */
   resolution?: string;
-  /** The rule's "how to resolve" text, if anyone has contributed one. */
-  rulebook?: RulebookEntry | null;
+  /** The rule's "how to resolve" comments, oldest first. */
+  rulebook?: RulebookEntry[] | null;
   [key: string]: unknown;
 }
 
 export interface RulebookEntry {
+  id: string;
   ruleId: string;
   text: string;
   updatedBy: string;
@@ -71,11 +72,11 @@ export class ApiError extends Error {
   }
 }
 
-async function request<T>(method: string, url: string, body?: unknown): Promise<T> {
+async function request<T>(method: string, url: string, body?: unknown, yaml = false): Promise<T> {
   const res = await fetch(url, {
     method,
-    headers: body === undefined ? undefined : { "content-type": "application/json" },
-    body: body === undefined ? undefined : JSON.stringify(body),
+    headers: body === undefined ? undefined : { "content-type": yaml ? "application/yaml" : "application/json" },
+    body: body === undefined ? undefined : yaml ? String(body) : JSON.stringify(body),
   });
   if (!res.ok) {
     let msg = `Request failed (${res.status})`;
@@ -95,7 +96,28 @@ const base = (id: string) => `/api/alerts/${encodeURIComponent(id)}`;
 
 export const getAlert = (id: string) => request<Alert>("GET", base(id));
 export const ackAlert = (id: string) => request<Alert>("POST", `${base(id)}/ack`);
+export const unackAlert = (id: string) => request<Alert>("POST", `${base(id)}/unack`);
 export const resolveAlert = (id: string, input: ResolveInput = {}) => request<Alert>("POST", `${base(id)}/resolve`, input);
+export const addRulebookComment = (id: string, text: string) =>
+  request<RulebookEntry>("POST", `${base(id)}/rulebook`, { text });
+
+/** The rule's own runbook: YAML for editing plus the stored runbook. */
+export interface RuleRunbook {
+  runbook: { id: string; name: string; type: "text" | "automation"; content?: string; steps?: Array<Record<string, unknown>> };
+  yaml: string;
+}
+const ruleRunbookUrl = (ruleId: string) => `/api/rules/${encodeURIComponent(ruleId)}/runbook`;
+/** null when the rule has no runbook yet. */
+export async function getRuleRunbook(ruleId: string): Promise<RuleRunbook | null> {
+  try {
+    return await request<RuleRunbook>("GET", ruleRunbookUrl(ruleId));
+  } catch (e) {
+    if (e instanceof ApiError && e.status === 404) return null;
+    throw e;
+  }
+}
+export const putRuleRunbook = (ruleId: string, yaml: string) => request<RuleRunbook>("PUT", ruleRunbookUrl(ruleId), yaml, true);
+
 export const sendSuggestion = (id: string, text: string) => request<unknown>("POST", `${base(id)}/suggestions`, { text });
 
 /** Never throws: missing routes (404) and failures both yield an empty list. */
@@ -113,8 +135,9 @@ export const getAudit = (id: string) => listOrEmpty<AuditEntry>(`${base(id)}/aud
 const isLifecycle = (v: unknown): v is Lifecycle => v === "open" || v === "acknowledged" || v === "resolved";
 
 export function lifecycleOf(a: Alert): Lifecycle {
-  if (isLifecycle(a.status)) return a.status;
+  // `state` is what ack/unack/resolve change; `status` is a copy the engine writes at creation.
   if (isLifecycle(a.state)) return a.state;
+  if (isLifecycle(a.status)) return a.status;
   return "open";
 }
 

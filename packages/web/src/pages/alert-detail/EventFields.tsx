@@ -1,7 +1,7 @@
-import { Check, ChevronDown, ChevronRight, Copy } from "lucide-react";
+import { Check, Copy } from "lucide-react";
 import { useState, type ReactNode } from "react";
 import { Icon } from "../../components/Icon";
-import { objectNodes, type Display, type TreeNode } from "./format";
+import { eventGroups, type Display, type FieldGroup } from "./format";
 
 export function CopyButton({ text, label }: { text: string; label: string }) {
   const [done, setDone] = useState(false);
@@ -23,69 +23,70 @@ export function ValueText({ display }: { display: Display }) {
   return <span className={cls || undefined}>{display.text}</span>;
 }
 
-export function FieldRow({ label, path, children }: { label: string; path?: string; children: ReactNode }) {
+/** One key/value row: muted parent labels, then the key, then the value. */
+export function FieldRow({ label, parents = [], path, children }: { label: string; parents?: string[]; path?: string; children: ReactNode }) {
   return (
-    <div className="field-row">
+    <div className="kv-row">
       <dt title={path}>
-        <span>{label}</span>
-        {path ? <CopyButton text={path} label={`Copy path ${path}`} /> : null}
+        {parents.map((p, i) => (
+          <span key={i} className="kv-parent">
+            {p}
+            <span className="kv-sep" aria-hidden="true">›</span>
+          </span>
+        ))}
+        <span className="kv-key">{label}</span>
       </dt>
-      <dd>{children}</dd>
+      <dd>
+        <span className="kv-value">{children}</span>
+        {path ? <CopyButton text={path} label={`Copy path ${path}`} /> : null}
+      </dd>
     </div>
   );
 }
 
-function Section({ node }: { node: Extract<TreeNode, { kind: "section" }> }) {
-  const [open, setOpen] = useState(true);
+function Group({ group }: { group: FieldGroup }) {
   return (
-    <div className="field-section">
-      <div className="section-head" title={node.path}>
-        <button type="button" className="section-toggle" aria-expanded={open} onClick={() => setOpen(!open)}>
-          <Icon as={open ? ChevronDown : ChevronRight} />
-          <span>{node.label}</span>
-        </button>
-        <CopyButton text={node.path} label={`Copy path ${node.path}`} />
-      </div>
-      {open ? <Nodes nodes={node.children} nested /> : null}
-    </div>
-  );
-}
-
-function Nodes({ nodes, nested = false }: { nodes: TreeNode[]; nested?: boolean }) {
-  return (
-    <dl className={nested ? "fields nested" : "fields"}>
-      {nodes.map((n) =>
-        n.kind === "field" ? (
-          <FieldRow key={n.path} label={n.label} path={n.path}>
-            <ValueText display={n.display} />
+    <div className="kv-group">
+      {group.title ? (
+        <div className="kv-group-title" title={group.path}>
+          {group.title}
+          <span className="kv-count">{group.rows.length}</span>
+        </div>
+      ) : null}
+      <dl className="kv">
+        {group.rows.map((r) => (
+          <FieldRow key={r.path} label={r.label} parents={r.parents} path={r.path}>
+            <ValueText display={r.display} />
           </FieldRow>
-        ) : (
-          <Section key={n.path} node={n} />
-        ),
-      )}
-    </dl>
+        ))}
+      </dl>
+    </div>
   );
 }
 
-/** The event rendered as "JSON without the brackets", plus a quiet raw JSON toggle. */
+/** The event as flat key/value groups (no nested boxes), plus a quiet raw JSON toggle. */
 export function EventFields({ event, prefix = "payload" }: { event: Record<string, unknown>; prefix?: string }) {
   const [raw, setRaw] = useState(false);
   const json = JSON.stringify(event, null, 2);
   return (
-    <section aria-label="Event data" className="event block">
-      <h2>Event</h2>
-      <Nodes nodes={objectNodes(event, prefix)} />
-      <div className="raw">
+    <section aria-label="Event data" className="event ad-panel">
+      <div className="panel-head">
+        <h2>Event</h2>
         <button type="button" className="link-btn" aria-expanded={raw} onClick={() => setRaw(!raw)}>
-          View raw JSON
+          {raw ? "Hide raw JSON" : "View raw JSON"}
         </button>
-        {raw ? (
-          <>
-            <CopyButton text={json} label="Copy raw JSON" />
-            <pre className="mono raw-json">{json}</pre>
-          </>
-        ) : null}
       </div>
+      <div className="panel-body fields">
+        {eventGroups(event, prefix).map((g) => (
+          <Group key={g.path} group={g} />
+        ))}
+      </div>
+      {raw ? (
+        <div className="panel-body raw">
+          <CopyButton text={json} label="Copy raw JSON" />
+          <pre className="mono raw-json">{json}</pre>
+        </div>
+      ) : null}
     </section>
   );
 }

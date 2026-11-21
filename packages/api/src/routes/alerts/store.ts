@@ -100,9 +100,9 @@ export interface SuggestionStore {
 }
 
 export interface RulebookStore {
-  get(ruleId: string): Promise<RulebookEntry | null>;
-  /** Insert or replace the rule's entry. */
-  put(entry: RulebookEntry): Promise<void>;
+  /** The rule's "how to resolve" comments, oldest first. */
+  list(ruleId: string): Promise<RulebookEntry[]>;
+  add(entry: RulebookEntry): Promise<void>;
 }
 
 export interface EventLoader {
@@ -151,16 +151,15 @@ export function createMemoryAlertStores(): AlertStores & { events: Map<string, E
   const audit: AuditEntry[] = [];
   const suggestions = new Map<string, Suggestion>();
   const events = new Map<string, Event>();
-  const rulebook = new Map<string, RulebookEntry>();
+  const rulebook: RulebookEntry[] = [];
   return {
     events,
     rulebook: {
-      async get(ruleId) {
-        const e = rulebook.get(ruleId);
-        return e ? structuredClone(e) : null;
+      async list(ruleId) {
+        return structuredClone(rulebook.filter((e) => e.ruleId === ruleId));
       },
-      async put(entry) {
-        rulebook.set(entry.ruleId, structuredClone(entry));
+      async add(entry) {
+        rulebook.push(structuredClone(entry));
       },
     },
     alerts: {
@@ -504,15 +503,18 @@ export function createPgAlertStores(pool: Pool): AlertStores {
   };
 
   const rulebook: RulebookStore = {
-    async get(ruleId) {
-      return datas(await q<DataRow<RulebookEntry>>("SELECT data FROM rulebook WHERE rule_id = $1", [ruleId]))[0] ?? null;
-    },
-    async put(e) {
-      await q(
-        `INSERT INTO rulebook (rule_id, updated_at, data) VALUES ($1,$2,$3)
-         ON CONFLICT (rule_id) DO UPDATE SET updated_at = EXCLUDED.updated_at, data = EXCLUDED.data`,
-        [e.ruleId, e.updatedAt, JSON.stringify(e)],
+    async list(ruleId) {
+      return datas(
+        await q<DataRow<RulebookEntry>>("SELECT data FROM rulebook_comments WHERE rule_id = $1 ORDER BY at, id LIMIT 500", [ruleId]),
       );
+    },
+    async add(e) {
+      await q("INSERT INTO rulebook_comments (id, rule_id, at, data) VALUES ($1,$2,$3,$4)", [
+        e.id,
+        e.ruleId,
+        e.updatedAt,
+        JSON.stringify(e),
+      ]);
     },
   };
 

@@ -225,12 +225,14 @@ async function listFilteredOffset(
   sendJson(res, 200, out, headers);
 }
 
+const VERB = { acknowledged: "acknowledge", unacknowledged: "unacknowledge", resolved: "resolve" } as const;
+
 async function transition(
   req: http.IncomingMessage,
   res: http.ServerResponse,
   deps: AlertsApiDeps,
   id: string,
-  kind: "acknowledged" | "resolved",
+  kind: "acknowledged" | "unacknowledged" | "resolved",
 ): Promise<void> {
   const body = await readJsonBody(req);
   const actor = resolveActor(req, body.actor);
@@ -251,36 +253,41 @@ async function transition(
     action: kind,
     ...(resolution ? { detail: resolution.slice(0, 200) } : {}),
   };
+  // null (not undefined) so the JSON merge in the pg store clears the fields.
+  const cleared = { acknowledgedBy: null, acknowledgedAt: null } as unknown as Partial<Alert>;
   const out =
     kind === "acknowledged"
       ? await deps.alerts.transitionWithAudit(
           id,
           ["open"],
-          { state: "acknowledged", acknowledgedBy: actor, acknowledgedAt: at },
+          { state: "acknowledged", status: "acknowledged", acknowledgedBy: actor, acknowledgedAt: at } as Partial<Alert>,
           entry,
         )
-      : await deps.alerts.transitionWithAudit(
+      : kind === "unacknowledged"
+        ? await deps.alerts.transitionWithAudit(id, ["acknowledged"], { state: "open", status: "open", ...cleared } as Partial<Alert>, entry)
+        : await deps.alerts.transitionWithAudit(
           id,
           ["open", "acknowledged"],
-          { state: "resolved", resolvedAt: at, resolvedBy: actor, ...(resolution ? { resolution } : {}) },
+          { state: "resolved", status: "resolved", resolvedAt: at, resolvedBy: actor, ...(resolution ? { resolution } : {}) } as Partial<Alert>,
           entry,
         );
   if (out === null) return sendJson(res, 404, { error: "alert not found" });
   if (out === "conflict") {
     const cur = await deps.alerts.get(id);
-    return sendJson(res, 409, { error: `cannot ${kind === "acknowledged" ? "acknowledge" : "resolve"} an alert in this state`, state: cur?.state });
+    return sendJson(res, 409, { error: `cannot ${VERB[kind]} an alert in this state`, state: cur?.state });
   }
   let rulebook: RulebookEntry | undefined;
   if (contribute && resolution && deps.rulebook) {
-    rulebook = { ruleId: out.ruleId, text: resolution, updatedBy: actor, updatedAt: at, alertId: id };
-    await deps.rulebook.put(rulebook);
+    rulebook = { id: newId(deps), ruleId: out.ruleId, text: resolution, updatedBy: actor, updatedAt: at, alertId: id };
+    await deps.rulebook.add(rulebook);
   }
   try {
-    deps.publish?.({ type: "alert", alertId: id, kind });
+    deps.publish?.({ type: "alert", alertId: id, kind: kind === "unacknowledged" ? "updated" : kind });
   } catch (e) {
     console.error("ui publish failed:", e);
   }
-  sendJson(res, 200, rulebook ? { ...out, rulebook } : out);
+  // Not `rulebook`: on GET /api/alerts/{id} that name is the whole comment thread.
+  sendJson(res, 200, rulebook ? { ...out, rulebookComment: rulebook } : out);
 }
 
 /** Returns false when the request is not an alerts/audit route. */
@@ -316,10 +323,10 @@ export async function handleAlertsRoutes(
       sendJson(res, 200, rows, headers);
       return true;
     }
-    const m = /^\/api\/alerts\/([^/]+)(?:\/(ack|resolve|audit|suggestions))?$/.exec(path);
+    const m = /^\/api\/alerts\/([^/]+)(?:\/(ack|unack|resolve|audit|suggestions|rulebook))?$/.exec(path);
     if (!m) return false;
     const sub = m[2];
-    const allowed = sub === undefined || sub === "audit" ? "GET" : sub === "suggestions" || sub === "ack" || sub === "resolve" ? "POST" : "";
+    const allowed = sub === undefined || sub === "audit" ? "GET" : sub === "suggestions" || sub === "rulebook" || sub === "ack" || sub === "unack" || sub === "resolve" ? "POST" : "";
     if (method !== allowed) return false;
     const id = decodeSegment(m[1]!);
     if (id === null) return sendJson(res, 400, { error: "bad id" }), true;
@@ -329,7 +336,7 @@ export async function handleAlertsRoutes(
       if (!alert) return sendJson(res, 404, { error: "alert not found" }), true;
       const ev = deps.events ? (await deps.events.getEvents([alert.eventId])).get(alert.eventId) : undefined;
       const suggestions = await deps.suggestions.listByAlert(id);
-      const rulebook = deps.rulebook ? await deps.rulebook.get(alert.ruleId) : null;
+      const rulebook = deps.rulebook ? await deps.rulebook.list(alert.ruleId) : [];
       sendJson(res, 200, { ...alert, event: ev ?? null, suggestions, rulebook });
       return true;
     }
@@ -338,9 +345,28 @@ export async function handleAlertsRoutes(
       sendJson(res, 200, await deps.audit.listByAlert(id));
       return true;
     }
-    if (sub === "ack" || sub === "resolve") {
-      await transition(req, res, deps, id, sub === "ack" ? "acknowledged" : "resolved");
+    if (sub === "ack" || sub === "unack" || sub === "resolve") {
+      await transition(req, res, deps, id, sub === "ack" ? "acknowledged" : sub === "unack" ? "unacknowledged" : "resolved");
       return true;
+    }
+    if (sub === "rulebook") {
+      const body = await readJsonBody(req);
+      const alert = await deps.alerts.get(id);
+      if (!alert) return sendJson(res, 404, { error: "alert not found" }), true;
+      if (!deps.rulebook) return sendJson(res, 503, { error: "rulebook not configured" }), true;
+      const text = typeof body.text === "string" ? body.text.trim() : "";
+      if (!text || text.length > MAX_RESOLUTION_CHARS)
+        return sendJson(res, 400, { error: `text must be 1 to ${MAX_RESOLUTION_CHARS} characters` }), true;
+      const entry: RulebookEntry = {
+        id: newId(deps),
+        ruleId: alert.ruleId,
+        text,
+        updatedBy: resolveActor(req, body.actor),
+        updatedAt: nowIso(deps),
+        alertId: id,
+      };
+      await deps.rulebook.add(entry);
+      return sendJson(res, 201, entry), true;
     }
     // suggestions
     const body = await readJsonBody(req);

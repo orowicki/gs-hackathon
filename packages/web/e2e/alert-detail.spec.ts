@@ -46,6 +46,8 @@ const alert = {
 async function mock(page: Page, suggestions: unknown[]) {
   await page.route("**/api/alerts/alert-wf-00042", (r) => r.fulfill({ json: alert }));
   await page.route("**/api/alerts/alert-wf-00042/ack", (r) => r.fulfill({ json: { ...alert, state: "acknowledged" } }));
+  await page.route("**/api/alerts/alert-wf-00042/unack", (r) => r.fulfill({ json: { ...alert, state: "open" } }));
+  await page.route("**/api/rules/rule-settlements/runbook", (r) => r.fulfill({ status: 404, json: { error: "none" } }));
   await page.route("**/api/alerts/alert-wf-00042/runbook-runs", (r) => r.fulfill({ status: 404, json: {} }));
   await page.route("**/api/alerts/alert-wf-00042/audit", (r) => r.fulfill({ status: 404, json: {} }));
   await page.route("**/api/alerts/alert-wf-00042/suggestions", (r) => {
@@ -73,9 +75,20 @@ for (const scheme of ["light", "dark"] as const) {
       const fieldText = await page.locator(".event .fields").first().innerText();
       expect(fieldText).not.toMatch(/[{}[\]"]/);
 
-      await page.getByRole("button", { name: "Acknowledge" }).click();
-      await expect(page.getByRole("button", { name: "Acknowledge" })).toBeDisabled();
+      await page.getByRole("button", { name: "Acknowledge", exact: true }).click();
+      await expect(page.getByRole("button", { name: "Acknowledged" })).toHaveAttribute("aria-pressed", "true");
       await expect(page.getByTestId("alert-state")).toHaveText("acknowledged");
+      await page.getByRole("button", { name: "Undo" }).click();
+      await expect(page.getByTestId("alert-state")).toHaveText("open");
+      await page.getByRole("button", { name: "Acknowledge", exact: true }).click();
+      await expect(page.getByTestId("alert-state")).toHaveText("acknowledged");
+
+      // The big text box only appears when saving to the rulebook.
+      await page.getByRole("button", { name: /Resolve/ }).click();
+      await expect(page.getByLabel("How was it resolved?")).toHaveCount(0);
+      await page.getByText("Save to the rulebook").click();
+      await expect(page.getByLabel("How was it resolved?")).toBeVisible();
+      await page.getByRole("button", { name: "Cancel" }).click();
 
       await page.getByRole("button", { name: "Suggest a change" }).click();
       const send = page.getByRole("button", { name: "Send" });

@@ -36,7 +36,7 @@ export interface AuditEntry {
   at: IsoTimestamp;
   /** Person id or "system". */
   actor: string;
-  action: "created" | "acknowledged" | "resolved" | "step_executed" | "step_approved" | "step_skipped" | "escalated" | "suggestion";
+  action: "created" | "acknowledged" | "unacknowledged" | "resolved" | "step_executed" | "step_approved" | "step_skipped" | "escalated" | "suggestion";
   runbookId?: Id;
   stepIndex?: number;
   result?: string;
@@ -54,7 +54,9 @@ export interface Suggestion {
 }
 
 /** The rulebook: one "how to resolve" text per rule, written by people when they resolve alerts. */
+/** One "how to resolve" comment on a rule; a rule keeps all of them, oldest first. */
 export interface RulebookEntry {
+  id: Id;
   ruleId: Id;
   text: string;
   updatedBy: Id;

@@ -298,3 +298,33 @@ describe.skipIf(!process.env.DATABASE_URL || !process.env.REDIS_URL)("with the r
     }
   });
 });
+
+describe("rule runbook (YAML, one per rule)", () => {
+  it("creates, replaces, reads and deletes the rule's own runbook", async () => {
+    const store = memoryStore();
+    await store.upsert("rule", samples.rules as never);
+    const url = await start(store);
+    const ruleId = String(samples.rules!.id);
+    const put = (body: string) => fetch(`${url}/api/rules/${ruleId}/runbook`, { method: "PUT", body, headers: { "content-type": "application/yaml" } });
+
+    expect((await fetch(`${url}/api/rules/${ruleId}/runbook`)).status).toBe(404);
+    expect((await fetch(`${url}/api/rules/nope/runbook`)).status).toBe(404);
+    expect((await put("name: [unclosed")).status).toBe(400);
+    expect((await put("type: automation\nname: X\nsteps:\n  - action: launch-rockets\n")).status).toBe(400);
+
+    const r1 = await put("name: First\ncontent: Restart it.\n");
+    expect(r1.status).toBe(200);
+    const b1 = (await r1.json()) as { runbook: Record<string, unknown>; yaml: string };
+    expect(b1.runbook).toMatchObject({ id: `rule-${ruleId}`, type: "text", matches: `alert.ruleId = "${ruleId}"`, content: "Restart it." });
+    expect(b1.yaml).not.toContain("matches");
+
+    // A second PUT overwrites; a smuggled id/matches is ignored.
+    const r2 = await put(`id: other\nmatches: "true"\nname: Second\ntype: automation\nsteps:\n  - action: wait\n    duration: 1s\n`);
+    expect(r2.status).toBe(200);
+    const all = (await (await fetch(`${url}/api/runbooks`)).json()) as { id: string; name: string; matches: string }[];
+    expect(all.map((r) => [r.id, r.name, r.matches])).toEqual([[`rule-${ruleId}`, "Second", `alert.ruleId = "${ruleId}"`]]);
+
+    expect((await fetch(`${url}/api/rules/${ruleId}/runbook`, { method: "DELETE" })).status).toBe(204);
+    expect((await fetch(`${url}/api/rules/${ruleId}/runbook`)).status).toBe(404);
+  });
+});

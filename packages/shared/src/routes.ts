@@ -60,7 +60,12 @@ export const ROUTES: RouteDef[] = [
   { method: "GET", path: "/api/approvals", summary: "Pending runbook step approvals", tag: "runbooks", response: "PendingApproval[]" },
   { method: "GET", path: "/api/audit", summary: "Global audit log (filter by query: alertId, actor, action, before, limit)", tag: "alerts", response: "AuditEntry[]" },
   { method: "POST", path: "/api/alerts/{id}/ack", summary: "Acknowledge an alert", tag: "alerts", response: "Alert" },
+  { method: "POST", path: "/api/alerts/{id}/unack", summary: "Undo an acknowledge: the alert goes back to open (resolved alerts cannot change)", tag: "alerts", response: "Alert" },
   { method: "POST", path: "/api/alerts/{id}/resolve", summary: "Resolve an alert (optional body: resolution text, contribute to the rule's rulebook)", tag: "alerts", response: "Alert" },
+  { method: "POST", path: "/api/alerts/{id}/rulebook", summary: "Add a \"how to resolve\" comment to the alert's rule (all alerts of the rule show the thread)", tag: "alerts", request: "{ text: string }", response: "RulebookEntry" },
+  { method: "GET", path: "/api/rules/{id}/runbook", summary: "The rule's own runbook (404 when none) with its YAML for editing", tag: "runbooks", response: "{ runbook: Runbook; yaml: string }" },
+  { method: "PUT", path: "/api/rules/{id}/runbook", summary: "Create or replace the rule's runbook from YAML (id and matches are set by the server)", tag: "runbooks", request: "application/yaml", response: "{ runbook: Runbook; yaml: string }" },
+  { method: "DELETE", path: "/api/rules/{id}/runbook", summary: "Remove the rule's runbook", tag: "runbooks" },
   { method: "GET", path: "/api/alerts/{id}/audit", summary: "Audit log of an alert", tag: "alerts", response: "AuditEntry[]" },
   { method: "POST", path: "/api/alerts/{id}/runbook-steps/{stepIndex}/approve", summary: "Approve a runbook step awaiting approval", tag: "runbooks", response: "RunbookRun" },
 

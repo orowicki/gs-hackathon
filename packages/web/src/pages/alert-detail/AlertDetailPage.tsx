@@ -1,10 +1,14 @@
-import { BookOpen, CheckCircle2 } from "lucide-react";
+import { BookOpen, Check, CheckCircle2, FileCode2, Lock, MessageSquare, Undo2 } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Icon } from "../../components/Icon";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import "./alert-detail.css";
 import {
   ackAlert,
+  addRulebookComment,
+  getRuleRunbook,
+  putRuleRunbook,
+  type RuleRunbook,
   ApiError,
   eventOf,
   getAlert,
@@ -14,6 +18,7 @@ import {
   resolveAlert,
   sendSuggestion,
   sourceStatusOf,
+  unackAlert,
   type Alert,
   type AuditEntry,
   type ResolveInput,
@@ -121,8 +126,9 @@ function Suggest({ id }: { id: string }) {
 
 function Runbooks({ runs }: { runs: RunbookRun[] | null }) {
   return (
-    <section aria-label="Runbooks" className="block">
-      <h2>Runbooks</h2>
+    <section aria-label="Runbooks" className="ad-panel">
+      <div className="panel-head"><h2>Runbooks</h2></div>
+      <div className="panel-body">
       {runs === null ? null : runs.length === 0 ? (
         <p className="muted">No runbook runs yet.</p>
       ) : (
@@ -143,14 +149,16 @@ function Runbooks({ runs }: { runs: RunbookRun[] | null }) {
           ))}
         </ul>
       )}
+      </div>
     </section>
   );
 }
 
 function Audit({ entries }: { entries: AuditEntry[] | null }) {
   return (
-    <section aria-label="Audit log" className="block">
-      <h2>Audit log</h2>
+    <section aria-label="Audit log" className="ad-panel">
+      <div className="panel-head"><h2>Audit log</h2></div>
+      <div className="panel-body">
       {entries === null ? null : entries.length === 0 ? (
         <p className="muted">No audit entries yet.</p>
       ) : (
@@ -169,23 +177,230 @@ function Audit({ entries }: { entries: AuditEntry[] | null }) {
           })}
         </ol>
       )}
+      </div>
     </section>
   );
 }
 
-/** The rule's "how to resolve" text from the rulebook. */
-function RulebookCard({ entry }: { entry: RulebookEntry }) {
-  const d = parseTimestamp("at", entry.updatedAt);
+/** "How to resolve": the rule's comment thread, shown on every alert of the rule. */
+function RulebookThread({
+  alertId,
+  ruleId,
+  entries,
+  onAdded,
+}: {
+  alertId: string;
+  ruleId?: string;
+  entries: RulebookEntry[];
+  onAdded(e: RulebookEntry): void;
+}) {
+  const [text, setText] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const isCurrent = useIsCurrent(alertId);
+  const post = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      const e = await addRulebookComment(alertId, text.trim());
+      if (!isCurrent(alertId)) return;
+      onAdded(e);
+      setText("");
+    } catch (err) {
+      if (isCurrent(alertId)) setError(err instanceof Error ? err.message : "Could not post the comment.");
+    } finally {
+      if (isCurrent(alertId)) setBusy(false);
+    }
+  };
   return (
-    <section aria-label="How to resolve" className="card rulebook-card">
-      <h2>
-        <Icon as={BookOpen} /> How to resolve
-      </h2>
-      <p className="prose">{entry.text}</p>
-      <p className="muted small-text">
-        Written by {entry.updatedBy}
-        {d ? ` on ${formatDate(d)}` : ""}
-      </p>
+    <section aria-label="How to resolve" className="ad-panel">
+      <div className="panel-head">
+        <h2>
+          <Icon as={BookOpen} /> How to resolve
+          <span className="count-chip">{entries.length}</span>
+        </h2>
+        <span className="muted small-text">
+          Shared by every alert of rule <span className="mono">{ruleId ?? "—"}</span>
+        </span>
+      </div>
+      <div className="panel-body">
+        {entries.length === 0 ? (
+          <p className="muted empty-note">
+            <Icon as={MessageSquare} /> No one has written how to resolve this yet.
+          </p>
+        ) : (
+          <ol className="comments">
+            {entries.map((e) => {
+              const d = parseTimestamp("at", e.updatedAt);
+              return (
+                <li key={e.id} className="comment">
+                  <span className="avatar" aria-hidden="true">
+                    {(e.updatedBy || "?").charAt(0).toUpperCase()}
+                  </span>
+                  <div className="comment-main">
+                    <div className="comment-meta">
+                      <strong>{e.updatedBy}</strong>
+                      {d ? <span className="muted">{formatDate(d)}</span> : null}
+                      {e.alertId && e.alertId !== alertId ? (
+                        <Link className="muted" to={`/alerts/${encodeURIComponent(e.alertId)}`}>
+                          from another alert
+                        </Link>
+                      ) : e.alertId === alertId ? (
+                        <span className="muted">on this alert</span>
+                      ) : null}
+                    </div>
+                    <p className="prose">{e.text}</p>
+                  </div>
+                </li>
+              );
+            })}
+          </ol>
+        )}
+        <div className="comment-form">
+          <textarea
+            aria-label="Add a how-to-resolve comment"
+            rows={3}
+            value={text}
+            placeholder="Add how you resolve this: steps, commands, who to contact…"
+            onChange={(e) => setText(e.target.value)}
+          />
+          <div className="actions">
+            <button type="button" className="btn primary solid" disabled={busy || text.trim() === ""} onClick={post}>
+              Comment
+            </button>
+          </div>
+          {error ? <p className="error-text" role="alert">{error}</p> : null}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+const RUNBOOK_TEMPLATE = `# One runbook per rule. Saving replaces it. Applies to new alerts of this rule.
+name: How to fix this
+type: text            # text = instructions, automation = steps the worker runs
+content: |
+  1. Check the service dashboard.
+  2. Restart the instance named in the alert ({{alert.entity}}).
+# For automation, drop content and add steps (actions: http, escalate, wait):
+# type: automation
+# steps:
+#   - name: Check health
+#     action: http
+#     method: GET
+#     url: http://service/health
+#   - name: Escalate
+#     action: escalate
+#     group: settlements-oncall
+#     approval: required
+`;
+
+/** The rule's own runbook, written as YAML. One per rule; saving overwrites it. */
+function RuleRunbookPanel({ ruleId }: { ruleId: string }) {
+  const [current, setCurrent] = useState<RuleRunbook | null | undefined>(undefined);
+  const [draft, setDraft] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [showYaml, setShowYaml] = useState(false);
+  const isCurrent = useIsCurrent(ruleId);
+
+  useEffect(() => {
+    let live = true;
+    setCurrent(undefined);
+    setDraft(null);
+    setError(null);
+    getRuleRunbook(ruleId)
+      .then((r) => live && setCurrent(r))
+      .catch(() => live && setCurrent(null));
+    return () => {
+      live = false;
+    };
+  }, [ruleId]);
+
+  const save = async () => {
+    if (draft === null) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const r = await putRuleRunbook(ruleId, draft);
+      if (!isCurrent(ruleId)) return;
+      setCurrent(r);
+      setDraft(null);
+    } catch (e) {
+      if (isCurrent(ruleId)) setError(e instanceof Error ? e.message : "Could not save the runbook.");
+    } finally {
+      if (isCurrent(ruleId)) setBusy(false);
+    }
+  };
+
+  const rb = current?.runbook;
+  return (
+    <section aria-label="Rule runbook" className="ad-panel">
+      <div className="panel-head">
+        <h2>
+          <Icon as={FileCode2} /> Rule runbook
+          {rb ? <span className={`type-chip type-${rb.type}`}>{rb.type}</span> : null}
+        </h2>
+        {draft === null && current !== undefined ? (
+          <button type="button" className="btn" onClick={() => setDraft(current?.yaml ?? RUNBOOK_TEMPLATE)}>
+            {rb ? "Edit YAML" : "Write runbook"}
+          </button>
+        ) : null}
+      </div>
+      <div className="panel-body stack">
+        {draft !== null ? (
+          <>
+            <textarea
+              aria-label="Runbook YAML"
+              className="mono yaml-editor"
+              rows={16}
+              spellCheck={false}
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+            />
+            <p className="muted small-text">
+              {rb ? "Saving replaces the current runbook. " : ""}It runs on new alerts of this rule; the matching is set for
+              you.
+            </p>
+            {error ? <p className="error-text" role="alert">{error}</p> : null}
+            <div className="actions">
+              <button type="button" className="btn primary solid" disabled={busy || draft.trim() === ""} onClick={save}>
+                {rb ? "Save and replace" : "Save runbook"}
+              </button>
+              <button type="button" className="btn" disabled={busy} onClick={() => { setDraft(null); setError(null); }}>
+                Cancel
+              </button>
+            </div>
+          </>
+        ) : current === undefined ? (
+          <p className="muted">Loading…</p>
+        ) : !rb ? (
+          <p className="muted empty-note">This rule has no runbook. Write one in YAML; it runs on the rule's next alerts.</p>
+        ) : (
+          <>
+            <p className="strong">{rb.name}</p>
+            {rb.type === "text" ? (
+              <p className="prose">{rb.content}</p>
+            ) : (
+              <ol className="rb-steps">
+                {(rb.steps ?? []).map((st, i) => (
+                  <li key={i}>
+                    <span>{String(st.name ?? st.action)}</span>
+                    <span className="step-tags">
+                      <span className="tag mono">{String(st.action)}</span>
+                      {st.approval === "required" ? <span className="tag warn">needs approval</span> : null}
+                    </span>
+                  </li>
+                ))}
+              </ol>
+            )}
+            <button type="button" className="link-btn" aria-expanded={showYaml} onClick={() => setShowYaml(!showYaml)}>
+              {showYaml ? "Hide YAML" : "View YAML"}
+            </button>
+            {showYaml ? <pre className="mono raw-json">{current?.yaml}</pre> : null}
+          </>
+        )}
+      </div>
     </section>
   );
 }
@@ -193,22 +408,27 @@ function RulebookCard({ entry }: { entry: RulebookEntry }) {
 function ResolutionCard({ alert }: { alert: Alert }) {
   const d = parseTimestamp("at", alert.resolvedAt);
   return (
-    <section aria-label="Resolution" className="card resolution-card">
-      <h2>
-        <Icon as={CheckCircle2} /> Resolved
-      </h2>
-      {alert.resolution ? <p className="prose">{alert.resolution}</p> : <p className="muted">No resolution note.</p>}
-      {alert.resolvedBy || d ? (
-        <p className="muted small-text">
-          Resolved{alert.resolvedBy ? ` by ${alert.resolvedBy}` : ""}
-          {d ? ` on ${formatDate(d)}` : ""}
-        </p>
-      ) : null}
+    <section aria-label="Resolution" className="ad-panel">
+      <div className="panel-head">
+        <h2 className="resolved-title">
+          <Icon as={CheckCircle2} /> Resolved
+        </h2>
+        {alert.resolvedBy || d ? (
+          <span className="muted small-text">
+            {alert.resolvedBy ? `by ${alert.resolvedBy}` : ""}
+            {alert.resolvedBy && d ? ", " : ""}
+            {d ? formatDate(d) : ""}
+          </span>
+        ) : null}
+      </div>
+      <div className="panel-body">
+        {alert.resolution ? <p className="prose">{alert.resolution}</p> : <p className="muted">No resolution note.</p>}
+      </div>
     </section>
   );
 }
 
-/** Resolve form: a note on how it was fixed, optionally saved to the rule's rulebook. */
+/** Resolve form. The text box only appears when the fix is being saved to the rulebook. */
 function ResolvePanel({
   alert,
   busy,
@@ -220,52 +440,111 @@ function ResolvePanel({
   onCancel(): void;
   onResolve(input: ResolveInput): void;
 }) {
-  const existing = alert.rulebook?.text ?? "";
-  const [text, setText] = useState(existing);
+  const [text, setText] = useState("");
   const [contribute, setContribute] = useState(false);
   const trimmed = text.trim();
-  const changed = trimmed !== existing.trim();
+  const blocked = busy || (contribute && trimmed === "");
   return (
-    <section aria-label="Resolve alert" className="card resolve-panel">
-      <h2>Resolve this alert</h2>
-      <label className="field-label" htmlFor="resolution">
-        How was it resolved?
-      </label>
-      <textarea
-        id="resolution"
-        rows={5}
-        value={text}
-        placeholder="What did you do to fix it? Steps, commands, who to contact…"
-        onChange={(e) => setText(e.target.value)}
-      />
-      {existing ? (
-        <p className="muted small-text">Filled in from the rulebook. Change it to say what you actually did.</p>
-      ) : null}
-      <label className="check">
-        <input type="checkbox" checked={contribute} disabled={trimmed === ""} onChange={(e) => setContribute(e.target.checked)} />
-        <span className="check-text">
-          <strong>Save to the rulebook</strong>
-          <span className="muted">
-            Every alert from rule <span className="mono">{alert.ruleId ?? "this rule"}</span> will show this text under
-            How to resolve.
-            {existing && changed ? " It replaces the current text." : ""}
+    <section aria-label="Resolve alert" className="ad-panel resolve-panel">
+      <div className="panel-head">
+        <h2>Resolve this alert</h2>
+      </div>
+      <div className="panel-body stack">
+        <label className="check">
+          <input type="checkbox" checked={contribute} onChange={(e) => setContribute(e.target.checked)} />
+          <span className="check-text">
+            <strong>Save to the rulebook</strong>
+            <span className="muted">
+              Write how you fixed it. It's added as a comment under How to resolve on every alert of rule{" "}
+              <span className="mono">{alert.ruleId ?? "this rule"}</span>.
+            </span>
           </span>
-        </span>
-      </label>
-      <div className="actions">
-        <button
-          type="button"
-          className="btn primary solid"
-          disabled={busy}
-          onClick={() => onResolve({ resolution: trimmed || undefined, contribute: contribute && trimmed !== "" })}
-        >
-          Resolve
-        </button>
-        <button type="button" className="btn" disabled={busy} onClick={onCancel}>
-          Cancel
-        </button>
+        </label>
+        {contribute ? (
+          <>
+            <label className="field-label" htmlFor="resolution">
+              How was it resolved?
+            </label>
+            <textarea
+              id="resolution"
+              rows={8}
+              autoFocus
+              value={text}
+              placeholder="Steps, commands, who to contact…"
+              onChange={(e) => setText(e.target.value)}
+            />
+          </>
+        ) : null}
+        <div className="actions">
+          <button
+            type="button"
+            className="btn primary solid"
+            disabled={blocked}
+            onClick={() => onResolve(contribute ? { resolution: trimmed, contribute: true } : {})}
+          >
+            {contribute ? "Resolve and save" : "Resolve"}
+          </button>
+          <button type="button" className="btn" disabled={busy} onClick={onCancel}>
+            Cancel
+          </button>
+        </div>
       </div>
     </section>
+  );
+}
+
+/** Acknowledge / Resolve buttons that show the current state: pressed when chosen, locked once resolved. */
+function StateActions({
+  state,
+  busy,
+  resolving,
+  onAck,
+  onUnack,
+  onResolve,
+}: {
+  state: string;
+  busy: boolean;
+  resolving: boolean;
+  onAck(): void;
+  onUnack(): void;
+  onResolve(): void;
+}) {
+  if (state === "resolved") {
+    return (
+      <div className="actions head-actions" role="group" aria-label="Alert actions">
+        <span className="state-btn locked" title="Resolved alerts can't be changed">
+          <Icon as={Lock} /> Resolved
+        </span>
+      </div>
+    );
+  }
+  const acked = state === "acknowledged";
+  return (
+    <div className="actions head-actions" role="group" aria-label="Alert actions">
+      {acked ? (
+        <span className="btn-pair">
+          <button type="button" className="state-btn on" aria-pressed="true" disabled title="Acknowledged">
+            <Icon as={Check} /> Acknowledged
+          </button>
+          <button type="button" className="state-btn undo" disabled={busy} onClick={onUnack} title="Undo acknowledge">
+            <Icon as={Undo2} /> Undo
+          </button>
+        </span>
+      ) : (
+        <button type="button" className="state-btn" aria-pressed="false" disabled={busy} onClick={onAck}>
+          Acknowledge
+        </button>
+      )}
+      <button
+        type="button"
+        className={resolving ? "state-btn resolve on" : "state-btn resolve"}
+        aria-pressed={resolving}
+        disabled={busy || resolving}
+        onClick={onResolve}
+      >
+        {resolving ? <Icon as={Check} /> : null} Resolve…
+      </button>
+    </div>
   );
 }
 
@@ -319,7 +598,13 @@ export function AlertDetailPage() {
     try {
       const updated = await fn(id);
       if (!isCurrent(id)) return;
-      setAlert((prev) => ({ ...(prev ?? {}), ...updated }));
+      const added = (updated as { rulebookComment?: RulebookEntry }).rulebookComment;
+      setAlert((prev) => {
+        const next = { ...(prev ?? {}), ...updated } as Alert & { rulebookComment?: RulebookEntry };
+        delete next.rulebookComment;
+        if (added) next.rulebook = [...(prev?.rulebook ?? []), added];
+        return next;
+      });
       setResolving(false);
       void getAudit(id).then((a) => isCurrent(id) && setAudit(a));
     } catch (e) {
@@ -405,19 +690,14 @@ export function AlertDetailPage() {
             </p>
           ) : null}
         </div>
-        <div className="actions head-actions" role="group" aria-label="Alert actions">
-          <button type="button" className="btn" disabled={busy || state !== "open"} onClick={() => act(ackAlert)}>
-            Acknowledge
-          </button>
-          <button
-            type="button"
-            className="btn primary solid"
-            disabled={busy || state === "resolved" || resolving}
-            onClick={() => setResolving(true)}
-          >
-            Resolve…
-          </button>
-        </div>
+        <StateActions
+          state={state}
+          busy={busy}
+          resolving={resolving}
+          onAck={() => act(ackAlert)}
+          onUnack={() => act(unackAlert)}
+          onResolve={() => setResolving(true)}
+        />
       </header>
       {actionError ? <p className="error-text" role="alert">{actionError}</p> : null}
 
@@ -431,17 +711,18 @@ export function AlertDetailPage() {
       ) : null}
 
       {state === "resolved" ? <ResolutionCard alert={alert} /> : null}
-      {alert.rulebook && !resolving ? <RulebookCard entry={alert.rulebook} /> : null}
 
       {message ? (
-        <section aria-label="Message" className="block">
-          <h2>Message</h2>
-          <p className="prose">{message}</p>
+        <section aria-label="Message" className="ad-panel">
+          <div className="panel-head"><h2>Message</h2></div>
+          <div className="panel-body">
+            <p className="prose">{message}</p>
+          </div>
         </section>
       ) : null}
 
-      <section aria-label="Alert fields" className="block">
-        <h2>Details</h2>
+      <section aria-label="Alert fields" className="ad-panel">
+        <div className="panel-head"><h2>Details</h2></div>
         <dl className="fact-grid">
           {facts
             .filter(([, v]) => v !== undefined)
@@ -461,9 +742,11 @@ export function AlertDetailPage() {
       {event ? (
         <EventFields event={event} />
       ) : (
-        <section aria-label="Event data" className="block">
-          <h2>Event</h2>
-          <p className="muted">—</p>
+        <section aria-label="Event data" className="ad-panel">
+          <div className="panel-head"><h2>Event</h2></div>
+          <div className="panel-body">
+            <p className="muted">—</p>
+          </div>
         </section>
       )}
 
@@ -471,6 +754,15 @@ export function AlertDetailPage() {
         <Runbooks runs={runs} />
         <Audit entries={audit} />
       </div>
+
+      {alert.ruleId ? <RuleRunbookPanel ruleId={alert.ruleId} /> : null}
+
+      <RulebookThread
+        alertId={id}
+        ruleId={alert.ruleId}
+        entries={alert.rulebook ?? []}
+        onAdded={(e) => setAlert((prev) => (prev ? { ...prev, rulebook: [...(prev.rulebook ?? []), e] } : prev))}
+      />
       <Suggest key={id} id={id} />
     </main>
   );
