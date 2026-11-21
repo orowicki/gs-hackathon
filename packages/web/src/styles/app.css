@@ -850,6 +850,120 @@ a.crumb:hover {
   font-size: var(--text-sm);
 }
 
+/* ---- State buttons (Acknowledged / Resolved): Grafana toggle buttons ------------ */
+.feed-tabs {
+  align-items: center;
+  padding-bottom: var(--space-2);
+}
+
+.feed-showing {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--text-strong);
+  font-size: var(--text-md);
+  font-weight: var(--weight-strong);
+}
+
+.feed-showing.state-acknowledged { color: var(--state-acknowledged); }
+.feed-showing.state-resolved { color: var(--state-resolved); }
+
+.state-toggles {
+  display: inline-flex;
+  gap: var(--space-2);
+}
+
+.state-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  height: var(--control-h);
+  padding: 0 var(--space-3);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text);
+  font: inherit;
+  font-size: var(--text-sm);
+  cursor: pointer;
+  transition: border-color var(--motion-duration) var(--motion-ease),
+    background var(--motion-duration) var(--motion-ease);
+}
+
+.state-toggle:hover {
+  border-color: var(--border-strong);
+  color: var(--text-strong);
+}
+
+.state-toggle:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.state-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.state-toggle.state-acknowledged .state-dot { background: var(--state-acknowledged); }
+.state-toggle.state-resolved .state-dot { background: var(--state-resolved); }
+
+.state-toggle.on.state-acknowledged {
+  background: var(--state-acknowledged-tint);
+  border-color: var(--state-acknowledged);
+  color: var(--state-acknowledged);
+  font-weight: var(--weight-strong);
+}
+
+.state-toggle.on.state-resolved {
+  background: var(--state-resolved-tint);
+  border-color: var(--state-resolved);
+  color: var(--state-resolved);
+  font-weight: var(--weight-strong);
+}
+
+.state-toggle.on .feed-tab-count {
+  color: var(--bg);
+}
+
+.state-toggle.on.state-acknowledged .feed-tab-count { background: var(--state-acknowledged); }
+.state-toggle.on.state-resolved .feed-tab-count { background: var(--state-resolved); }
+
+/* ---- Rows by state: coloured left stripe + text tag; resolved rows are dimmed --- */
+.row.state-acknowledged,
+.row.state-resolved {
+  box-shadow: inset 3px 0 0 var(--row-state);
+}
+
+.row.state-acknowledged { --row-state: var(--state-acknowledged); background: var(--state-acknowledged-tint); }
+.row.state-resolved { --row-state: var(--state-resolved); }
+
+.row.state-resolved .row-title,
+.row.state-resolved .sev-label {
+  opacity: 0.6;
+}
+
+.state-tag {
+  display: inline-flex;
+  align-items: center;
+  height: 20px;
+  padding: 0 var(--space-2);
+  border: 1px solid var(--row-state);
+  border-radius: var(--radius);
+  color: var(--row-state);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-strong);
+  white-space: nowrap;
+}
+
+@media (max-width: 640px) {
+  .feed-tabs {
+    flex-wrap: wrap;
+  }
+}
+
 .row-actions {
   display: flex;
   align-items: center;

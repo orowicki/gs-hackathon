@@ -19,8 +19,10 @@ import {
   newStarred,
   parseFilter,
   parseTab,
+  STATE_TOGGLES,
   starredTexts,
   tabAlerts,
+  toggleTab,
   upsertAlert,
   valuesFor,
   type FeedTab,
@@ -300,7 +302,13 @@ export function FeedPage() {
     if (visible.length === 0 && !q && !statusInFilter) {
       return (
         <div className="empty">
-          <p className="muted">{tab === "active" ? "Nothing needs attention. All alerts are acknowledged or resolved." : "No acknowledged alerts."}</p>
+          <p className="muted">
+            {tab === "active"
+              ? "Nothing needs attention. All alerts are acknowledged or resolved."
+              : tab === "acknowledged"
+                ? "No acknowledged alerts."
+                : "No resolved alerts."}
+          </p>
         </div>
       );
     }
@@ -362,39 +370,37 @@ export function FeedPage() {
       )}
       {alerts && alerts.length > 0 && (
         <nav className="feed-tabs" aria-label="Alert state">
-          <div role="tablist">
-            {FEED_TABS.map((t) => (
-              <button
-                key={t.id}
-                type="button"
-                role="tab"
-                aria-selected={!statusInFilter && tab === t.id}
-                className={!statusInFilter && tab === t.id ? "feed-tab active" : "feed-tab"}
-                onClick={() => {
-                  // A status filter overrides tabs; picking a tab drops it.
-                  setTab(t.id, statusInFilter);
-                  if (statusInFilter) applyText("");
-                }}
-              >
-                {t.label}
-                <span className="feed-tab-count">{tabCounts[t.id]}</span>
-              </button>
-            ))}
-          </div>
           {statusInFilter ? (
             <span className="feed-tabs-note muted">Your filter picks the status, so all states are shown.</span>
           ) : (
-            <button
-              type="button"
-              className="link-btn feed-tabs-note"
-              onClick={() => {
-                setQ("alert.status = resolved");
-                applyText("alert.status = resolved");
-              }}
-            >
-              Show resolved
-            </button>
+            <span className={"feed-showing state-" + FEED_TABS.find((t) => t.id === tab)!.state}>
+              {FEED_TABS.find((t) => t.id === tab)!.label} alerts
+              <span className="feed-tab-count">{tabCounts[tab]}</span>
+            </span>
           )}
+          <div className="state-toggles" role="group" aria-label="Show only">
+            {STATE_TOGGLES.map((t) => {
+              const on = !statusInFilter && tab === t.id;
+              return (
+                <button
+                  key={t.id}
+                  type="button"
+                  aria-pressed={on}
+                  title={on ? "Back to active alerts" : `Show only ${t.label.toLowerCase()} alerts`}
+                  className={"state-toggle state-" + t.state + (on ? " on" : "")}
+                  onClick={() => {
+                    // A status filter overrides the buttons; pressing one drops it.
+                    setTab(statusInFilter ? t.id : toggleTab(tab, t.id), statusInFilter);
+                    if (statusInFilter) applyText("");
+                  }}
+                >
+                  <span className="state-dot" aria-hidden="true" />
+                  {t.label}
+                  <span className="feed-tab-count">{tabCounts[t.id]}</span>
+                </button>
+              );
+            })}
+          </div>
         </nav>
       )}
       {isDemoSource(source) && (

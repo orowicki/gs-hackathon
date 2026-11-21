@@ -62,7 +62,7 @@ export function AlertList({ alerts, now, expanded, onToggle, flash, onAck }: Lis
         const open = expanded.has(a.id);
         const token = flash.get(a.id);
         return (
-          <li key={a.id} className={"row sev-" + a.severity}>
+          <li key={a.id} className={"row sev-" + a.severity + " state-" + a.state}>
             <div
               className="row-head"
               role="button"
@@ -79,6 +79,9 @@ export function AlertList({ alerts, now, expanded, onToggle, flash, onAck }: Lis
               <span className={open ? "chevron open" : "chevron"}>
                 <Icon as={ChevronRight} />
               </span>
+              {a.state !== "open" && (
+                <span className="state-tag">{a.state === "acknowledged" ? "Acknowledged" : "Resolved"}</span>
+              )}
               <span className="row-title">{a.title}</span>
               <span className="row-source muted">{a.source}</span>
               <time className="row-time muted" dateTime={a.lastSeen} title={new Date(a.lastSeen).toLocaleString()}>

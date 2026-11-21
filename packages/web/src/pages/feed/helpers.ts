@@ -120,14 +120,23 @@ export function starredTexts(list: readonly StarredFilter[]): string[] {
 }
 
 /** Feed tabs. Resolved alerts have no tab: they are history, reached with a status filter. */
-export type FeedTab = "active" | "acknowledged";
+export type FeedTab = "active" | "acknowledged" | "resolved";
 export const FEED_TABS: { id: FeedTab; label: string; state: Alert["state"] }[] = [
   { id: "active", label: "Active", state: "open" },
   { id: "acknowledged", label: "Acknowledged", state: "acknowledged" },
+  { id: "resolved", label: "Resolved", state: "resolved" },
 ];
 
+/** The on/off state buttons above the feed. With none on, the feed shows active alerts. */
+export const STATE_TOGGLES = FEED_TABS.filter((t) => t.id !== "active");
+
 export function parseTab(v: string | null): FeedTab {
-  return v === "acknowledged" ? "acknowledged" : "active";
+  return v === "acknowledged" || v === "resolved" ? v : "active";
+}
+
+/** Clicking a state button turns it on (and the other off); clicking it again goes back to the normal feed. */
+export function toggleTab(current: FeedTab, clicked: FeedTab): FeedTab {
+  return current === clicked ? "active" : clicked;
 }
 
 /** True when the filter itself picks a lifecycle state (alert.status / alert.state), so the tab must not. */
