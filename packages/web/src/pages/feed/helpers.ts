@@ -118,3 +118,29 @@ export function filterAlerts(alerts: readonly Alert[], tree: FilterNode | null):
 export function starredTexts(list: readonly StarredFilter[]): string[] {
   return list.map((s) => filterText(s.filter));
 }
+
+/** Feed tabs. Resolved alerts have no tab: they are history, reached with a status filter. */
+export type FeedTab = "active" | "acknowledged";
+export const FEED_TABS: { id: FeedTab; label: string; state: Alert["state"] }[] = [
+  { id: "active", label: "Active", state: "open" },
+  { id: "acknowledged", label: "Acknowledged", state: "acknowledged" },
+];
+
+export function parseTab(v: string | null): FeedTab {
+  return v === "acknowledged" ? "acknowledged" : "active";
+}
+
+/** True when the filter itself picks a lifecycle state (alert.status / alert.state), so the tab must not. */
+export function mentionsStatus(tree: FilterNode | null): boolean {
+  if (!tree) return false;
+  if (tree.type === "and" || tree.type === "or") return tree.children.some(mentionsStatus);
+  if (tree.type === "not") return mentionsStatus(tree.child);
+  return tree.field === "alert.status" || tree.field === "alert.state";
+}
+
+/** Alerts of one tab. When the filter names a status, the filter wins and every state is shown. */
+export function tabAlerts(alerts: readonly Alert[], tab: FeedTab, tree: FilterNode | null): Alert[] {
+  if (mentionsStatus(tree)) return [...alerts];
+  const state = FEED_TABS.find((t) => t.id === tab)!.state;
+  return alerts.filter((a) => a.state === state);
+}

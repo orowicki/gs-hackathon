@@ -83,3 +83,18 @@ describe("number and time edge cases", () => {
     expect(formatTimeValue("x", "hello")).toBeNull();
   });
 });
+
+describe("eventGroups", () => {
+  it("puts scalars first and flattens nested objects and lists into labelled groups", async () => {
+    const { eventGroups } = await import("./format");
+    const g = eventGroups(
+      { orderId: "o-1", customer: { name: "Ann", address: { city: "Oslo" } }, items: [{ sku: "A" }, { sku: "B" }] },
+      "payload",
+    );
+    expect(g.map((x) => x.title)).toEqual([null, "Customer", "Items"]);
+    expect(g[0]!.rows.map((r) => r.label)).toEqual(["Order ID"]);
+    expect(g[1]!.rows.map((r) => [...r.parents, r.label].join(" › "))).toEqual(["Name", "Address › City"]);
+    expect(g[1]!.rows[1]!.path).toBe("payload.customer.address.city");
+    expect(g[2]!.rows.map((r) => [...r.parents, r.label].join(" › "))).toEqual(["Item 1 › Sku", "Item 2 › Sku"]);
+  });
+});

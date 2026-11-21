@@ -207,5 +207,13 @@ export function createMockSource(intervalMs = MOCK_PUSH_INTERVAL_MS): FeedSource
       return Promise.resolve(list);
     },
     suggestFields: () => Promise.resolve([]),
+    ack(id) {
+      const a = alerts.get(id);
+      if (!a) return Promise.reject(new Error("No such alert: " + id));
+      if (a.state !== "open") return Promise.reject(new Error("Only open alerts can be acknowledged"));
+      const next: Alert = { ...a, state: "acknowledged", acknowledgedAt: new Date().toISOString() };
+      alerts.set(id, next);
+      return Promise.resolve(next);
+    },
   };
 }

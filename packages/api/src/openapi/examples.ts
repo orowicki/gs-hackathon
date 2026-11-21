@@ -300,7 +300,22 @@ export const operationExamples: Record<string, Record<string, ExampleSpec>> = {
   },
 
   "POST /api/alerts/{id}/ack": { actor: ex("Acknowledge as Anna", { actor: "anna" }) },
-  "POST /api/alerts/{id}/resolve": { actor: ex("Resolve as Marek", { actor: "marek" }) },
+  "POST /api/alerts/{id}/resolve": {
+    actor: ex("Resolve as Marek", { actor: "marek" }),
+    contribute: ex("Resolve and add a how-to-resolve comment", {
+      actor: "marek",
+      resolution: "Restarted counterparty-service, then retried the workflow.",
+      contribute: true,
+    }),
+  },
+  "POST /api/alerts/{id}/unack": { actor: ex("Undo Anna's acknowledge", { actor: "anna" }) },
+  "POST /api/alerts/{id}/rulebook": {
+    text: ex("Add a how-to-resolve comment", { text: "Check counterparty-service health first; a retry fixes most timeouts.", actor: "julia" }),
+  },
+  "POST /api/alerts/{id}/runbook-runs": { run: ex("Run the rule's own runbook now", { runbookId: "rule-settlements-workflow-failed" }) },
+  "PUT /api/rules/{id}/runbook": {
+    text: ex("A text runbook", "name: Restart and retry\ntype: text\ncontent: |\n  Restart counterparty-service, then retry {{workflowId}}.\n", YAML_T),
+  },
   "POST /api/alerts/{id}/runbook-steps/{stepIndex}/approve": {
     approve: ex("Approve the escalation step (step index 2 of settlement-timeout)", {
       actor: "marek",

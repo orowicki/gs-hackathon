@@ -13,9 +13,11 @@ interface ListProps {
   onToggle(id: string, open?: boolean): void;
   /** Alert id to a token that changes on every update; drives the highlight animation. */
   flash: ReadonlyMap<string, number>;
+  /** Acknowledge from the expanded row; omitted = no button. */
+  onAck?(id: string): Promise<void>;
 }
 
-export function AlertList({ alerts, now, expanded, onToggle, flash }: ListProps) {
+export function AlertList({ alerts, now, expanded, onToggle, flash, onAck }: ListProps) {
   const navigate = useNavigate();
   const root = useRef<HTMLUListElement>(null);
   const [focusId, setFocusId] = useState<string | null>(null);
@@ -84,7 +86,7 @@ export function AlertList({ alerts, now, expanded, onToggle, flash }: ListProps)
               </time>
               <span className="row-count muted">{a.count > 1 ? "×" + a.count : ""}</span>
             </div>
-            {open && <RowDetails alert={a} />}
+            {open && <RowDetails alert={a} onAck={onAck} />}
           </li>
         );
       })}
@@ -92,7 +94,18 @@ export function AlertList({ alerts, now, expanded, onToggle, flash }: ListProps)
   );
 }
 
-function RowDetails({ alert: a }: { alert: Alert }) {
+function RowDetails({ alert: a, onAck }: { alert: Alert; onAck?(id: string): Promise<void> }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const ack = () => {
+    if (!onAck) return;
+    setBusy(true);
+    setError(null);
+    onAck(a.id).catch((e: unknown) => {
+      setError(e instanceof Error ? e.message : "Could not acknowledge.");
+      setBusy(false);
+    });
+  };
   const when = (iso: string) => new Date(iso).toLocaleString();
   const facts: Array<[string, string]> = [
     ["Summary", a.body ?? a.title],
@@ -113,9 +126,21 @@ function RowDetails({ alert: a }: { alert: Alert }) {
           </div>
         ))}
       </dl>
-      <Link className="row-open" to={"/alerts/" + encodeURIComponent(a.id)}>
-        Open
-      </Link>
+      <div className="row-actions">
+        {onAck && a.state === "open" && (
+          <button type="button" className="row-ack" disabled={busy} onClick={ack}>
+            Acknowledge
+          </button>
+        )}
+        <Link className="row-open" to={"/alerts/" + encodeURIComponent(a.id)}>
+          Open
+        </Link>
+        {error && (
+          <span className="row-error" role="alert">
+            {error}
+          </span>
+        )}
+      </div>
     </div>
   );
 }

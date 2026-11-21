@@ -166,3 +166,43 @@ function nodeFor(key: string, label: string, path: string, value: unknown, now: 
 export function objectNodes(obj: Record<string, unknown>, prefix = "", now: Date = new Date()): TreeNode[] {
   return Object.entries(obj).map(([k, v]) => nodeFor(k, humanize(k), prefix ? `${prefix}.${k}` : k, v, now));
 }
+
+/** One readable row of a flattened event: `parents` are the nesting labels above `label`. */
+export interface FlatRow {
+  parents: string[];
+  label: string;
+  path: string;
+  display: Display;
+}
+
+export interface FieldGroup {
+  /** null for the top-level scalar fields, shown first without a heading. */
+  title: string | null;
+  path: string;
+  rows: FlatRow[];
+}
+
+function flatten(nodes: TreeNode[], parents: string[], out: FlatRow[]): void {
+  for (const n of nodes) {
+    if (n.kind === "field") out.push({ parents, label: n.label, path: n.path, display: n.display });
+    else flatten(n.children, [...parents, n.label], out);
+  }
+}
+
+/**
+ * Event as flat key/value groups instead of nested boxes: top-level scalars first, then one
+ * group per top-level object or list, with deeper keys flattened to `Parent › Child` rows.
+ */
+export function eventGroups(obj: Record<string, unknown>, prefix = "", now: Date = new Date()): FieldGroup[] {
+  const top: FlatRow[] = [];
+  const groups: FieldGroup[] = [];
+  for (const n of objectNodes(obj, prefix, now)) {
+    if (n.kind === "field") top.push({ parents: [], label: n.label, path: n.path, display: n.display });
+    else {
+      const rows: FlatRow[] = [];
+      flatten(n.children, [], rows);
+      groups.push({ title: n.label, path: n.path, rows });
+    }
+  }
+  return top.length ? [{ title: null, path: prefix, rows: top }, ...groups] : groups;
+}

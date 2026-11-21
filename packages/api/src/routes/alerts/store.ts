@@ -1,6 +1,6 @@
 import type { Pool, PoolClient } from "pg";
 import { migrate } from "@alerting/config";
-import type { Alert, AlertState, AuditEntry, Event, Severity, Suggestion } from "@alerting/shared";
+import type { Alert, AlertState, AuditEntry, Event, RulebookEntry, Severity, Suggestion } from "@alerting/shared";
 
 export interface AlertCursor {
   lastSeen: string;
@@ -99,6 +99,12 @@ export interface SuggestionStore {
   ): Promise<Suggestion | null | "conflict">;
 }
 
+export interface RulebookStore {
+  /** The rule's "how to resolve" comments, oldest first. */
+  list(ruleId: string): Promise<RulebookEntry[]>;
+  add(entry: RulebookEntry): Promise<void>;
+}
+
 export interface EventLoader {
   getEvents(ids: string[]): Promise<Map<string, Event>>;
 }
@@ -107,6 +113,7 @@ export interface AlertStores {
   alerts: AlertStore;
   audit: AuditStore;
   suggestions: SuggestionStore;
+  rulebook: RulebookStore;
 }
 
 const ms = (iso: string): number => Date.parse(iso);
@@ -144,8 +151,17 @@ export function createMemoryAlertStores(): AlertStores & { events: Map<string, E
   const audit: AuditEntry[] = [];
   const suggestions = new Map<string, Suggestion>();
   const events = new Map<string, Event>();
+  const rulebook: RulebookEntry[] = [];
   return {
     events,
+    rulebook: {
+      async list(ruleId) {
+        return structuredClone(rulebook.filter((e) => e.ruleId === ruleId));
+      },
+      async add(entry) {
+        rulebook.push(structuredClone(entry));
+      },
+    },
     alerts: {
       async get(id) {
         const a = alerts.get(id);
@@ -486,7 +502,23 @@ export function createPgAlertStores(pool: Pool): AlertStores {
     },
   };
 
-  return { alerts, audit, suggestions };
+  const rulebook: RulebookStore = {
+    async list(ruleId) {
+      return datas(
+        await q<DataRow<RulebookEntry>>("SELECT data FROM rulebook_comments WHERE rule_id = $1 ORDER BY at, id LIMIT 500", [ruleId]),
+      );
+    },
+    async add(e) {
+      await q("INSERT INTO rulebook_comments (id, rule_id, at, data) VALUES ($1,$2,$3,$4)", [
+        e.id,
+        e.ruleId,
+        e.updatedAt,
+        JSON.stringify(e),
+      ]);
+    },
+  };
+
+  return { alerts, audit, suggestions, rulebook };
 }
 
 /** Reads ingest's `events` table; an absent table yields no events. */

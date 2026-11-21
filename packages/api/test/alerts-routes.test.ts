@@ -43,6 +43,7 @@ async function setup(opts: { withEvents?: boolean } = {}) {
     alerts: stores.alerts,
     audit: stores.audit,
     suggestions: stores.suggestions,
+    rulebook: stores.rulebook,
     events: opts.withEvents === false ? undefined : memoryEventLoader(stores.events),
     publish: (p) => pushes.push(p),
     now: () => new Date("2026-11-01T12:00:00.000Z"),
@@ -118,7 +119,8 @@ describe("ack and resolve", () => {
     const r = await post(`${url}/api/alerts/a0/ack`, { actor: "  anna " });
     expect(r.status).toBe(200);
     const a = (await r.json()) as Alert;
-    expect(a).toMatchObject({ state: "acknowledged", acknowledgedBy: "anna", acknowledgedAt: "2026-11-01T12:00:00.000Z" });
+    // `status` (written by the engine at creation) follows `state`, so readers of either agree.
+    expect(a).toMatchObject({ state: "acknowledged", status: "acknowledged", acknowledgedBy: "anna", acknowledgedAt: "2026-11-01T12:00:00.000Z" });
     const audit = (await (await fetch(`${url}/api/alerts/a0/audit`)).json()) as AuditEntry[];
     expect(audit).toEqual([{ id: "id1", alertId: "a0", at: "2026-11-01T12:00:00.000Z", actor: "anna", action: "acknowledged" }]);
     expect(pushes).toEqual([{ type: "alert", alertId: "a0", kind: "acknowledged" }]);
@@ -126,6 +128,23 @@ describe("ack and resolve", () => {
     expect(again.status).toBe(409);
     expect(await again.json()).toMatchObject({ state: "acknowledged" });
     expect(pushes.length).toBe(1);
+  });
+
+  it("unack puts an acknowledged alert back to open; not from open or resolved", async () => {
+    const { url, pushes } = await setup();
+    expect((await post(`${url}/api/alerts/a0/unack`)).status).toBe(409);
+    await post(`${url}/api/alerts/a0/ack`, { actor: "anna" });
+    const r = await post(`${url}/api/alerts/a0/unack`, { actor: "anna" });
+    expect(r.status).toBe(200);
+    const a = (await r.json()) as Alert & { status?: string };
+    expect(a.state).toBe("open");
+    expect(a.status).toBe("open");
+    expect(a.acknowledgedBy ?? null).toBeNull();
+    const audit = (await (await fetch(`${url}/api/alerts/a0/audit`)).json()) as AuditEntry[];
+    expect(audit.map((e) => e.action)).toEqual(["acknowledged", "unacknowledged"]);
+    expect(pushes.map((p) => (p as { kind: string }).kind)).toEqual(["acknowledged", "updated"]);
+    await post(`${url}/api/alerts/a0/resolve`);
+    expect((await post(`${url}/api/alerts/a0/unack`)).status).toBe(409);
   });
 
   it("uses x-actor header and anonymous fallback", async () => {
@@ -146,6 +165,31 @@ describe("ack and resolve", () => {
     expect((await post(`${url}/api/alerts/a0/ack`)).status).toBe(409);
     expect(pushes.map((p) => (p as { kind: string }).kind)).toEqual(["acknowledged", "resolved"]);
     expect((await post(`${url}/api/alerts/a1/resolve`)).status).toBe(200);
+  });
+
+  it("stores the resolution and contributes it to the rule's rulebook", async () => {
+    const { url, alerts } = await setup();
+    expect((await post(`${url}/api/alerts/a0/resolve`, { contribute: true })).status).toBe(400);
+    const r = await post(`${url}/api/alerts/a0/resolve`, { resolution: " Restart the pricer. ", contribute: true }, { "x-actor": "anna" });
+    expect(r.status).toBe(200);
+    expect(await r.json()).toMatchObject({ resolution: "Restart the pricer.", resolvedBy: "anna", rulebookComment: { text: "Restart the pricer." } });
+    // Another alert of the same rule now shows the comment.
+    const same = alerts.findIndex((a, i) => i > 0 && a.ruleId === alerts[0]!.ruleId);
+    const other = `a${same === -1 ? 0 : same}`;
+    type Detail = { resolution?: string; rulebook: { text: string; updatedBy: string }[] };
+    const d = (await (await fetch(`${url}/api/alerts/${other}`)).json()) as Detail;
+    expect(d.rulebook.map((e) => e.text)).toEqual(["Restart the pricer."]);
+    // Comments add up instead of replacing each other.
+    expect((await post(`${url}/api/alerts/${other}/rulebook`, { text: "  " })).status).toBe(400);
+    const c = await post(`${url}/api/alerts/${other}/rulebook`, { text: "Check the cache first." }, { "x-actor": "bob" });
+    expect(c.status).toBe(201);
+    const d2 = (await (await fetch(`${url}/api/alerts/a0`)).json()) as Detail;
+    expect(d2.rulebook.map((e) => [e.updatedBy, e.text])).toEqual([["anna", "Restart the pricer."], ["bob", "Check the cache first."]]);
+    // Without contribute nothing is added.
+    await post(`${url}/api/alerts/a1/resolve`, { resolution: "one-off" });
+    const d1 = (await (await fetch(`${url}/api/alerts/a1`)).json()) as Detail;
+    expect(d1.resolution).toBe("one-off");
+    expect(d1.rulebook.map((e) => e.text)).not.toContain("one-off");
   });
 
   it("404s and bad bodies", async () => {

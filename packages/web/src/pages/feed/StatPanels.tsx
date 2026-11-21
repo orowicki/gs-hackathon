@@ -7,12 +7,13 @@ const PANELS: { sev: Severity; label: string }[] = [
   { sev: "info", label: "Info" },
 ];
 
-const OPEN_FILTER = "alert.status != resolved";
+/** The Open panel shows the unfiltered Active tab. */
+const OPEN_FILTER = "";
 const sevFilter = (s: Severity) => `alert.severity = ${s}`;
 const norm = (q: string) => q.trim().replace(/\s+/g, " ");
 
 /**
- * Grafana-style stat panels: open alerts per severity. Clicking a panel filters the feed;
+ * Grafana-style stat panels: open (not yet acknowledged) alerts per severity. Clicking a panel filters the feed;
  * clicking the selected panel again clears the filter. The panel matching the current
  * filter is marked selected and the others step back.
  */
@@ -25,7 +26,7 @@ export function StatPanels({
   filter: string;
   onFilter: (q: string) => void;
 }) {
-  const open = alerts.filter((a) => a.state !== "resolved");
+  const open = alerts.filter((a) => a.state === "open");
   const count = (s: Severity) => open.filter((a) => a.severity === s).length;
   const current = norm(filter);
   const filtering = current !== "";
