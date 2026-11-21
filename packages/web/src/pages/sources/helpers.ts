@@ -2,7 +2,7 @@ import type { ParserConfig, Source } from "./sourceTypes";
 import { sourceTypeLabel } from "./sourceTypes";
 
 /** Intro under "New source": the same on every tab and in the editor. */
-export const SOURCE_INTRO = "A source is where events come from: a webhook, log files on disk or a Redis stream.";
+export const SOURCE_INTRO = "A source is where events come from: a webhook, log files on disk, a Redis stream or a Kafka topic.";
 
 export const ID_RE = /^[A-Za-z0-9][A-Za-z0-9_-]*$/;
 
@@ -110,7 +110,7 @@ export function yamlToSource(text: string, parse: (t: string) => unknown): Sourc
 /** The URL services POST to for an http source (served by the app, not under /api). */
 export function ingestUrl(id: string): string {
   const origin = typeof window === "undefined" ? "http://localhost:3000" : window.location.origin;
-  return `${origin}/ingest/${encodeURIComponent(id || "<id>")}`;
+  return `${origin}/ingest/${id ? encodeURIComponent(id) : "<id>"}`;
 }
 
 const PARSER_LABEL: Record<string, string> = { json: "JSON", logfmt: "logfmt (key=value)", regex: "a regex", raw: "raw text" };

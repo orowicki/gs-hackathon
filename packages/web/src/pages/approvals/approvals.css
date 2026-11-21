@@ -8,7 +8,6 @@
   padding: var(--space-3) var(--space-4);
   background: var(--surface);
   border: 1px solid var(--border);
-  border-left: 3px solid var(--warning);
   border-radius: var(--radius-lg);
 }
 
@@ -17,7 +16,7 @@
 .ap-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-strong); font-weight: var(--weight-strong); }
 .ap-when { margin-left: auto; flex: none; color: var(--muted); font-size: var(--text-sm); }
 .ap-step { display: flex; align-items: center; gap: var(--space-2); font-size: var(--text-md); }
-.ap-step svg { color: var(--warning); flex: none; }
+.ap-step svg { color: var(--muted); flex: none; }
 .ap-step strong { color: var(--text-strong); font-weight: var(--weight-strong); }
 .ap-what { margin: 0; color: var(--text); font-size: var(--text-sm); }
 .ap-who { margin: 0; color: var(--muted); font-size: var(--text-xs); }

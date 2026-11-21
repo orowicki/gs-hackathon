@@ -16,10 +16,8 @@
   padding: var(--space-3);
   background: var(--bg);
   border: 1px solid var(--border);
-  border-left: 3px solid var(--border-strong);
   border-radius: var(--radius-lg);
 }
-.rb-step.needs { border-left-color: var(--warning); }
 
 .rb-step-head { display: flex; align-items: center; gap: var(--space-3); }
 .rb-step-head .who-tools { margin-left: auto; }

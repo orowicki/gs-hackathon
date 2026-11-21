@@ -28,12 +28,12 @@
   /* Severity (Grafana alerting colours) and validity */
   --critical: #f2495c;
   --error: #ff9830;
-  --warning: #fade2a;
+  --warning: #cfb158;
   --info: #5794f2;
   --valid: #73bf69;
   --critical-tint: rgba(242, 73, 92, 0.15);
   --error-tint: rgba(255, 152, 48, 0.15);
-  --warning-tint: rgba(250, 222, 42, 0.12);
+  --warning-tint: rgba(207, 177, 88, 0.13);
   --info-tint: rgba(87, 148, 242, 0.15);
   --valid-tint: rgba(115, 191, 105, 0.15);
 
@@ -91,12 +91,12 @@
   --on-accent: #ffffff;
   --critical: #d10e5c;
   --error: #d65b00;
-  --warning: #9c7c00;
+  --warning: #8a6d12;
   --info: #1f62e0;
   --valid: #1a7f4b;
   --critical-tint: rgba(209, 14, 92, 0.1);
   --error-tint: rgba(214, 91, 0, 0.1);
-  --warning-tint: rgba(156, 124, 0, 0.12);
+  --warning-tint: rgba(138, 109, 18, 0.1);
   --info-tint: rgba(31, 98, 224, 0.1);
   --valid-tint: rgba(26, 127, 75, 0.1);
   --state-acknowledged: #8a3fb3;

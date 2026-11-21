@@ -378,7 +378,7 @@ export function RunbookEditor({ initial, isNew, tabs, notice }: { initial: Runbo
                   <span className="rb-mini-name">{s.name || stepSentence(s as RunbookStep, groupName)}</span>
                   <span className="rb-mini-what mono">{stepSentence(s as RunbookStep, groupName)}</span>
                   {s.approval === "required" && (
-                    <span className="tag sev-warning">
+                    <span className="tag">
                       <ShieldCheck size={11} aria-hidden="true" /> {s.approvers ? groupName(s.approvers) : "approval"}
                     </span>
                   )}

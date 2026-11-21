@@ -676,12 +676,15 @@ a.crumb:hover {
 
 .stat.lit.sev-critical { background: var(--critical); }
 .stat.lit.sev-error { background: var(--error); }
-.stat.lit.sev-warning { background: var(--warning); }
+/* Warning is a calm ochre, not a bright yellow block. */
+.stat.lit.sev-warning { background: #6e5c26; }
 .stat.lit.sev-warning .stat-label,
-.stat.lit.sev-warning .stat-value { color: #1a1400; }
+.stat.lit.sev-warning .stat-value { color: #f4e8c1; }
 .stat.lit.sev-info { background: var(--info); }
 /* Light theme: the darker text-safe yellow reads muddy as a fill; use Grafana's bright one. */
-:root[data-theme="light"] .stat.lit.sev-warning { background: #f5c518; }
+:root[data-theme="light"] .stat.lit.sev-warning { background: #efe2b3; }
+:root[data-theme="light"] .stat.lit.sev-warning .stat-label,
+:root[data-theme="light"] .stat.lit.sev-warning .stat-value { color: #4f3f08; }
 
 /* The panel matching the current filter: a ring in the text colour. Others step back. */
 .stat.selected {
@@ -1096,8 +1099,9 @@ a.crumb:hover {
   align-items: center;
   justify-content: center;
   border-radius: 9px;
-  background: var(--warning);
-  color: #1a1400;
+  background: var(--surface-2);
+  border: 1px solid var(--border-strong);
+  color: var(--text-strong);
   font-size: var(--text-xs);
   font-weight: var(--weight-strong);
 }

@@ -93,7 +93,7 @@ export function RunbooksListPage() {
                         <span className="tag">
                           {r.steps.length} step{r.steps.length === 1 ? "" : "s"}
                         </span>{" "}
-                        {approvals > 0 && <span className="tag sev-warning">{approvals} need approval</span>}
+                        {approvals > 0 && <span className="tag">{approvals} need approval</span>}
                       </>
                     )}
                   </td>
