@@ -17,10 +17,12 @@
   --muted: #9fa0ad;
   --faint: #6e6f7c;
 
-  /* Primary action and links */
-  --accent: #6e9fff;
-  --accent-bg: #3d71d9;
-  --accent-bg-hover: #4d7fe0;
+  /* Brand accent: Goldman Sachs blue. Links and focus use the sky blue; filled buttons
+     use a deeper shade of it so white text stays readable. */
+  --brand: #7399c6;
+  --accent: #8fb2dd;
+  --accent-bg: #3e6aa6;
+  --accent-bg-hover: #4a78b6;
   --on-accent: #ffffff;
 
   /* Severity (Grafana alerting colours) and validity */
@@ -75,9 +77,10 @@
   --text-strong: #101418;
   --muted: #5f6672;
   --faint: #8e939c;
-  --accent: #1f62e0;
-  --accent-bg: #3d71d9;
-  --accent-bg-hover: #2f63c9;
+  --brand: #5f87b8;
+  --accent: #2f5d97;
+  --accent-bg: #2f5d97;
+  --accent-bg-hover: #284f81;
   --on-accent: #ffffff;
   --critical: #d10e5c;
   --error: #d65b00;

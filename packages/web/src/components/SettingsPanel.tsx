@@ -2,9 +2,8 @@ import { Settings } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { Icon } from "./Icon";
-import { ThemeChoice } from "./ThemeSwitch";
 
-const SECTIONS = ["Profile", "Notifications", "Theme", "Starred filters"];
+const SECTIONS = ["Profile", "Notifications", "Starred filters"];
 
 /** sections replaces the placeholder text under a heading (e.g. Profile) with real content. */
 export function SettingsMenu({ sections = {} }: { sections?: Partial<Record<string, ReactNode>> }) {
@@ -44,7 +43,7 @@ export function SettingsMenu({ sections = {} }: { sections?: Partial<Record<stri
           {SECTIONS.map((name) => (
             <section key={name}>
               <h2>{name}</h2>
-              {sections[name] ?? (name === "Theme" ? <ThemeChoice /> : <p className="muted">Not set up yet.</p>)}
+              {sections[name] ?? <p className="muted">Not set up yet.</p>}
             </section>
           ))}
         </div>

@@ -18,24 +18,3 @@ export function ThemeToggle() {
     </button>
   );
 }
-
-/** The same choice as a labelled control, for the Settings panel. */
-export function ThemeChoice() {
-  const [theme, setTheme] = useTheme();
-  return (
-    <div className="segmented" role="radiogroup" aria-label="Theme">
-      {(["dark", "light"] as const).map((t) => (
-        <button
-          key={t}
-          type="button"
-          role="radio"
-          aria-checked={theme === t}
-          className={theme === t ? "segment active" : "segment"}
-          onClick={() => setTheme(t)}
-        >
-          {t === "dark" ? "Dark" : "Light"}
-        </button>
-      ))}
-    </div>
-  );
-}

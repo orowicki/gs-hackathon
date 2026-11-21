@@ -483,7 +483,7 @@ a:hover {
   width: 20px;
   height: 20px;
   margin-left: var(--space-2);
-  color: var(--error);
+  color: var(--brand);
 }
 
 .brand:hover {
@@ -526,7 +526,7 @@ a:hover {
   color: var(--text-strong);
 }
 
-/* Grafana's active marker: a short orange-to-red bar on the left edge. */
+/* Active marker: a short brand-blue bar on the left edge (Grafana's shape, our colour). */
 .nav-item.active::before {
   content: "";
   position: absolute;
@@ -535,7 +535,7 @@ a:hover {
   bottom: 6px;
   width: 3px;
   border-radius: 0 2px 2px 0;
-  background: linear-gradient(var(--error), var(--critical));
+  background: var(--brand);
 }
 
 .shell-main {
@@ -596,31 +596,6 @@ a.crumb:hover {
   overflow: hidden;
 }
 
-.segmented {
-  display: inline-flex;
-  padding: 2px;
-  background: var(--bg);
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius);
-}
-
-.segment {
-  height: 26px;
-  padding: 0 var(--space-3);
-  background: transparent;
-  color: var(--muted);
-  border: 0;
-  border-radius: var(--radius);
-  font: inherit;
-  font-size: var(--text-sm);
-  cursor: pointer;
-}
-
-.segment.active {
-  background: var(--surface-2);
-  color: var(--text-strong);
-}
-
 @media (max-width: 720px) {
   .sidebar {
     flex-basis: 52px;
@@ -649,6 +624,7 @@ a.crumb:hover {
 /* Grafana stat panel. With alerts open, a severity panel switches to "background
    colour" mode: the whole panel takes the severity colour. Zero stays neutral. */
 .stat {
+  position: relative;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
@@ -663,6 +639,7 @@ a.crumb:hover {
   text-align: left;
   cursor: pointer;
   transition: filter var(--motion-duration) var(--motion-ease),
+    opacity var(--motion-duration) var(--motion-ease),
     border-color var(--motion-duration) var(--motion-ease);
 }
 
@@ -706,6 +683,19 @@ a.crumb:hover {
 .stat.lit.sev-info { background: var(--info); }
 /* Light theme: the darker text-safe yellow reads muddy as a fill; use Grafana's bright one. */
 :root[data-theme="light"] .stat.lit.sev-warning { background: #f5c518; }
+
+/* The panel matching the current filter: a ring in the text colour. Others step back. */
+.stat.selected {
+  box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--text-strong);
+}
+
+.stat.dimmed {
+  opacity: 0.45;
+}
+
+.stat.dimmed:hover {
+  opacity: 0.8;
+}
 
 /* Alert rows sit in one panel, like a Grafana alert list. */
 .feed {
