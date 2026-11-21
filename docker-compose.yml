@@ -8,6 +8,9 @@ services:
       DATABASE_URL: ${DATABASE_URL:-postgres://alerting:alerting@postgres:5432/alerting}
       REDIS_URL: ${REDIS_URL:-redis://redis:6379}
       NTFY_URL: ${NTFY_URL:-http://ntfy:80}
+      CONFIG_DIR: /app/config
+    volumes:
+      - ./config:/app/config
     depends_on:
       postgres:
         condition: service_healthy
