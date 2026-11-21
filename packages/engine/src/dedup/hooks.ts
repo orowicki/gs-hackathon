@@ -28,6 +28,8 @@ export interface DedupOptions {
 const SEEN_PREFIX = `${PREFIX}dedupseen:`;
 
 const PENDING = "pending";
+// Lifetime of a claim. Must stay above the worst case of one apply(): the pg repo bounds an upsert to
+// maxWaitMs (30 s) queueing + one statement (statement_timeout 10 s in the engine), ~40 s.
 const PENDING_MS = 60_000;
 
 interface Outcome {

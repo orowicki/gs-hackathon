@@ -56,6 +56,12 @@ const ENSURE_SQL = [
   "CREATE UNIQUE INDEX IF NOT EXISTS alerts_open_dedup_uniq ON alerts (rule_id, dedup_key) WHERE state <> 'resolved'",
 ];
 
+/** SQLSTATE class 22 (data exception) or 23 (integrity constraint violation). */
+const isDataError = (err: unknown): boolean => {
+  const code = (err as { code?: unknown } | null)?.code;
+  return typeof code === "string" && (code.startsWith("22") || code.startsWith("23"));
+};
+
 type UpsertResult = { alert: Alert; created: boolean; raised: boolean };
 
 const batchKey = (ruleId: string, dedupKey: string) => `${ruleId}\u0000${dedupKey}`;
@@ -85,11 +91,18 @@ export function createPgAlertRepo(
     maxBatch?: number;
     /** Max upsert statements running at once (default 4; keep below the pool size). */
     maxInFlight?: number;
+    /**
+     * An upsert not yet sent this long after the call is rejected instead (default 30000). With the
+     * pool's statement_timeout (10 s in the engine) this bounds one upsertOpen to ~40 s, below the
+     * dedup claim lifetime (PENDING_MS, 60 s), so a claim never expires while its upsert can still run.
+     */
+    maxWaitMs?: number;
   } = {},
 ): AlertRepo {
   const retryMs = opts.retryMs ?? 5000;
   const maxBatch = Math.max(1, opts.maxBatch ?? 500);
   const maxInFlight = Math.max(1, opts.maxInFlight ?? 4);
+  const maxWaitMs = opts.maxWaitMs ?? 30_000;
   const log = opts.logger ?? console;
   // Normally migration 005 has run; this only covers databases created from the bare table DDL.
   let ready: Promise<void> | undefined;
@@ -174,6 +187,8 @@ export function createPgAlertRepo(
   interface Waiting {
     alert: Alert;
     key: string;
+    /** When upsertOpen was called. */
+    at: number;
     resolve(r: UpsertResult | null): void;
     reject(e: unknown): void;
   }
@@ -182,17 +197,27 @@ export function createPgAlertRepo(
   let inFlight = 0;
   let scheduled = false;
 
+  const expired = (w: Waiting) => Date.now() - w.at > maxWaitMs;
+  const tooOld = () => new Error(`dedup: upsert not sent within ${maxWaitMs} ms, left for a retry`);
+
   const flush = async (batch: Waiting[]) => {
     try {
       let results: Array<UpsertResult | null>;
       try {
         results = await upsertMany(batch.map((w) => w.alert));
       } catch (err) {
-        if (batch.length === 1) throw err;
-        // a statement is atomic: nothing was applied; retry one by one so one bad item fails alone
-        await Promise.all(
-          batch.map((w) => upsertOne(w.alert).then(w.resolve, w.reject)),
-        );
+        // Timeouts / lost connections fail the whole batch (the entries stay pending and are retried
+        // later). Only data errors (SQLSTATE class 22/23, e.g. one bad value or a racing replay of an
+        // id) are retried one by one, so one bad item fails alone. A statement is atomic: nothing of
+        // the batch was applied. One at a time keeps this within the batch's slot (<= maxInFlight).
+        if (batch.length === 1 || !isDataError(err)) throw err;
+        for (const w of batch) {
+          if (expired(w)) {
+            w.reject(tooOld());
+            continue;
+          }
+          await upsertOne(w.alert).then(w.resolve, w.reject);
+        }
         return;
       }
       batch.forEach((w, i) => w.resolve(results[i] ?? null));
@@ -203,6 +228,14 @@ export function createPgAlertRepo(
 
   const drain = () => {
     scheduled = false;
+    if (waiting.some(expired)) {
+      const keep: Waiting[] = [];
+      for (const w of waiting) {
+        if (expired(w)) w.reject(tooOld());
+        else keep.push(w);
+      }
+      waiting = keep;
+    }
     while (inFlight < maxInFlight && waiting.length > 0) {
       const batch: Waiting[] = [];
       const rest: Waiting[] = [];
@@ -239,7 +272,7 @@ export function createPgAlertRepo(
     async upsertOpen(alert) {
       await ensure();
       return new Promise<UpsertResult | null>((resolve, reject) => {
-        waiting.push({ alert, key: batchKey(alert.ruleId, alert.dedupKey), resolve, reject });
+        waiting.push({ alert, key: batchKey(alert.ruleId, alert.dedupKey), at: Date.now(), resolve, reject });
         schedule();
       });
     },

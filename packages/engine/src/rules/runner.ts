@@ -278,6 +278,7 @@ export function createEngine(opts: EngineOptions): Engine {
       logger.error(`engine: event ${id} failed, left pending: ${(err as Error).message}`);
       return;
     }
+    phantom.delete(id);
     await ack(id);
   };
 
@@ -285,6 +286,8 @@ export function createEngine(opts: EngineOptions): Engine {
   // after the other in stream order (also across reads); everything else overlaps.
   const active = new Map<string, Promise<void>>();
   const tails = new Map<string, Promise<void>>();
+  /** Deliveries XAUTOCLAIM counted for entries while they were in flight here (not real retries). */
+  const phantom = new Map<string, number>();
   let slotFreed: (() => void) | undefined;
 
   /** Start processing one entry behind the earlier entries of its keys. Never rejects. */
@@ -342,7 +345,13 @@ export function createEngine(opts: EngineOptions): Engine {
       cursor = res[0];
       for (const [id, fields] of res[1] ?? []) {
         if (!running) return;
-        if (active.has(id)) continue; // still being processed here; not stuck
+        if (active.has(id)) {
+          // still being processed here, not stuck; XAUTOCLAIM counted a delivery that never happened
+          phantom.set(id, (phantom.get(id) ?? 0) + 1);
+          continue;
+        }
+        const extra = phantom.get(id) ?? 0;
+        phantom.delete(id);
         if (!fields) {
           // entry was trimmed from the stream; nothing to retry
           await ack(id);
@@ -350,7 +359,7 @@ export function createEngine(opts: EngineOptions): Engine {
         }
         let n = 0;
         try {
-          n = await deliveryCount(id);
+          n = (await deliveryCount(id)) - extra;
         } catch (err) {
           logger.error(`engine: xpending ${id} failed: ${(err as Error).message}`);
         }
@@ -359,6 +368,8 @@ export function createEngine(opts: EngineOptions): Engine {
           await ack(id);
           continue;
         }
+        await waitForSlot();
+        if (!running) return;
         await submit(id, fields);
       }
     } while (running && cursor !== "0-0");
@@ -413,7 +424,8 @@ export function createEngine(opts: EngineOptions): Engine {
       try {
         await Promise.all([rules.ready, directory.ready]);
         await ensureGroup();
-        reader = opts.redis.duplicate();
+        // blocking reads: one command at a time, no auto-pipelining
+        reader = opts.redis.duplicate({ enableAutoPipelining: false });
       } catch (err) {
         rules.close();
         directory.close();
