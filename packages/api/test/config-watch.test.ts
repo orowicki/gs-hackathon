@@ -62,6 +62,18 @@ describe("startConfigWatch", () => {
     expect(name(store, "rule/b")).toBe("file");
   });
 
+  it("keeps an edit made before ready", async () => {
+    dir = await mkdtemp(join(tmpdir(), "cfgw-"));
+    await mkdir(join(dir, "rules"));
+    await writeFile(join(dir, "rules", "a.yaml"), "id: a\nname: file\n");
+    const store = fakeStore();
+    await store.upsert("rule", { id: "a", name: "api" } as never);
+    watcher = startConfigWatch(store, dir, { debounceMs: 5 });
+    await writeFile(join(dir, "rules", "a.yaml"), "id: a\nname: edited\n");
+    await watcher.ready;
+    await until(() => name(store, "rule/a") === "edited");
+  });
+
   it("applies new files, edits (overwrite) and deletes after ready", async () => {
     dir = await mkdtemp(join(tmpdir(), "cfgw-"));
     await mkdir(join(dir, "rules"));
