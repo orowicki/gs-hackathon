@@ -39,12 +39,12 @@ for (const scheme of ["light", "dark"] as const) {
     test("settings panel", async ({ page }) => {
       await page.goto("/");
       await page.getByRole("button", { name: "Settings" }).click();
-      for (const h of ["Profile", "Notifications", "Starred filters"]) {
+      for (const h of ["Account", "Notifications", "Starred filters"]) {
         await expect(page.getByRole("heading", { name: h })).toBeVisible();
       }
       await shot(page, "settings");
       await page.keyboard.press("Escape");
-      await expect(page.getByRole("heading", { name: "Profile" })).toHaveCount(0);
+      await expect(page.getByRole("heading", { name: "Account" })).toHaveCount(0);
     });
 
     test("new rule", async ({ page }) => {

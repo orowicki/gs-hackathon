@@ -1,3 +1,4 @@
+import { useCurrentPerson } from "../../account";
 import { Plus } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
@@ -26,6 +27,10 @@ export function RulesListPage() {
     };
   }, []);
 
+  // Hidden for accounts without canCreateRules; the server answers 403 for them anyway.
+  const me = useCurrentPerson();
+  const canCreate = me ? me.canCreateRules === true : true;
+
   return (
     <main className="page rules-page">
       <header className="page-header">
@@ -33,15 +38,19 @@ export function RulesListPage() {
           <h1>Rules</h1>
           <p className="page-intro">Rules turn matching events into alerts and decide who gets notified.</p>
         </div>
-        <div className="page-actions">
-          <Link className="btn" to="/rules/new?mode=yaml">
-            Import YAML
-          </Link>
-          <Link className="btn primary" to="/rules/new">
-            <Plus size={14} aria-hidden="true" />
-            New rule
-          </Link>
-        </div>
+        {canCreate ? (
+          <div className="page-actions">
+            <Link className="btn" to="/rules/new?mode=yaml">
+              Import YAML
+            </Link>
+            <Link className="btn primary" to="/rules/new">
+              <Plus size={14} aria-hidden="true" />
+              New rule
+            </Link>
+          </div>
+        ) : (
+          <p className="muted page-actions">Your account can't create rules.</p>
+        )}
       </header>
       {error && (
         <p role="alert" className="callout error">
@@ -52,9 +61,11 @@ export function RulesListPage() {
       {rules?.length === 0 && (
         <div className="empty-state">
           <p>No rules yet. Without a rule, events are stored but never become alerts.</p>
-          <Link className="btn primary" to="/rules/new">
-            Create the first rule
-          </Link>
+          {canCreate ? (
+            <Link className="btn primary" to="/rules/new">
+              Create the first rule
+            </Link>
+          ) : null}
         </div>
       )}
       {rules && rules.length > 0 && (

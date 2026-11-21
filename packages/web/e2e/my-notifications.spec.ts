@@ -78,12 +78,14 @@ for (const scheme of ["light", "dark"] as const) {
       await expect(page.getByRole("textbox", { name: "From", exact: true })).toHaveValue("23:00");
     });
 
-    test("profile select when none stored", async ({ page }) => {
+    test("follows the signed-in account", async ({ page }) => {
       await mockApi(page, []);
+      // Signed in as Bob (mock mode keeps the session in this browser).
+      await page.addInitScript(() => localStorage.setItem("alerting.mockSession", "p2"));
       await page.goto("/settings/notifications");
-      await page.getByRole("combobox", { name: "Profile" }).selectOption("p2");
       await expect(page.getByText("Bob")).toBeVisible();
-      expect(await page.evaluate(() => localStorage.getItem("alerting.profile"))).toBe("p2");
+      await expect(page.getByRole("combobox", { name: "Profile" })).toHaveCount(0);
+      expect(await page.evaluate(() => localStorage.getItem("alerting.profile"))).toBe(JSON.stringify("p2"));
     });
   });
 }
