@@ -46,6 +46,7 @@ export const MEASUREMENT =
   "so it includes HTTP, XADD, parse worker, Postgres insert, engine and pub/sub. Latency covers events whose alert was observed; " +
   "lost = events accepted (HTTP 202) with no alert observed after the drain (parse + engine backlog excluded). " +
   "backlog.delivery = notifications still in the delivery queue plus the per-worker processing lists (retry zset excluded: scheduled future work); " +
+  "backlog.deliveryWorker says whether a live delivery worker (heartbeat key) was found; without one the delivery backlog is recorded but ignored by the gates. " +
   "it is counted in backlogAtEnd and a delivery backlog above the threshold marks the window overloaded, but never in lost (it counts notifications, not events).";
 
 export function parseArgs(argv, env = process.env, now = new Date()) {
@@ -317,12 +318,34 @@ async function streamBacklog(conn, stream, group) {
 
 /** Queued events in the parse and engine groups, plus queued notifications in the delivery queue. */
 export async function readBacklog(conn) {
-  const [parse, engine, delivery] = await Promise.all([
+  const [parse, engine, delivery, deliveryWorker] = await Promise.all([
     streamBacklog(conn, STREAM_RAW, GROUP_PARSE),
     streamBacklog(conn, STREAM_EVENTS, GROUP_ENGINE),
     deliveryBacklog(conn),
+    deliveryWorkerLive(conn),
   ]);
-  return { parse, engine, delivery, total: parse + engine + delivery };
+  // without a live delivery worker nobody consumes the queue, so it must not gate idle/drain/overload
+  return {
+    parse,
+    engine,
+    delivery,
+    deliveryWorker,
+    total: parse + engine + (deliveryWorker ? delivery : 0),
+  };
+}
+
+/** True when at least one registered delivery worker has a live heartbeat key. */
+async function deliveryWorkerLive(conn) {
+  const workers = await conn.smembers(`${QUEUE_DELIVERY_PROCESSING}:workers`);
+  const alive = await Promise.all(
+    workers.map((w) => conn.exists(`${QUEUE_DELIVERY_PROCESSING}:${w}:alive`)),
+  );
+  return alive.some((n) => n === 1);
+}
+
+/** Delivery backlog that gates idle/drain/overload: 0 when no live delivery worker exists. */
+export function gatingDelivery(b) {
+  return b.deliveryWorker ? b.delivery : 0;
 }
 
 /** Notifications queued for delivery: main queue + every worker's processing list + legacy list (not the retry zset). */
@@ -341,18 +364,25 @@ async function deliveryBacklog(conn) {
 async function waitForIdle(conn, timeoutMs, label) {
   const start = Date.now();
   let lastLog = 0;
+  let warnedNoWorker = false;
   for (;;) {
     const b = await readBacklog(conn);
     if (
       b.parse <= PREFLIGHT_THRESHOLD &&
       b.engine <= PREFLIGHT_THRESHOLD &&
-      b.delivery <= PREFLIGHT_THRESHOLD
+      gatingDelivery(b) <= PREFLIGHT_THRESHOLD
     )
       return Date.now() - start;
     if (Date.now() - start > timeoutMs) {
       throw new Error(
         `${label}: pipeline did not become idle within ${Math.round(timeoutMs / 1000)} s (parse backlog ${b.parse}, engine backlog ${b.engine}, delivery backlog ${b.delivery}). ` +
           "Wait for the workers to catch up or raise --preflight-timeout; streams are left untouched.",
+      );
+    }
+    if (!b.deliveryWorker && b.delivery > 0 && !warnedNoWorker) {
+      warnedNoWorker = true;
+      console.error(
+        `loadtest: warning: no live delivery worker, ignoring the delivery backlog (${b.delivery} notifications) in idle/drain/overload checks`,
       );
     }
     if (Date.now() - lastLog >= 10_000) {
@@ -808,7 +838,9 @@ async function measure(opts, runId, post, collector, seqBase = 0, probeConn) {
   let lastDelivery = Infinity;
   for (;;) {
     const seen = collector.seen() - seenBase;
-    const delivery = await deliveryBacklog(probeConn);
+    const delivery = (await deliveryWorkerLive(probeConn))
+      ? await deliveryBacklog(probeConn)
+      : 0;
     if (seen >= okSeqs.length && delivery <= PREFLIGHT_THRESHOLD) break;
     if (seen !== lastCount || delivery < lastDelivery) {
       lastCount = seen;
@@ -823,7 +855,11 @@ async function measure(opts, runId, post, collector, seqBase = 0, probeConn) {
   const backlog = await readBacklog(probeConn);
   const drained =
     collector.seen() - seenBase >= okSeqs.length &&
-    backlog.delivery <= PREFLIGHT_THRESHOLD;
+    gatingDelivery(backlog) <= PREFLIGHT_THRESHOLD;
+  if (!backlog.deliveryWorker && backlog.delivery > 0)
+    console.error(
+      `loadtest: warning: no live delivery worker, delivery backlog ${backlog.delivery} not counted in backlogAtEnd/overload`,
+    );
 
   const { bySeq, pushMs, notifMs, streamMs } = collector.resolve();
   const e2e = [];
