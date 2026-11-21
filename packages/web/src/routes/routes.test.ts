@@ -16,6 +16,7 @@ const EXPECTED = [
   "/rules/:id",
   "/config/people",
   "/config/channels",
+  "/config/claude",
   "/settings/notifications",
   "*",
 ];
