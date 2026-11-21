@@ -68,8 +68,19 @@ describe("startConfigWatch", () => {
     await writeFile(join(dir, "rules", "a.yaml"), "id: a\nname: file\n");
     const store = fakeStore();
     await store.upsert("rule", { id: "a", name: "api" } as never);
+    // Hold the initial load (after the file was read) while the file is edited.
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    const get = store.get.bind(store);
+    store.get = (async (kind: Kind, id: string) => {
+      await gate;
+      return get(kind, id);
+    }) as ConfigStore["get"];
     watcher = startConfigWatch(store, dir, { debounceMs: 5 });
+    await new Promise((r) => setTimeout(r, 100));
     await writeFile(join(dir, "rules", "a.yaml"), "id: a\nname: edited\n");
+    await new Promise((r) => setTimeout(r, 100));
+    release();
     await watcher.ready;
     await until(() => name(store, "rule/a") === "edited");
   });
