@@ -59,8 +59,11 @@ describe("rules helpers", () => {
       id: "r1", name: "Old", enabled: true, when: "", who: [], looks: { titleTemplate: "t", fields: [] },
       dedupFields: ["source"], createdAt: "C", updatedAt: "U",
     } as never;
-    const updated = buildRule(d, { id: "r1", loaded, now: "T" }) as unknown as Record<string, unknown>;
+    const edited = { ...ruleToDraft(loaded), name: "N" };
+    const updated = buildRule(edited, { id: "r1", loaded, now: "T" }) as unknown as Record<string, unknown>;
     expect(updated).toMatchObject({ id: "r1", name: "N", dedupFields: ["source"], createdAt: "C", updatedAt: "T" });
+    const cleared = buildRule({ ...edited, dedupFields: "" }, { id: "r1", loaded, now: "T" });
+    expect(cleared.dedupFields).toBeUndefined();
     expect(JSON.stringify(updated)).not.toContain("key");
   });
 

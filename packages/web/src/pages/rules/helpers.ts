@@ -22,6 +22,8 @@ export interface RuleDraft {
   fields: string;
   severityOverride: string;
   colour: string;
+  /** Comma separated common field names that group repeats into one alert. */
+  dedupFields: string;
 }
 
 export const SEVERITY_OPTIONS: Severity[] = ["critical", "error", "warning", "info"];
@@ -54,6 +56,7 @@ export function emptyDraft(): RuleDraft {
     fields: "",
     severityOverride: "",
     colour: "",
+    dedupFields: "",
   };
 }
 
@@ -106,16 +109,20 @@ export function ruleToDraft(rule: Rule): RuleDraft {
     fields: rule.looks.fields.join(", "),
     severityOverride: rule.looks.severityOverride ?? "",
     colour: rule.looks.colour ?? "",
+    dedupFields: (rule.dedupFields ?? []).join(", "),
   };
 }
 
-export type RulePayload = Pick<Rule, "name" | "enabled" | "when" | "who" | "looks">;
+export type RulePayload = Pick<Rule, "name" | "enabled" | "when" | "who" | "looks" | "dedupFields">;
 
 /** Full entity for POST/PUT: the loaded rule's extra fields are kept (PUT replaces the entity). */
 export function buildRule(d: RuleDraft, opts: { id: string; loaded?: Rule; now?: string }): Rule {
   const now = opts.now ?? new Date().toISOString();
   const base = opts.loaded ?? { createdAt: now };
-  return { ...base, ...buildPayload(d), id: opts.id, updatedAt: now } as Rule;
+  const rule = { ...base, ...buildPayload(d), id: opts.id, updatedAt: now } as Rule;
+  // The editor shows dedupFields, so an empty list there means "cleared", not "keep the old one".
+  if (splitList(d.dedupFields).length === 0) delete rule.dedupFields;
+  return rule;
 }
 
 export function buildPayload(d: RuleDraft): RulePayload {
@@ -135,6 +142,7 @@ export function buildPayload(d: RuleDraft): RulePayload {
       return row;
     }),
     looks,
+    ...(splitList(d.dedupFields).length > 0 ? { dedupFields: splitList(d.dedupFields) as Rule["dedupFields"] } : {}),
   };
 }
 
