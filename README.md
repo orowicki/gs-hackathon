@@ -2,6 +2,13 @@
 
 TypeScript monorepo: `packages/api` (HTTP API with `/health`) and `packages/shared`, run with Postgres, Redis and ntfy via Docker Compose.
 
+## Docs
+
+- [Architecture](docs/architecture.md)
+- [Config formats](docs/config-formats.md)
+- [Extending](docs/extending.md)
+- [Performance](docs/performance.md)
+
 ## Requirements
 
 - Docker (with Compose)
@@ -39,11 +46,9 @@ just down
 
 ## Extending
 
-- New source type: add a plugin in `packages/ingest/src/plugins/` (see `http.ts`, `file-tail.ts`, `redis-stream.ts`), give it a config JSON schema in `schemas.ts` and register it in `plugins/index.ts`. A source instance is then created in the UI, via `POST /api/sources`, or as YAML.
-- New schema (event shape): in the UI, `POST /api/schemas`, or a file in `config/schemas/*.yaml` (a `match` filter plus a `mapping` to the common alert fields; see the existing files). Use `POST /api/schemas/test` to try a mapping on a sample.
-- New channel type: implement the `Channel` interface from `packages/delivery/src/channel.ts` (examples: `ui.ts`, `ntfy.ts`) and register it with `registerChannel`.
-- New runbook action type: add it in `packages/runbooks/src/actions.ts` (HTTP example: `http.ts`) and register it through the registry in `registry.ts`.
-- YAML files in `config/` are loaded by the seed on `just up` (only if missing). To change seeded demo sources or Anna's preference, edit `scripts/seed/seed.ts`.
+Step-by-step guides for a new source type, parser, delivery channel, runbook action and API route are in [docs/extending.md](docs/extending.md). New schemas, rules and sources can also be added as YAML.
+
+YAML files in `config/` are loaded by the seed on `just up` (only if missing) and then watched live; formats are in [docs/config-formats.md](docs/config-formats.md). To change seeded demo sources or Anna's preference, edit `scripts/seed/seed.ts`.
 
 ## Let Claude configure it
 
