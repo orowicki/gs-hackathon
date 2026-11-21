@@ -89,6 +89,19 @@ describe("email channel", () => {
     }
   });
 
+  it("addresses the default recipient at toDomain from env config", async () => {
+    const mails: Mail[] = [];
+    const srv = await startSmtp(0, mails);
+    try {
+      const cfg = emailConfigFromEnv({ SMTP_HOST: "127.0.0.1", SMTP_PORT: String(portOf(srv)), SMTP_TO_DOMAIN: "example.test" });
+      const r = await createEmailChannel({ ...cfg, timeoutMs: 1000 }).send(em("4"));
+      expect(r).toEqual({ status: "delivered" });
+    } finally {
+      await stop(srv);
+    }
+    expect(mails[0].to).toEqual(["bob@example.test"]);
+  });
+
   it("parses env config with defaults", () => {
     expect(emailConfigFromEnv({})).toMatchObject({ host: "localhost", port: 1025, from: "alerting@alerting.local", secure: false, toDomain: "alerting.local", publicUrl: "http://localhost:3000" });
     expect(emailConfigFromEnv({ SMTP_HOST: "m", SMTP_PORT: "2525", SMTP_SECURE: "true" })).toMatchObject({ host: "m", port: 2525, secure: true });

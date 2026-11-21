@@ -12,9 +12,11 @@ export interface EmailOptions {
   pass?: string;
   /**
    * Maps recipient id to an address. Person has no email field yet, so the default is
-   * `${recipientId}@alerting.local`; Mailpit catches every address.
+   * `${recipientId}@${toDomain}`; Mailpit catches every address.
    */
   toFor?: (recipientId: string) => string;
+  /** Domain for the default address (default "alerting.local"). */
+  toDomain?: string;
   timeoutMs?: number;
 }
 
@@ -96,7 +98,8 @@ export function createEmailChannel(opts: EmailOptions): Channel {
     greetingTimeout: t,
     socketTimeout: t,
   });
-  const toFor = opts.toFor ?? ((r: string) => `${r}@alerting.local`);
+  const toDomain = opts.toDomain ?? "alerting.local";
+  const toFor = opts.toFor ?? ((r: string) => `${r}@${toDomain}`);
   return {
     id: "email",
     async send(n) {
