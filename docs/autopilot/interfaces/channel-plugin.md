@@ -51,6 +51,14 @@ The `ui` channel publishes `{ type: "notification", notification }` on `alerting
 `click` = `clickUrl` (prefixed with `publicUrl` if relative). Actions (http, POST): "Acknowledge" -> `${publicUrl}/api/alerts/{alertId}/ack`; "Approve" -> `${publicUrl}/api/alerts/{alertId}/runbook-steps/{approveStepIndex}/approve` (only if `approveStepIndex` is a non-negative integer; `alertId` is URL-encoded; `click`/`view` URLs other than http/https are omitted). With `runbookUrl`, the message gets "Runbook: <url>" and a `view` action.
 Network error, 5xx, 429 -> retryable and `unavailable`; other non-2xx -> non-retryable.
 
+## email mapping
+
+`createEmailChannel({ host, port, from, publicUrl, secure?, user?, pass?, toDomain?, toFor?, timeoutMs? })` sends plain-text mail over SMTP with nodemailer (5 s timeouts). `emailConfigFromEnv()` reads `SMTP_HOST` (localhost), `SMTP_PORT` (1025), `SMTP_FROM` (alerting@alerting.local), `SMTP_SECURE` (false), `SMTP_USER`/`SMTP_PASS` (no auth if empty), `SMTP_TO_DOMAIN` (alerting.local) and `PUBLIC_URL`. The API registers it at startup next to `ui` and `ntfy`; docker compose points it at the `mailpit` service (SMTP 1025, web UI http://localhost:8025).
+
+Recipient: `${recipientId}@${SMTP_TO_DOMAIN}`, because people have no email field yet (hackathon limitation; Mailpit catches every address). Recipient ids outside `[A-Za-z0-9._+-]` fail non-retryable.
+Subject `[SEVERITY] title`; body = `body`, "Open: <clickUrl>" (relative URLs prefixed with `publicUrl`), "Runbook: <url>", and a link to `${publicUrl}/alerts/{alertId}` to acknowledge (no ack action link: the ack API is POST-only).
+Connection errors (ECONNREFUSED, ETIMEDOUT, ...) and SMTP 421 -> retryable and `unavailable`; other 4xx -> retryable; 5xx, EAUTH, EENVELOPE -> non-retryable; unknown errors -> retryable.
+
 ## Adding a channel (e.g. SMS)
 
 ```ts
