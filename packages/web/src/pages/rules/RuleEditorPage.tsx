@@ -38,6 +38,7 @@ import {
   type WhoDraft,
 } from "./helpers";
 import "./rules.css";
+import { channelLabel } from "../../channels";
 
 const FIELDS = [
   "alert.severity",
@@ -287,7 +288,7 @@ function ChannelToggles({ value, onChange, channels }: { value: string; onChange
             className={active ? "toggle on" : "toggle"}
             onClick={() => onChange((active ? on.filter((x) => x !== c) : [...on, c]).join(", "))}
           >
-            {c}
+            {channelLabel(c)}
           </button>
         );
       })}
@@ -318,7 +319,7 @@ function Summary({ draft, dir }: { draft: RuleDraft; dir: Directory }) {
                 const names = parseRecipients(w.recipients).map((r) => nameOf(dir, r)).join(", ");
                 const cond = w.condition.trim() ? ` when ${w.condition.trim()}` : "";
                 const force = splitList(w.force);
-                return `${names}${cond}${force.length ? ` (always via ${force.join(", ")})` : ""}`;
+                return `${names}${cond}${force.length ? ` (always via ${force.map(channelLabel).join(", ")})` : ""}`;
               })
               .join("; then ")}
             .

@@ -40,11 +40,11 @@ for (const scheme of ["light", "dark"] as const) {
       await expect(page.getByText("Ada Lovelace")).toBeVisible();
       await expect(page.getByText(/Defaults apply/)).toBeVisible();
       // defaults: ntfy topic present, so critical via ntfy is on
-      await expect(page.getByRole("checkbox", { name: "critical via ntfy" })).toBeChecked();
-      await expect(page.getByRole("checkbox", { name: "info via ntfy" })).not.toBeChecked();
+      await expect(page.getByRole("checkbox", { name: "critical via Phone" })).toBeChecked();
+      await expect(page.getByRole("checkbox", { name: "info via Phone" })).not.toBeChecked();
 
-      await page.getByRole("checkbox", { name: "critical via ntfy" }).uncheck();
-      await page.getByRole("checkbox", { name: "warning via ui" }).uncheck();
+      await page.getByRole("checkbox", { name: "critical via Phone" }).uncheck();
+      await page.getByRole("checkbox", { name: "warning via Dashboard" }).uncheck();
       await page.getByRole("checkbox", { name: "Enable quiet hours" }).check();
       await page.getByRole("textbox", { name: "From", exact: true }).fill("23:00");
       await page.getByRole("textbox", { name: "To", exact: true }).fill("06:30");
@@ -74,7 +74,7 @@ for (const scheme of ["light", "dark"] as const) {
       await page.screenshot({ path: path.join(shots, `my-notifications-${scheme}.png`) });
 
       await page.reload();
-      await expect(page.getByRole("checkbox", { name: "warning via ui" })).not.toBeChecked();
+      await expect(page.getByRole("checkbox", { name: "warning via Dashboard" })).not.toBeChecked();
       await expect(page.getByRole("textbox", { name: "From", exact: true })).toHaveValue("23:00");
     });
 
