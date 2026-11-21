@@ -328,6 +328,22 @@ export const componentSchemas: Record<string, object> = {
     },
     ["id", "ruleId", "eventId", "dedupKey", "state", "severity", "title", "source", "environment", "count", "firstSeen", "lastSeen", "fields"],
   ),
+  AlertSummary: obj(
+    {
+      open: { type: "integer", minimum: 0, description: "Number of open alerts" },
+      bySeverity: obj(
+        Object.fromEntries(["critical", "error", "warning", "info"].map((k) => [k, { type: "integer", minimum: 0 }])),
+        ["critical", "error", "warning", "info"],
+        { description: "Open alerts per severity" },
+      ),
+      byStatus: obj(
+        Object.fromEntries(["open", "acknowledged", "resolved"].map((k) => [k, { type: "integer", minimum: 0 }])),
+        ["open", "acknowledged", "resolved"],
+        { description: "All alerts per state" },
+      ),
+    },
+    ["open", "bySeverity", "byStatus"],
+  ),
   AlertDetail: {
     description: "An Alert with its opening event (null when unavailable) and its suggestions.",
     allOf: [

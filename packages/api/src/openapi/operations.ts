@@ -120,6 +120,11 @@ const prefs = (owner: string, base: string): Record<string, OperationSpec> => ({
 
 const cursor = (what: string): string => `Opaque cursor from the x-next-before response header of the previous page (${what})`;
 const NEXT = { "x-next-before": "Cursor for the next page; present when more rows may exist" };
+const ALERT_NEXT = {
+  ...NEXT,
+  "x-next-offset":
+    "Offset for the next page; sent instead of x-next-before when sort/order is not the default (lastSeen desc), only when the page is full",
+};
 
 export const operationSpecs: Record<string, OperationSpec> = {
   "GET /health": {
@@ -233,9 +238,24 @@ export const operationSpecs: Record<string, OperationSpec> = {
       q("tree", { type: "string" }, "Filter tree as a JSON-encoded string"),
       q("state", { $ref: "#/components/schemas/AlertState" }, "Only alerts in this state"),
       limitParam(50, 200),
-      q("before", { type: "string" }, cursor("alerts")),
+      q("before", { type: "string" }, `${cursor("alerts")}. Only valid with the default sort (lastSeen desc); combined with a non-default sort/order it is a 400, use offset instead`),
+      q("sort", { type: "string", enum: ["lastSeen", "firstSeen", "severity", "count"] }, "Sort key (default lastSeen)"),
+      q("order", { type: "string", enum: ["asc", "desc"] }, "Sort direction (default desc)"),
+      q(
+        "offset",
+        { type: "integer", minimum: 0 },
+        "Rows to skip, for paging with a non-default sort/order (use the x-next-offset response header). Ignored with the default sort (lastSeen desc); a non-numeric value is a 400",
+      ),
     ],
-    success: json(200, "Alerts, newest activity first", list("Alert"), NEXT),
+    success: json(200, "Alerts, newest activity first unless sorted otherwise", list("Alert"), ALERT_NEXT),
+    errors: [400],
+  },
+  "GET /api/alerts/summary": {
+    query: [
+      q("filter", { type: "string" }, "Filter expression text (takes precedence over `tree`)"),
+      q("tree", { type: "string" }, "Filter tree as a JSON-encoded string"),
+    ],
+    success: json(200, "Alert counts for stat panels", ref("AlertSummary")),
     errors: [400],
   },
   "GET /api/alerts/{id}": { success: json(200, "The alert with its event and suggestions", ref("AlertDetail")), errors: [400, 404] },

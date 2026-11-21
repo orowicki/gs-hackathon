@@ -10,7 +10,7 @@ OpenAPI 3.1.0, API version 0.0.0.
 
 ### GET `/api/alerts`
 
-List alerts (filter, state, limit, before)
+List alerts (filter, state, limit, before; sort=lastSeen|firstSeen|severity|count, order=asc|desc, offset=<n>). Default is lastSeen desc paged with the before cursor (x-next-before); non-default sort/order is paged with offset (x-next-offset; offset is ignored with the default sort) and combining before with a non-default sort is a 400
 
 **Parameters**
 
@@ -20,13 +20,34 @@ List alerts (filter, state, limit, before)
 | `tree` | query | string | no | Filter tree as a JSON-encoded string |
 | `state` | query | [AlertState](#schema-alertstate) | no | Only alerts in this state |
 | `limit` | query | integer | no | Page size (default 50); clamped to 1..200, a non-numeric value falls back to the default |
-| `before` | query | string | no | Opaque cursor from the x-next-before response header of the previous page (alerts) |
+| `before` | query | string | no | Opaque cursor from the x-next-before response header of the previous page (alerts). Only valid with the default sort (lastSeen desc); combined with a non-default sort/order it is a 400, use offset instead |
+| `sort` | query | "lastSeen" \| "firstSeen" \| "severity" \| "count" | no | Sort key (default lastSeen) |
+| `order` | query | "asc" \| "desc" | no | Sort direction (default desc) |
+| `offset` | query | integer | no | Rows to skip, for paging with a non-default sort/order (use the x-next-offset response header). Ignored with the default sort (lastSeen desc); a non-numeric value is a 400 |
 
 **Responses**
 
 | status | media type | schema | description |
 | --- | --- | --- | --- |
-| 200 | `application/json` | [Alert](#schema-alert)[] | Alerts, newest activity first |
+| 200 | `application/json` | [Alert](#schema-alert)[] | Alerts, newest activity first unless sorted otherwise |
+| 400 | `application/json` | [Error](#schema-error) | Bad request (invalid id, body, filter or parameter) |
+
+### GET `/api/alerts/summary`
+
+Alert counts for stat panels (optional filter/tree, same as the list). open = open alerts; bySeverity counts open alerts; byStatus counts all. Not pushed on SSE: refetch when an `alert` event arrives on /api/stream
+
+**Parameters**
+
+| name | in | type | required | description |
+| --- | --- | --- | --- | --- |
+| `filter` | query | string | no | Filter expression text (takes precedence over `tree`) |
+| `tree` | query | string | no | Filter tree as a JSON-encoded string |
+
+**Responses**
+
+| status | media type | schema | description |
+| --- | --- | --- | --- |
+| 200 | `application/json` | [AlertSummary](#schema-alertsummary) | Alert counts for stat panels |
 | 400 | `application/json` | [Error](#schema-error) | Bad request (invalid id, body, filter or parameter) |
 
 ### GET `/api/alerts/{id}`
@@ -2376,6 +2397,16 @@ Type: [Alert](#schema-alert) & { event: [Event](#schema-event) \| null, suggesti
 ### AlertState
 
 Type: "open" \| "acknowledged" \| "resolved"
+
+<a id="schema-alertsummary"></a>
+
+### AlertSummary
+
+| name | type | required | description |
+| --- | --- | --- | --- |
+| `open` | integer | yes | Number of open alerts |
+| `bySeverity` | { critical: integer, error: integer, warning: integer, info: integer } | yes | Open alerts per severity |
+| `byStatus` | { open: integer, acknowledged: integer, resolved: integer } | yes | All alerts per state |
 
 <a id="schema-alerttransitionrequest"></a>
 

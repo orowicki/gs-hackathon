@@ -483,6 +483,21 @@ describe.skipIf(!hasInfra)("handler conformance", () => {
     expect(next).toBeTruthy();
     await call("GET /api/alerts", { query: { limit: "1", before: next!, state: "open" } });
 
+    const sorted = await call("GET /api/alerts", {
+      query: { limit: "1", state: "open", sort: "severity", order: "asc", offset: "0" },
+    });
+    expect(sorted.headers.get("x-next-offset")).toBe("1");
+    const okSpec = (ops.get("GET /api/alerts")!.op.responses as Json)["200"] as Json;
+    const nextHeaders = Object.keys(okSpec.headers as Json);
+    expect(nextHeaders).toEqual(expect.arrayContaining(["x-next-before", "x-next-offset"]));
+    await call("GET /api/alerts", { query: { limit: "1", state: "open", sort: "severity", order: "asc", offset: "1" } });
+    await call("GET /api/alerts", { query: { sort: "bogus" }, status: 400 });
+    await call("GET /api/alerts", { query: { offset: "abc" }, status: 400 });
+    const sum = await call("GET /api/alerts/summary");
+    expect((sum.body as { open: number }).open).toBeGreaterThanOrEqual(2);
+    await call("GET /api/alerts/summary", { query: { filter: "alert.severity >= error" } });
+    await call("GET /api/alerts/summary", { query: { filter: "((" }, status: 400 });
+
     await call("GET /api/alerts/{id}", { path: { id: a0.id } });
     await call("POST /api/alerts/{id}/ack", { path: { id: a0.id }, body: example("POST /api/alerts/{id}/ack") });
     await call("GET /api/alerts/{id}", { path: { id: a0.id } });
@@ -507,6 +522,7 @@ describe.skipIf(!hasInfra)("handler conformance", () => {
       "POST /api/filters/parse",
       "POST /api/filters/format",
       "GET /api/alerts",
+      "GET /api/alerts/summary",
       "GET /api/alerts/{id}",
       "POST /api/alerts/{id}/ack",
       "POST /api/alerts/{id}/resolve",
