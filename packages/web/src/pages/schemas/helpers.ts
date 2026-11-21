@@ -129,7 +129,7 @@ export const SCHEMA_EXAMPLES: SchemaExample[] = [
 ];
 
 /** Drop empty value-map keys and empty defaults before saving/testing. */
-export function cleanSchema(s: Schema, match: string): Schema {
+export function cleanSchema(s: Schema, match: string, sample?: string): Schema {
   const mapping: Schema["mapping"] = {};
   for (const [k, m] of Object.entries(s.mapping) as [CommonFieldName, FieldMapping][]) {
     const out: FieldMapping = { ...m };
@@ -141,7 +141,12 @@ export function cleanSchema(s: Schema, match: string): Schema {
     if (out.default === undefined || out.default === "") delete out.default;
     mapping[k] = out;
   }
-  return { ...s, match, mapping };
+  const out: Schema = { ...s, match, mapping };
+  if (sample !== undefined) {
+    if (sample.trim() === "") delete out.sample;
+    else out.sample = sample;
+  }
+  return out;
 }
 
 export interface TestResult {
@@ -195,6 +200,7 @@ export function yamlToSchema(text: string, parse: (t: string) => unknown): { sch
     name: typeof r.name === "string" ? r.name : String(r.id),
     match: r.match ?? "",
     mapping: r.mapping && typeof r.mapping === "object" ? (r.mapping as Schema["mapping"]) : {},
+    ...(typeof r.sample === "string" ? { sample: r.sample } : {}),
   };
   return { schema, match: typeof schema.match === "string" ? schema.match : "" };
 }

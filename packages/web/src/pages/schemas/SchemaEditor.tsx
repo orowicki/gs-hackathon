@@ -161,7 +161,7 @@ function MappingRow({
         <div className="sx-name">
           <span className="mono">{name}</span>
           <span className="sx-hint" title={hint}>
-            {required && <span className="sx-req">Required · </span>}
+            {required && <span className="sx-req">Recommended · </span>}
             {hint}
           </span>
         </div>
@@ -271,7 +271,8 @@ export function SchemaEditor({
   const [schema, setSchema] = useState<Schema>(initial);
   const [match, setMatch] = useState(initialMatch);
   const [idTouched, setIdTouched] = useState(!isNew || initial.id !== "");
-  const [sampleText, setSampleText] = useState(initialSample);
+  // The sample saved with the schema wins; examples pass theirs in.
+  const [sampleText, setSampleText] = useState(initial.sample ?? initialSample);
   const [picking, setPicking] = useState<CommonFieldName | null>(null);
   const [errors, setErrors] = useState<string[]>([]);
   const [idError, setIdError] = useState("");
@@ -316,7 +317,7 @@ export function SchemaEditor({
     if (problems.length) return;
     setBusy(true);
     try {
-      const body = cleanSchema(schema, match);
+      const body = cleanSchema(schema, match, sampleText);
       if (isNew) await sendJson<Schema>("POST", "/api/schemas", body);
       else await sendJson<Schema>("PUT", `/api/schemas/${encodeURIComponent(schema.id)}`, body);
       navigate("/config/schemas");
@@ -397,7 +398,7 @@ export function SchemaEditor({
             </div>
           </Step>
 
-          <Step n={2} title="Sample event" help="Paste one real event as JSON. Everything below is checked against it as you type.">
+          <Step n={2} title="Sample event" help="Paste one real event as JSON. Everything below is checked against it as you type, and it is saved with the schema.">
             <label className="field">
               Sample event (JSON)
               <textarea
@@ -422,7 +423,7 @@ export function SchemaEditor({
             )}
           </Step>
 
-          <Step n={4} title="Map to alert fields" help="Fill each alert field from the event: a field, a fixed value or a template. The value column shows the result for the sample.">
+          <Step n={4} title="Map to alert fields" help="Fill alert fields from the event: a field, a fixed value or a template. None are mandatory; unmapped fields stay empty and severity falls back to info.">
             <div className={sample.obj ? "sx-map-layout with-sample" : "sx-map-layout"}>
               <div className="sx-rows" aria-label="Field mappings">
                 <div className="sx-row-head" aria-hidden="true">
@@ -483,7 +484,7 @@ export function SchemaEditor({
               <>Applies to every event</>
             )}{" "}
             and fills {mappedCount} of {COMMON_FIELDS.length} alert fields.
-            {missing.length > 0 && <> Not mapped yet: {missing.join(", ")}.</>}
+            {missing.length > 0 && <> Recommended but not mapped: {missing.join(", ")}.</>}
           </p>
           <div className="sx-preview" aria-label="Alert preview">
             <div className="sx-preview-caption">{sample.obj ? "The sample as an alert" : "Paste a sample to preview the alert"}</div>

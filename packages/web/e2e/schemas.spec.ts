@@ -177,6 +177,8 @@ for (const scheme of ["light", "dark"] as const) {
       expect(saved?.match).toBe('type = "WORKFLOW_FAILED"');
       expect(saved?.mapping.severity).toMatchObject({ kind: "path", path: "severity", valueMap: { ERROR: "error" } });
       expect(saved?.mapping.title?.default).toBe("Workflow failed");
+      // The sample is saved with the schema, so the next edit can test against it.
+      expect(JSON.parse((saved as { sample?: string } | undefined)?.sample ?? "{}")).toMatchObject({ workflowName: "order-settlement" });
 
       // Edit and export.
       await page.getByRole("link", { name: "Workflow failed" }).click();
