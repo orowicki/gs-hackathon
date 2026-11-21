@@ -114,17 +114,25 @@ export function NewSchemaPage() {
 
   if (mode === "editor") {
     const ex = SCHEMA_EXAMPLES.find((e) => e.id === exampleId);
-    const imported = (location.state as { imported?: { schema: Schema; match: string } } | null)?.imported;
+    const state = location.state as { imported?: { schema: Schema; match: string }; fromEvent?: { sample: string; source: string } } | null;
+    const imported = state?.imported;
+    const fromEvent = from === "event" ? state?.fromEvent : undefined;
     const initial = imported?.schema ?? ex?.schema ?? blankSchema();
     const tab = imported && (from === "yaml" || from === "file") ? from : ex ? "example" : "editor";
     return (
       <SchemaEditor
-        key={(exampleId ?? from ?? "blank") + (imported ? ":" + imported.schema.id : "")}
+        key={(exampleId ?? from ?? "blank") + (imported ? ":" + imported.schema.id : "") + (fromEvent ? ":" + fromEvent.sample.length : "")}
         isNew
         initial={initial}
         initialMatch={imported?.match ?? matchText(initial)}
-        sample={ex?.sample}
-        notice={imported ? "Imported. Paste a sample event to check the mapping, then save it." : undefined}
+        sample={fromEvent?.sample ?? ex?.sample}
+        notice={
+          imported
+            ? "Imported. Paste a sample event to check the mapping, then save it."
+            : fromEvent
+              ? `Started from an event from ${fromEvent.source}. Map its fields, then save; new events like it become proper alerts.`
+              : undefined
+        }
         tabs={<ChooserTabs options={OPTIONS} selected={tab} onSelect={choose} />}
       />
     );
