@@ -10,6 +10,7 @@ const EXPECTED = [
   "/config/sources/new",
   "/config/schemas",
   "/config/schemas/:id",
+  "/config/schemas/new",
   "/rules",
   "/rules/new",
   "/rules/:id",

@@ -48,6 +48,9 @@ export interface Schema {
   name: string;
   match: Filter;
   mapping: Partial<Record<CommonFieldName, FieldMapping>>;
+  /** Sample event (JSON text) kept with the schema so the editor can test it next time.
+   *  Ignored by ingest; the config store keeps unknown fields and exports them to YAML. */
+  sample?: string;
 }
 
 export type CommonFields = Partial<Record<CommonFieldName, string>>;

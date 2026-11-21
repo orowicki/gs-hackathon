@@ -60,9 +60,6 @@ export function MatchFilterInput({
         placeholder='for example type = "WORKFLOW_FAILED" (empty matches everything)'
         onChange={(e) => onChange(e.target.value)}
       />
-      <span className="hint">
-        Only events matching this filter use this schema.
-      </span>
       {error && (
         <span className="field-error" role="alert">
           {error.message}
