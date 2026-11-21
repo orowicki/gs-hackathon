@@ -772,3 +772,48 @@ input.mono,
   color: var(--muted);
   font-size: var(--text-xs);
 }
+
+/* Nothing picked yet: the options become tall columns that fill the page. */
+.page:has(> .chooser.idle) {
+  min-height: 100%;
+}
+
+.chooser.idle {
+  flex: 1;
+}
+
+.chooser.idle .chooser-grid {
+  flex: 1;
+  min-height: 420px;
+}
+
+.chooser.idle .choice {
+  grid-template-columns: 1fr;
+  grid-template-rows: auto auto auto;
+  align-content: center;
+  justify-items: center;
+  text-align: center;
+  row-gap: var(--space-3);
+  padding: var(--space-5);
+}
+
+.chooser.idle .choice-icon {
+  grid-row: auto;
+  width: 64px;
+  height: 64px;
+  margin-bottom: var(--space-2);
+}
+
+.chooser.idle .choice-icon svg {
+  width: 30px;
+  height: 30px;
+}
+
+.chooser.idle .choice-title {
+  font-size: var(--text-lg);
+}
+
+.chooser.idle .choice-text {
+  font-size: var(--text-md);
+  max-width: 32ch;
+}
