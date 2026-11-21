@@ -1,6 +1,5 @@
 import type { ChannelStatus } from "../../../../shared/src/types/notification";
-import type { Group, Person, Preference } from "../../../../shared/src/types/people";
-import type { Rule } from "../../../../shared/src/types/rule";
+import type { Person, Preference } from "../../../../shared/src/types/people";
 
 async function fail(res: Response): Promise<never> {
   throw new Error(`${res.status} ${res.statusText || "request failed"}`.trim());
@@ -15,8 +14,6 @@ async function getJson<T>(url: string): Promise<T> {
 export const listPeople = () => getJson<Person[]>("/api/people");
 /** Every registered delivery channel with its health; drives the columns of the grid. */
 export const listChannels = () => getJson<ChannelStatus[]>("/api/channels");
-export const listGroups = () => getJson<Group[]>("/api/groups");
-export const listRules = () => getJson<Rule[]>("/api/rules");
 
 /** Returns undefined when the API has no preference (404) or an empty/malformed one. */
 export async function getPreference(personId: string): Promise<Preference | undefined> {

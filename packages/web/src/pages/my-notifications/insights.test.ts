@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
-import type { Rule } from "../../../../shared/src/types/rule";
 import { gridFromPreference, preferenceFromForm, type QuietForm } from "./grid";
-import { effectiveNow, quietActiveAt, quietSegments, rulesReaching } from "./insights";
+import { effectiveNow, quietActiveAt, quietSegments } from "./insights";
 
 const quiet = (from: string, to: string, allow = ["ui"]): QuietForm => ({ enabled: true, from, to, timezone: "UTC", allowChannels: allow });
 const at = (hhmm: string) => new Date(`2026-11-21T${hhmm}:00Z`);
@@ -50,38 +49,5 @@ describe("grid with the live channel list", () => {
     expect(gridFromPreference(pref, channels).lossy).toBe(false);
     // Without email in the list the row can't be shown and is kept as an extra rule.
     expect(gridFromPreference(pref).lossy).toBe(true);
-  });
-});
-
-describe("rulesReaching", () => {
-  const rule = (id: string, who: Rule["who"], enabled = true) =>
-    ({ id, name: id, enabled, when: "", who, looks: { titleTemplate: "", fields: [] }, createdAt: "", updatedAt: "" }) as Rule;
-  const groups = [
-    { id: "pricing-team", name: "Pricing team", memberIds: ["anna", "marek"] },
-    { id: "rates-desk", name: "Rates desk", memberIds: ["ewa"] },
-  ];
-
-  it("finds direct and group recipients, with forced channels", () => {
-    const rules = [
-      rule("anna-personal", [{ recipients: [{ type: "person", id: "anna" }], force: ["ntfy"] }]),
-      rule("pricing", [{ recipients: [{ type: "group", id: "pricing-team" }] }]),
-      rule("rates", [{ recipients: [{ type: "group", id: "rates-desk" }] }]),
-      rule("old", [{ recipients: [{ type: "person", id: "anna" }] }], false),
-    ];
-    const r = rulesReaching(rules, groups, "anna");
-    expect(r.map((x) => x.rule.id)).toEqual(["anna-personal", "pricing", "old"]);
-    expect(r[0]).toMatchObject({ via: ["you"], forced: ["ntfy"] });
-    expect(r[1]).toMatchObject({ via: ["Pricing team"], forced: [] });
-  });
-
-  it("only counts forced channels from rows that reach the person", () => {
-    const rules = [
-      rule("mixed", [
-        { recipients: [{ type: "group", id: "rates-desk" }], force: ["email"] },
-        { recipients: [{ type: "group", id: "pricing-team" }] },
-      ]),
-    ];
-    expect(rulesReaching(rules, groups, "anna")[0]!.forced).toEqual([]);
-    expect(rulesReaching(rules, groups, "ewa")[0]!.forced).toEqual(["email"]);
   });
 });

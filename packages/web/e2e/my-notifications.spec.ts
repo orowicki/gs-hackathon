@@ -22,23 +22,6 @@ async function mockApi(page: Page, puts: unknown[]) {
       ],
     }),
   );
-  await page.route("**/api/groups", (route) => route.fulfill({ json: [{ id: "sre", name: "SRE on call", memberIds: ["p1"] }] }));
-  await page.route("**/api/rules", (route) =>
-    route.fulfill({
-      json: [
-        {
-          id: "payments",
-          name: "Payments critical",
-          enabled: true,
-          when: "alert.severity = critical",
-          who: [{ recipients: [{ type: "group", id: "sre" }], force: ["ntfy"] }],
-          looks: { titleTemplate: "x", fields: [] },
-          createdAt: "",
-          updatedAt: "",
-        },
-      ],
-    }),
-  );
   await page.route("**/api/people/*/preferences", async (route) => {
     const id = new URL(route.request().url()).pathname.split("/")[3]!;
     if (route.request().method() === "PUT") {
@@ -68,11 +51,10 @@ for (const scheme of ["light", "dark"] as const) {
       // Not in the sidebar any more; the breadcrumb names the page.
       await expect(page.getByRole("navigation", { name: "Main" }).getByText("My notifications")).toHaveCount(0);
       await expect(page.getByRole("navigation", { name: "Breadcrumb" })).toContainText("Notification preferences");
-      // Columns come from /api/channels, so Email shows up; its status and the rule that reaches Ada are listed.
+      // Columns come from /api/channels, so Email shows up. Contact points and rules are not on this page.
       await expect(page.getByRole("checkbox", { name: "critical via Email" })).not.toBeChecked();
-      await expect(page.getByText("2 pending")).toBeVisible();
-      await expect(page.getByRole("link", { name: "Payments critical" })).toBeVisible();
-      await expect(page.getByText("Always: Phone")).toBeVisible();
+      await expect(page.getByRole("heading", { name: "Contact points" })).toHaveCount(0);
+      await expect(page.getByRole("heading", { name: "Rules that notify you" })).toHaveCount(0);
       // defaults: ntfy topic present, so critical via ntfy is on
       await expect(page.getByRole("checkbox", { name: "critical via Phone" })).toBeChecked();
       await expect(page.getByRole("checkbox", { name: "info via Phone" })).not.toBeChecked();
