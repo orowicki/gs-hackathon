@@ -1,9 +1,10 @@
 import { ArrowDown, ArrowUp, Plus, Trash2, X } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import type { RecipientRef, Rule } from "@alerting/shared";
 import { FilterBar } from "../../components/filter-bar";
 import { Icon } from "../../components/Icon";
+import { useStarredFilters } from "../../starred";
 import {
   acceptSuggestion,
   createRule,
@@ -63,6 +64,7 @@ const SAMPLE: Record<string, string> = {
   workflowName: "order-settlement",
   "payload.desk": "rates",
   "payload.notional": "25000000",
+  errorMessage: "Counterparty service did not respond in 5000 ms",
 };
 const render = (t: string) =>
   t.replace(/\{\{\s*([\w.]+)\s*\}\}/g, (_, k: string) => SAMPLE[k] ?? `‹${k}›`);
@@ -74,6 +76,114 @@ const SEV_LABEL: Record<string, string> = {
   warning: "Warning",
   info: "Info",
 };
+
+const VARS = ["alert.title", "alert.source", "alert.environment", "alert.severity", "failedStep", "workflowName", "payload.desk", "payload.notional"];
+const FIELD_OPTIONS = ["alert.source", "alert.environment", "alert.schema", "failedStep", "errorMessage", "payload.desk", "payload.notional"];
+const DEDUP_OPTIONS = ["source", "title", "environment", "severity"];
+const COLOURS: { value: string; label: string }[] = [
+  { value: "", label: "Severity colour (default)" },
+  { value: "#f2495c", label: "Red" },
+  { value: "#ff9830", label: "Orange" },
+  { value: "#fade2a", label: "Yellow" },
+  { value: "#73bf69", label: "Green" },
+  { value: "#7399c6", label: "Brand blue" },
+  { value: "#b877d9", label: "Purple" },
+];
+
+/** Appends {{v}}, with a space unless the text is empty or already ends in whitespace. */
+const joinVar = (text: string, v: string) => `${text}${text === "" || /\s$/.test(text) ? "" : " "}{{${v}}}`;
+
+/** Click to append a {{variable}} to a template. */
+function VarChips({ onInsert }: { onInsert: (v: string) => void }) {
+  return (
+    <div className="var-chips" aria-label="Insert a variable">
+      <span className="re-hint">Insert:</span>
+      {VARS.map((v) => (
+        <button key={v} type="button" className="var-chip" onClick={() => onInsert(v)}>
+          {v}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/** Comma-separated list edited as toggles, with an optional box for other values. */
+function ListToggles({
+  label,
+  value,
+  options,
+  onChange,
+  allowCustom = false,
+}: {
+  label: string;
+  value: string;
+  options: string[];
+  onChange: (v: string) => void;
+  allowCustom?: boolean;
+}) {
+  const on = splitList(value);
+  const [typed, setTyped] = useState("");
+  const all = [...new Set([...options, ...on])];
+  const flip = (x: string) => onChange((on.includes(x) ? on.filter((y) => y !== x) : [...on, x]).join(", "));
+  return (
+    <div className="toggles" role="group" aria-label={label}>
+      {all.map((x) => (
+        <button key={x} type="button" aria-pressed={on.includes(x)} className={on.includes(x) ? "toggle on mono" : "toggle mono"} onClick={() => flip(x)}>
+          {x}
+        </button>
+      ))}
+      {allowCustom && (
+        <input
+          className="toggle-add mono"
+          aria-label={`Add to ${label.toLowerCase()}`}
+          placeholder="other field, Enter"
+          value={typed}
+          onChange={(e) => setTyped(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key !== "Enter" || typed.trim() === "") return;
+            e.preventDefault();
+            if (!on.includes(typed.trim())) onChange([...on, typed.trim()].join(", "));
+            setTyped("");
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+/** The alert as it will look in the feed: collapsed row plus the expanded facts. */
+function AlertPreview({ draft }: { draft: RuleDraft }) {
+  const sev = draft.severityOverride || "error";
+  const label: Record<string, string> = { critical: "CRIT", error: "ERR", warning: "WARN", info: "INFO" };
+  const fields = splitList(draft.fields);
+  return (
+    <div className="alert-preview" aria-label="Alert preview">
+      <div className="alert-preview-caption">Preview with sample event data</div>
+      <div className={`alert-preview-row sev-${sev}`} style={draft.colour ? { boxShadow: `inset 3px 0 0 ${draft.colour}` } : undefined}>
+        <span className="sev-label">{label[sev]}</span>
+        <span className="alert-preview-title">{render(draft.titleTemplate) || "Untitled alert"}</span>
+        <span className="alert-preview-meta">payments-api</span>
+        <span className="alert-preview-meta">now</span>
+        <span className="alert-preview-count">×3</span>
+      </div>
+      {(draft.bodyTemplate.trim() || fields.length > 0) && (
+        <div className="alert-preview-body">
+          {draft.bodyTemplate.trim() && <p>{render(draft.bodyTemplate)}</p>}
+          {fields.length > 0 && (
+            <dl>
+              {fields.map((f) => (
+                <div key={f}>
+                  <dt>{f}</dt>
+                  <dd>{SAMPLE[f] ?? "…"}</dd>
+                </div>
+              ))}
+            </dl>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
 
 /** Step header: number, title (the heading), one line of help. */
 function Step({ n, title, help, children }: { n: number; title: string; help: string; children: React.ReactNode }) {
@@ -246,6 +356,7 @@ export function RuleEditorPage({ initial }: { initial?: RuleDraft } = {}) {
   const navigate = useNavigate();
   const location = useLocation();
   const dir = useDirectory();
+  const starredFilters = useStarredFilters();
   const [loadedRule, setLoadedRule] = useState<Rule | undefined>(undefined);
   const [idTouched, setIdTouched] = useState(initial !== undefined);
   const isNew = id === undefined;
@@ -287,8 +398,6 @@ export function RuleEditorPage({ initial }: { initial?: RuleDraft } = {}) {
   };
   const setRow = (key: string, p: Partial<WhoDraft>) =>
     set((d) => ({ who: d.who.map((w) => (w.key === key ? { ...w, ...p } : w)) }));
-
-  const preview = useMemo(() => render(draft.titleTemplate), [draft.titleTemplate]);
 
   async function save() {
     const problems = validateDraft(draft, isNew);
@@ -415,8 +524,8 @@ export function RuleEditorPage({ initial }: { initial?: RuleDraft } = {}) {
               onApply={noop}
               fields={FIELDS}
               valuesFor={valuesFor}
-              starred={[]}
-              onToggleStar={noop}
+              starred={starredFilters.texts}
+              onToggleStar={starredFilters.toggle}
             />
             <div className="re-inline">
               <button type="button" className="btn" onClick={runTest}>
@@ -507,52 +616,81 @@ export function RuleEditorPage({ initial }: { initial?: RuleDraft } = {}) {
             </button>
           </Step>
 
-          <Step n={4} title="Looks" help="How the alert reads in the feed and in notifications.">
-            <label className="field">
-              Title template
-              <input type="text" className="mono" value={draft.titleTemplate} onChange={(e) => set({ titleTemplate: e.target.value })} />
-              <span className="re-preview">
-                Preview: <strong>{preview || "—"}</strong>
-              </span>
-            </label>
+          <Step n={4} title="Looks" help="How the alert reads in the feed and in notifications. The preview updates as you type.">
+            <AlertPreview draft={draft} />
+            <div className="field">
+              <label htmlFor="looks-title" className="field-label">
+                Title template
+              </label>
+              <input id="looks-title" type="text" className="mono" value={draft.titleTemplate} onChange={(e) => set({ titleTemplate: e.target.value })} />
+              <VarChips onInsert={(v) => set((d) => ({ titleTemplate: joinVar(d.titleTemplate, v) }))} />
+            </div>
+            <div className="field">
+              <label htmlFor="looks-body" className="field-label">
+                Message
+              </label>
+              <textarea
+                id="looks-body"
+                className="mono"
+                rows={3}
+                placeholder="{{alert.source}} reported {{alert.title}} in {{alert.environment}}."
+                value={draft.bodyTemplate}
+                onChange={(e) => set({ bodyTemplate: e.target.value })}
+              />
+              <VarChips onInsert={(v) => set((d) => ({ bodyTemplate: joinVar(d.bodyTemplate, v) }))} />
+            </div>
             <div className="field">
               <span className="field-label">Severity</span>
               <div className="segmented-sm" role="radiogroup" aria-label="Severity">
-                {["", ...SEVERITY_OPTIONS].map((s) => (
+                {["", ...SEVERITY_OPTIONS].map((sv) => (
                   <button
-                    key={s || "keep"}
+                    key={sv || "keep"}
                     type="button"
                     role="radio"
-                    aria-checked={draft.severityOverride === s}
-                    className={`seg${draft.severityOverride === s ? " on" : ""}${s ? ` sev-${s}` : ""}`}
-                    onClick={() => set({ severityOverride: s })}
+                    aria-checked={draft.severityOverride === sv}
+                    className={`seg${draft.severityOverride === sv ? " on" : ""}${sv ? ` sev-${sv}` : ""}`}
+                    onClick={() => set({ severityOverride: sv })}
                   >
-                    {SEV_LABEL[s]}
+                    {SEV_LABEL[sv]}
                   </button>
                 ))}
               </div>
             </div>
-            <label className="field">
-              Fields to show
-              <input
-                type="text"
-                className="mono"
-                placeholder="alert.source, alert.environment"
+            <div className="field">
+              <span className="field-label">Fields to show when expanded</span>
+              <ListToggles
+                label="Fields to show"
                 value={draft.fields}
-                onChange={(e) => set({ fields: e.target.value })}
+                options={FIELD_OPTIONS}
+                onChange={(v) => set({ fields: v })}
+                allowCustom
               />
-            </label>
-            <details className="re-more">
-              <summary>More options</summary>
-              <label className="field">
-                Body template
-                <textarea value={draft.bodyTemplate} onChange={(e) => set({ bodyTemplate: e.target.value })} />
-              </label>
-              <label className="field">
-                Colour
-                <input type="text" value={draft.colour} placeholder="#f2495c" onChange={(e) => set({ colour: e.target.value })} />
-              </label>
-            </details>
+            </div>
+            <div className="re-grid-2">
+              <div className="field">
+                <span className="field-label">Colour</span>
+                <div className="swatches" role="radiogroup" aria-label="Colour">
+                  {COLOURS.map((c) => (
+                    <button
+                      key={c.value || "none"}
+                      type="button"
+                      role="radio"
+                      aria-checked={draft.colour === c.value}
+                      aria-label={c.label}
+                      title={c.label}
+                      className={draft.colour === c.value ? "swatch on" : "swatch"}
+                      style={c.value ? { background: c.value } : undefined}
+                      onClick={() => set({ colour: c.value })}
+                    />
+                  ))}
+                </div>
+              </div>
+              <div className="field">
+                <span className="field-label">Group repeats by</span>
+                <ListToggles label="Group repeats by" value={draft.dedupFields} options={DEDUP_OPTIONS} onChange={(v) => set({ dedupFields: v })} />
+                <span className="re-hint">Events with the same values become one alert with a count. Empty: the event's own key.</span>
+              </div>
+            </div>
           </Step>
 
           {!isNew && (
