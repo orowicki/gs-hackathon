@@ -51,7 +51,15 @@ describe("ntfy outage (SPEC criterion 8)", () => {
     await new Promise((r) => setTimeout(r, 600));
     expect(received).toEqual([]);
     expect(await q.listDeadLetters()).toEqual([]);
-    const held = (await redis.llen(QUEUE_DELIVERY)) + (await redis.llen(QUEUE_DELIVERY_PROCESSING)) + (await redis.zcard(ZSET_DELIVERY_RETRY));
+    // In-flight items sit in per-worker lists (processing:<workerId>), so count those too,
+    // in one MULTI so an item moving between keys is never missed or double-counted.
+    const workers = await redis.smembers(`${QUEUE_DELIVERY_PROCESSING}:workers`);
+    const m = redis.multi().llen(QUEUE_DELIVERY).llen(QUEUE_DELIVERY_PROCESSING).zcard(ZSET_DELIVERY_RETRY);
+    for (const w of workers) m.llen(`${QUEUE_DELIVERY_PROCESSING}:${w}`);
+    const held = ((await m.exec()) ?? []).reduce((sum, [err, n]) => {
+      if (err) throw err;
+      return sum + (n as number);
+    }, 0);
     expect(held).toBe(N);
 
     srv = await listen(port, received);

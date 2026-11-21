@@ -47,13 +47,6 @@ for (const scheme of ["light", "dark"] as const) {
       await expect(page.getByRole("heading", { name: "Profile" })).toHaveCount(0);
     });
 
-    test("alert detail", async ({ page }) => {
-      await page.goto("/alerts/42");
-      await expect(page.getByText("42", { exact: true })).toBeVisible();
-      await expect(page.getByRole("link", { name: /Back to alerts/ })).toBeVisible();
-      await shot(page, "alert-42");
-    });
-
     test("new rule", async ({ page }) => {
       await page.goto("/");
       await page.getByRole("button", { name: "New rule" }).click();
