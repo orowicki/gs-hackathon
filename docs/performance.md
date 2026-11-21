@@ -59,8 +59,8 @@ Commit `37330d5`, local mode, 60 s windows, 3 measurement windows per configurat
 | e2e p90 (ms) | 31 | 544 | 113 |
 | e2e p99 (ms) | 40 [37-42] | 1342 [402-2335] | 373 [228-952] |
 | e2e max (ms) | 68 | 1536 | 596 |
-| notification p50 (ms) | 14 | 35 | n/a |
-| notification p99 (ms) | 24 | 103 | n/a |
+| notification p50 (ms) | 14 | 35 (partial, see delivery queue) | n/a (partial, see delivery queue) |
+| notification p99 (ms) | 24 | 103 (partial, see delivery queue) | n/a (partial, see delivery queue) |
 | Targets met (p50 < 50, p99 < 250, 0 lost, no backlog) | yes | no | no |
 
 Notification latency is only available where the generator saw notification pushes for enough events: 119988 samples at 1000 ev/s, 87937 at 5000 ev/s with 1 worker (median window only), none in the 2 worker JSON.
@@ -93,6 +93,10 @@ Sources: [1 worker, 1000 ev/s](../results/loadtest-2026-11-21-rate1000.json) ([c
 - **Repeat keys (`--repeat-keys 500`, both 5000 ev/s runs):** 500 identical events with one dedup key produced exactly 1 alert with `count` 500 (`{events: 500, probes: 1, alerts: 1, count: 500, ok: true}`), so the lock-free dedup counts repeats exactly under load. The 1000 ev/s run did not use `--repeat-keys`.
 - **Where the time goes.** Per-stage timings measured during development at 2 workers and 5000 ev/s (not part of the published files): api and ingest take about 22-27 ms before the engine sees the event; engine dedup takes about 18-21 ms, of which the Postgres upsert is about 11 ms (commit flush) and the rest about 5 ms.
 - All processes (load generator, api, workers, engines, Postgres, Redis) run on one host with 22 cores, so they compete for CPU.
+
+#### Delivery queue caveat
+
+Notification push stats are missing for some windows because notifications are enqueued but delivered late, not dropped. The UI delivery queue `alerting:delivery:queue` (`packages/delivery/src/queue.ts`, FIFO) is drained by one delivery worker in the api process with concurrency 1 (`packages/api/src/main.ts` calls `createDeliveryQueue` without a concurrency option). With nothing else loading the host it drains about 7500/s, but during a 5000 ev/s run the api process is at 75-106% CPU, so delivery falls behind and the queue held about 1M entries after the runs. Pushes of later windows wait behind earlier leftovers and arrive after the generator stops listening. Before #137 the engine produced at most about 1000-1800 notifications/s, so this did not show. The loadtest does not yet include the delivery queue in its preflight or backlog. This is a follow-up outside #137 (delivery concurrency; loadtest measuring the delivery backlog).
 
 ### What changed (#137)
 
