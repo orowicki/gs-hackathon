@@ -13,6 +13,7 @@ services:
       SMTP_HOST: ${SMTP_HOST:-mailpit}
       SMTP_PORT: ${SMTP_PORT:-1025}
       SMTP_FROM: ${SMTP_FROM:-alerting@alerting.local}
+      SMTP_TO_DOMAIN: ${SMTP_TO_DOMAIN:-alerting.local}
       CONFIG_DIR: /app/config
     volumes:
       - ./config:/app/config

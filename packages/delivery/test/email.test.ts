@@ -2,7 +2,7 @@ import type { AddressInfo } from "node:net";
 import { afterEach, describe, expect, it } from "vitest";
 import { SMTPServer } from "smtp-server";
 import { LIST_DEAD_LETTERS, QUEUE_DELIVERY, QUEUE_DELIVERY_PROCESSING, ZSET_DELIVERY_RETRY } from "@alerting/shared";
-import { ChannelRegistry, createDeliveryQueue, createEmailChannel, emailConfigFromEnv, type DeliveryQueue } from "../src/index.js";
+import { ChannelRegistry, classifyEmailError, createDeliveryQueue, createEmailChannel, emailConfigFromEnv, type DeliveryQueue } from "../src/index.js";
 import { makeRedis, note, waitFor } from "./helpers.js";
 
 interface Mail {
@@ -68,7 +68,7 @@ describe("email channel", () => {
     expect(mails[0].raw).toContain("Disk full");
     expect(mails[0].raw).toContain("Open: http://app:3000/alerts/a1");
     expect(mails[0].raw).toContain("Runbook: https://rb/x");
-    expect(mails[0].raw).toContain("Acknowledge: http://app:3000/api/alerts/a1/ack");
+    expect(mails[0].raw).toContain("Acknowledge in the app: http://app:3000/alerts/a1");
   });
 
   it("reports a closed port as retryable and unavailable", async () => {
@@ -100,6 +100,45 @@ describe("email channel", () => {
       await stop(srv);
     }
     expect(mails[0].to).toEqual(["bob@example.test"]);
+  });
+
+  it("keeps a CRLF title on one Subject line", async () => {
+    const mails: Mail[] = [];
+    const srv = await startSmtp(0, mails);
+    try {
+      await mk(portOf(srv)).send(note("5", { channel: "email", title: "Evil\r\nBcc: x@y.z" }));
+    } finally {
+      await stop(srv);
+    }
+    expect(mails[0].raw).toMatch(/^Subject: \[ERROR\] Evil Bcc: x@y\.z\r?$/m);
+    expect(mails[0].raw).not.toMatch(/^Bcc:/m);
+  });
+
+  it("omits javascript: click and runbook urls", async () => {
+    const mails: Mail[] = [];
+    const srv = await startSmtp(0, mails);
+    try {
+      await mk(portOf(srv)).send(note("6", { channel: "email", clickUrl: "javascript:alert(1)", runbookUrl: "javascript:alert(2)" }));
+    } finally {
+      await stop(srv);
+    }
+    expect(mails[0].raw).not.toContain("javascript:");
+    expect(mails[0].raw).not.toContain("Runbook:");
+    expect(mails[0].raw).not.toContain("Open:");
+  });
+
+  it("rejects an invalid recipient id without contacting the server", async () => {
+    const r = await mk(await freePort()).send(note("7", { channel: "email", recipientId: "a@b.c,d" }));
+    expect(r).toEqual({ status: "failed", retryable: false, error: "invalid recipient id for email" });
+  });
+
+  it("classifies errors", () => {
+    expect(classifyEmailError(new TypeError("boom"))).toMatchObject({ retryable: true });
+    expect((classifyEmailError(new TypeError("boom")) as { unavailable?: boolean }).unavailable).toBeUndefined();
+    expect(classifyEmailError(Object.assign(new Error("a"), { code: "EAUTH" }))).toMatchObject({ retryable: false });
+    expect(classifyEmailError(Object.assign(new Error("e"), { code: "EENVELOPE" }))).toMatchObject({ retryable: false });
+    expect(classifyEmailError(Object.assign(new Error("s"), { code: "ECONNRESET" }))).toMatchObject({ retryable: true, unavailable: true });
+    expect(classifyEmailError(Object.assign(new Error("s"), { responseCode: 421 }))).toMatchObject({ retryable: true, unavailable: true });
   });
 
   it("parses env config with defaults", () => {

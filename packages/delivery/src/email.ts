@@ -54,7 +54,25 @@ function safeHttpUrl(u: string): string | undefined {
   }
 }
 
-const CONNECTION_CODES = new Set(["ECONNECTION", "ETIMEDOUT", "ESOCKET", "EDNS", "ECONNREFUSED"]);
+const CONNECTION_CODES = new Set([
+  "ECONNECTION",
+  "ETIMEDOUT",
+  "ESOCKET",
+  "EDNS",
+  "ECONNREFUSED",
+  "ECONNRESET",
+  "EHOSTUNREACH",
+  "ENETUNREACH",
+  "ENOTFOUND",
+  "EAI_AGAIN",
+  "EPIPE",
+]);
+
+class InvalidRecipientError extends Error {
+  constructor() {
+    super("invalid recipient id for email");
+  }
+}
 
 export function buildEmail(n: QueuedNotification, publicUrl: string): { subject: string; text: string } {
   const pub = publicUrl.replace(/\/+$/, "");
@@ -67,8 +85,10 @@ export function buildEmail(n: QueuedNotification, publicUrl: string): { subject:
   if (n.body) lines.push(n.body, "");
   const click = n.clickUrl ? abs(n.clickUrl) : undefined;
   if (click) lines.push(`Open: ${click}`);
-  if (n.runbookUrl) lines.push(`Runbook: ${n.runbookUrl}`);
-  lines.push(`Acknowledge: ${pub}/api/alerts/${encodeURIComponent(n.alertId)}/ack`);
+  const runbook = n.runbookUrl ? safeHttpUrl(n.runbookUrl) : undefined;
+  if (runbook) lines.push(`Runbook: ${runbook}`);
+  // The ack API is POST-only (and a GET link would be unsafe under mail-scanner prefetch), so link to the app.
+  lines.push(`Acknowledge in the app: ${pub}/alerts/${encodeURIComponent(n.alertId)}`);
   const oneLine = (s: string): string => s.replace(/[\r\n]+/g, " ");
   return { subject: `[${n.severity.toUpperCase()}] ${oneLine(n.title)}`, text: lines.join("\n") + "\n" };
 }
@@ -77,14 +97,15 @@ export function classifyEmailError(e: unknown): ChannelResult {
   const err = e as { code?: string; responseCode?: number; message?: string };
   const error = `email send failed: ${err?.message ?? String(e)}`;
   const rc = err?.responseCode;
+  const code = err?.code;
+  if (code && CONNECTION_CODES.has(code)) return { status: "failed", retryable: true, unavailable: true, error };
   if (typeof rc === "number") {
-    if (rc >= 400 && rc < 500) return { status: "failed", retryable: true, error };
-    return { status: "failed", retryable: false, error };
+    if (rc === 421) return { status: "failed", retryable: true, unavailable: true, error };
+    return { status: "failed", retryable: rc >= 400 && rc < 500, error };
   }
-  if ((err?.code && CONNECTION_CODES.has(err.code)) || rc === undefined) {
-    return { status: "failed", retryable: true, unavailable: true, error };
-  }
-  return { status: "failed", retryable: false, error };
+  if (code === "EAUTH" || code === "EENVELOPE") return { status: "failed", retryable: false, error };
+  // Unknown errors consume attempts and eventually dead-letter rather than looping forever.
+  return { status: "failed", retryable: true, error };
 }
 
 export function createEmailChannel(opts: EmailOptions): Channel {
@@ -99,15 +120,22 @@ export function createEmailChannel(opts: EmailOptions): Channel {
     socketTimeout: t,
   });
   const toDomain = opts.toDomain ?? "alerting.local";
-  const toFor = opts.toFor ?? ((r: string) => `${r}@${toDomain}`);
+  const toFor =
+    opts.toFor ??
+    ((r: string) => {
+      if (!/^[A-Za-z0-9._+-]+$/.test(r)) throw new InvalidRecipientError();
+      return `${r}@${toDomain}`;
+    });
   return {
     id: "email",
     async send(n) {
       try {
         const { subject, text } = buildEmail(n, opts.publicUrl);
-        await transport.sendMail({ from: opts.from, to: toFor(n.recipientId), subject, text });
+        const to = toFor(n.recipientId);
+        await transport.sendMail({ from: opts.from, to, subject, text });
         return { status: "delivered" };
       } catch (e) {
+        if (e instanceof InvalidRecipientError) return { status: "failed", retryable: false, error: e.message };
         return classifyEmailError(e);
       }
     },
