@@ -162,11 +162,19 @@
 .state-btn.resolve:not(.on):hover:not(:disabled) { background: var(--accent-bg-hover); }
 .state-btn.resolve.on { box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--on-accent) 35%, transparent); }
 
-.btn-pair { display: inline-flex; }
-.btn-pair .state-btn:first-child { border-top-right-radius: 0; border-bottom-right-radius: 0; }
-.btn-pair .state-btn + .state-btn { margin-left: -1px; border-top-left-radius: 0; border-bottom-left-radius: 0; }
-.state-btn.undo { color: var(--text); background: var(--surface); }
-.state-btn.undo:disabled { opacity: 0.5; }
+/* Label variants stacked in one cell: the button is as wide as the widest, so switching doesn't resize it. */
+.stable-label { display: inline-grid; }
+.stable-label > * {
+  grid-area: 1 / 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+.stable-label > .invisible { visibility: hidden; }
+
+/* Acknowledged stays clickable (click again to undo): keep it filled on hover. */
+.state-btn.on:hover:not(:disabled) { background: var(--accent-bg-hover); border-color: var(--accent-bg-hover); }
 
 /* Resolved: grey and locked. */
 .state-btn.locked {
