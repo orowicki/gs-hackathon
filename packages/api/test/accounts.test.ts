@@ -96,4 +96,16 @@ describe("accounts and sessions", () => {
     expect((await fetch(`${base}/api/rules`, post(rule, { "x-account": "anna" }))).status).toBe(201);
     expect((await fetch(`${base}/api/rules`, post({ ...rule, id: "r2" }))).status).toBe(201);
   });
+
+  it("403 when an account without canCreateRules grants or changes canCreateRules", async () => {
+    const { base } = await start();
+    const h = { "x-account": "ewa" };
+    const person = { id: "x1", name: "X", role: "r", canCreateRules: true };
+    expect((await fetch(`${base}/api/people`, post(person, h))).status).toBe(403);
+    const self = { id: "ewa", name: "Ewa", role: "eng", canCreateRules: true };
+    expect((await fetch(`${base}/api/people/ewa`, { ...post(self, h), method: "PUT" })).status).toBe(403);
+    expect((await fetch(`${base}/api/people`, post({ ...person, canCreateRules: false }, h))).status).toBe(201);
+    expect((await fetch(`${base}/api/people/ewa`, { ...post({ ...self, canCreateRules: false, role: "x" }, h), method: "PUT" })).status).toBe(200);
+    expect((await fetch(`${base}/api/people`, post({ ...person, id: "x2" }, { "x-account": "anna" }))).status).toBe(201);
+  });
 });

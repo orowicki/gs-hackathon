@@ -11,18 +11,22 @@ export interface SqlPool {
   query(text: string, params?: unknown[]): Promise<{ rows: Record<string, unknown>[] }>;
 }
 
+const TTL_MS = 30 * 24 * 3600 * 1000;
 const newToken = (): string => randomBytes(32).toString("hex");
 
 export function createMemorySessions(): SessionStore {
-  const m = new Map<string, string>();
+  const m = new Map<string, { personId: string; at: number }>();
   return {
     async create(personId) {
+      const now = Date.now();
+      for (const [k, v] of m) if (now - v.at > TTL_MS) m.delete(k);
       const t = newToken();
-      m.set(t, personId);
+      m.set(t, { personId, at: now });
       return t;
     },
     async get(token) {
-      return m.get(token);
+      const v = m.get(token);
+      return v && Date.now() - v.at <= TTL_MS ? v.personId : undefined;
     },
     async delete(token) {
       m.delete(token);
@@ -45,13 +49,14 @@ export function createPgSessions(pool: SqlPool): SessionStore {
   return {
     async create(personId) {
       await init();
+      await pool.query("DELETE FROM account_sessions WHERE created_at <= now() - interval '30 days'");
       const t = newToken();
       await pool.query("INSERT INTO account_sessions (token, person_id) VALUES ($1, $2)", [t, personId]);
       return t;
     },
     async get(token) {
       await init();
-      const r = await pool.query("SELECT person_id FROM account_sessions WHERE token = $1", [token]);
+      const r = await pool.query("SELECT person_id FROM account_sessions WHERE token = $1 AND created_at > now() - interval '30 days'", [token]);
       const v = r.rows[0]?.person_id;
       return typeof v === "string" ? v : undefined;
     },

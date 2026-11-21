@@ -21,3 +21,14 @@ export function ruleWriteForbidden(req: http.IncomingMessage): boolean {
   const a = accounts.get(req);
   return a !== undefined && !a.canCreateRules;
 }
+
+const failed = new WeakSet<http.IncomingMessage>();
+
+/** Record that the account lookup of this request failed (writes must then fail closed). */
+export function markLookupFailed(req: http.IncomingMessage): void {
+  failed.add(req);
+}
+
+export function lookupFailed(req: http.IncomingMessage): boolean {
+  return failed.has(req);
+}

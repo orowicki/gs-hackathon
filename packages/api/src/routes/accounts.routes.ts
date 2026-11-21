@@ -1,9 +1,10 @@
 import { randomBytes } from "node:crypto";
 import type http from "node:http";
+import type { Person } from "@alerting/shared";
 import type { RouteModule } from "../http.js";
 import { send } from "../http.js";
 import { BodyError, readJsonBody, sendBodyError } from "./common.js";
-import { setAccount } from "./accounts/actor.js";
+import { markLookupFailed, setAccount } from "./accounts/actor.js";
 import { createMemorySessions, createPgSessions, type SessionStore, type SqlPool } from "./accounts/sessions.js";
 
 declare module "../http.js" {
@@ -56,7 +57,7 @@ export default {
 
     // Resolve: session cookie > X-Account.
     let person: PersonRec | undefined;
-    if (config && (token || xAccount)) {
+    if (config && path.startsWith("/api/") && (token || xAccount)) {
       try {
         const store = sessionsOf(deps);
         const id = token ? await store.get(token) : undefined;
@@ -66,6 +67,7 @@ export default {
           (xAccount ? ((await config.get("person", xAccount)) as PersonRec | undefined) : undefined);
       } catch (e) {
         console.error("account lookup failed:", e);
+        markLookupFailed(req);
         if (own) return send(res, 503, { error: "accounts unavailable" }), true;
       }
       if (person) setAccount(req, { id: person.id, canCreateRules: person.canCreateRules === true });
@@ -81,13 +83,13 @@ export default {
           return send(res, 400, { error: "name is required" }), true;
         if (body.role !== undefined && typeof body.role !== "string")
           return send(res, 400, { error: "role must be a string" }), true;
-        const created = {
+        const created: Person = {
           id: `acc-${randomBytes(5).toString("hex")}`,
           name: body.name.trim().slice(0, 200),
           role: (body.role as string | undefined)?.trim() || "member",
           canCreateRules: false,
         };
-        await config.upsert("person", created as never);
+        await config.upsert("person", created);
         return send(res, 201, created), true;
       }
       // /api/session
@@ -108,7 +110,7 @@ export default {
         return send(res, 200, person), true;
       }
       if (method === "DELETE") {
-        if (token) await store.delete(token);
+        if (token) await store.delete(token).catch((e: unknown) => console.error("session delete failed:", e));
         res.writeHead(204, { "set-cookie": cookie("", 0) });
         res.end();
         return true;
