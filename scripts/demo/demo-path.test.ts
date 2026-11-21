@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { isDeepStrictEqual } from "node:util";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import pg from "pg";
@@ -21,7 +22,7 @@ import {
   type ParseWorker,
   type SchemaMapping,
 } from "@alerting/ingest";
-import { STREAM_EVENTS, dedupKey as redisDedupKey, type Alert, type Event, type Rule, type Source } from "@alerting/shared";
+import { dedupKey as redisDedupKey, type Alert, type Event, type Rule, type Source } from "@alerting/shared";
 import { REPO_ROOT, loadConfigDir, seed, type SeedClient, type SeedKind } from "../seed/seed.ts";
 import { paymentsCritical, pricingLatency, tradeRejected, workflowFailed } from "./events.ts";
 
@@ -39,6 +40,7 @@ describe.skipIf(!enabled)("demo path: events get a schema and raise realistic al
   const run = randomUUID().slice(0, 8);
   const sourceId = `it-demo-${run}`;
   const stream = `test:${run}:raw`;
+  const outStream = `test:${run}:events`; // isolated: a live engine on this Redis never sees test events
   const group = `${run}-g`;
   let pool: pg.Pool;
   let redis: Redis;
@@ -48,7 +50,7 @@ describe.skipIf(!enabled)("demo path: events get a schema and raise realistic al
   let parsers: Awaited<ReturnType<typeof createParserCache>>;
   let rules: CompiledRule[];
   const createdIds: string[] = [];
-  const restore: { kind: "schema" | "rule"; entity: never }[] = [];
+  const restore: { kind: "schema" | "rule"; id: string; entity: Record<string, unknown> | undefined }[] = [];
   const keys: string[] = [];
   const eventIds: string[] = [];
 
@@ -99,10 +101,22 @@ describe.skipIf(!enabled)("demo path: events get a schema and raise realistic al
     throw new Error("timed out waiting for the event to be stored");
   }
 
+  const sampleEvent = (line: string): Event => {
+    const parsed = JSON.parse(line);
+    return { id: "sample", sourceId, receivedAt: new Date().toISOString(), raw: parsed, parsed, schemaId: null, common: {} } as unknown as Event;
+  };
+  async function poll(fn: () => boolean, ms = 5000): Promise<void> {
+    for (const end = Date.now() + ms; !fn(); await new Promise((r) => setTimeout(r, 25))) {
+      if (Date.now() > end) throw new Error("timed out waiting for the schema registry");
+    }
+  }
+
   let hooks: ReturnType<typeof createDedupHooks>;
   let directory: ReturnType<typeof createDirectory>;
   async function engine(event: Event): Promise<Alert[]> {
+    // The engine half runs in-process (processEvent + real dedup hooks), not via the stream consumer.
     const res = await processEvent(event, { rules, directory, enqueue: () => undefined, hooks });
+    for (const a of res.alerts) keys.push(redisDedupKey(a.ruleId, a.dedupKey)); // registered before any assertion
     expect(res.failed).toEqual([]);
     return res.alerts;
   }
@@ -132,27 +146,40 @@ describe.skipIf(!enabled)("demo path: events get a schema and raise realistic al
       getParser: (id) => parsers.get(id),
       mapEvent: mapping.mapEvent,
       stream,
+      eventsStream: outStream,
       group,
       blockMs: 200,
     });
 
-    // 2. then seed schemas, rules, people and groups from config/ like `just seed` does
+    // Premise: no schema is stored. A shared DB may already have them: move them out of the way
+    // (restored in afterAll) and wait until the live registry has noticed.
     const data = loadConfigDir(join(REPO_ROOT, "config"));
     data.source = [];
     data.preference = [];
-    const r = await seed(storeClient(), data);
-    createdIds.push(...r.createdIds);
-    // seed keeps what exists; a stale copy in a shared DB must not hide a config problem, so the
-    // repo's schemas and rules win for the duration of the test and are restored afterwards
     for (const kind of ["schema", "rule"] as const) {
-      for (const { id, entity } of data[kind]) {
+      for (const { id } of data[kind]) {
         const prior = await store.get(kind, id);
-        if (prior && JSON.stringify({ ...prior, createdAt: 0, updatedAt: 0 }) !== JSON.stringify({ ...entity, createdAt: 0, updatedAt: 0 })) {
-          restore.push({ kind, entity: prior as never });
-          await store.upsert(kind, entity as never);
-        }
+        if (prior) restore.push({ kind, id, entity: prior as unknown as Record<string, unknown> });
+        if (kind === "schema" && prior) await store.delete("schema", id);
       }
     }
+    const sample = (line: string) => mapping.mapEvent(sampleEvent(line)).schemaId;
+    await poll(() => sample(workflowFailed(lcg(1), new Date()).line) === null);
+    const premise = await send(workflowFailed(lcg(1), new Date()).line);
+    expect(premise.schemaId).toBeNull();
+
+    // 2. then seed schemas, rules, people and groups from config/ like `just seed` does
+    const r = await seed(storeClient(), data);
+    createdIds.push(...r.createdIds);
+    // seed keeps existing rules; a stale copy in a shared DB must not hide a config problem, so the
+    // repo's rules win for the duration of the test (the prior ones are restored afterwards)
+    for (const { id, entity } of data.rule) {
+      const prior = await store.get("rule", id);
+      const strip = (o: unknown) => ({ ...(o as object), createdAt: 0, updatedAt: 0 });
+      if (prior && !isDeepStrictEqual(strip(prior), strip(entity))) await store.upsert("rule", entity as never);
+    }
+    // the registry reloads asynchronously on the change events: wait until it maps
+    await poll(() => sample(workflowFailed(lcg(1), new Date()).line) === "schema-workflow-failed");
     const all = (await store.list("rule")) as Rule[];
     rules = data.rule.map(({ id }) => compileRule(all.find((x) => x.id === id) as Rule));
     directory = createDirectory(store);
@@ -166,15 +193,14 @@ describe.skipIf(!enabled)("demo path: events get a schema and raise realistic al
     if (eventIds.length > 0) {
       await pool.query("DELETE FROM alerts WHERE data->>'eventId' = ANY($1)", [eventIds]);
       await pool.query("DELETE FROM events WHERE id = ANY($1)", [eventIds]);
-      const entries = await redis.xrange(STREAM_EVENTS, "-", "+");
-      for (const [id, f] of entries) if (eventIds.includes(JSON.parse(f[1] ?? "{}").id)) await redis.xdel(STREAM_EVENTS, id);
     }
     for (const k of keys) await redis.del(k);
+    await redis?.del(outStream);
     for (const ref of createdIds) {
       const [kind, id] = ref.split("/") as [SeedKind, string];
       if (kind !== "preference" && kind !== "source") await store?.delete(kind, id).catch(() => undefined);
     }
-    for (const { kind, entity } of restore) await store?.upsert(kind, entity).catch(() => undefined);
+    for (const { kind, entity } of restore) await store?.upsert(kind, entity as never).catch(() => undefined);
     await store?.delete("source", sourceId);
     await store?.close();
     await redis?.del(stream);
@@ -221,7 +247,6 @@ describe.skipIf(!enabled)("demo path: events get a schema and raise realistic al
     const alerts: Alert[] = [];
     for (const e of events) alerts.push(...(await engine(e)));
     const byRule = new Map(alerts.map((a) => [a.ruleId, a]));
-    for (const a of alerts) keys.push(redisDedupKey(a.ruleId, a.dedupKey));
     expect([...byRule.keys()].sort()).toEqual([
       "anna-payments-critical",
       "pricing-engine-warnings",

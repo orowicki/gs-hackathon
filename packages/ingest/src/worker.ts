@@ -85,6 +85,8 @@ export interface WorkerOptions {
   /** Hook for schema mapping (#12). Errors keep the unmapped event. */
   mapEvent?: (e: Event) => Event | Promise<Event>;
   stream?: string;
+  /** Stream the parsed events are published to (default STREAM_EVENTS; tests isolate it). */
+  eventsStream?: string;
   group?: string;
   consumer?: string;
   count?: number;
@@ -180,7 +182,7 @@ export function startParseWorker(opts: WorkerOptions): ParseWorker {
     const p = cmd.multi();
     for (const ev of toPublish) {
       const json = JSON.stringify(ev);
-      p.xadd(STREAM_EVENTS, "MAXLEN", "~", EVENTS_MAXLEN, "*", "data", json);
+      p.xadd(opts.eventsStream ?? STREAM_EVENTS, "MAXLEN", "~", EVENTS_MAXLEN, "*", "data", json);
       p.lpush(LIST_RECENT_EVENTS, json);
     }
     if (toPublish.length > 0) p.ltrim(LIST_RECENT_EVENTS, 0, RECENT_MAX - 1);
