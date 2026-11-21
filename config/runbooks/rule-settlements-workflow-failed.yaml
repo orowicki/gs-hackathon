@@ -1,31 +1,39 @@
 # Team Settlements' own runbook (shown as "this rule" on every settlements alert).
-# Automation: starts by itself on each new alert; step 2 waits for a person to approve.
+# Branches on the health check: healthy → retry (with approval, up to 2 tries); down or retry
+# failed → tell on-call. Steer it on http://localhost:4100 (counterparty-service, Workflow retry).
 id: rule-settlements-workflow-failed
 ruleId: settlements-workflow-failed
 matches: alert.ruleId = "settlements-workflow-failed"
 name: Settlement workflow recovery
 type: automation
 steps:
-  # 1. Runs straight away: is the counterparty service up?
-  - name: Check counterparty-service health
+  - id: health
+    name: Check counterparty-service health
     action: http
     method: GET
     url: http://demo-service:4100/health
 
-  # 2. Stops here until someone clicks Approve (or Skip) on the alert page.
-  - name: "Retry workflow {{workflowId}} (failed at {{step}})"
+  # Only worth retrying if the counterparty is up. Waits for Approve (or Skip) on the alert page.
+  - id: retry
+    name: "Retry workflow {{workflowId}} (failed at {{step}})"
+    if: steps.health.ok = true
     action: http
     method: POST
     url: "http://demo-service:4100/workflows/{{workflowId}}/retry"
     body: '{"workflowId":"{{workflowId}}","reason":"{{error.code}}"}'
+    retries: 1
     approval: required
 
-  # 3. Give the retry a moment before telling people.
-  - name: Wait for the retry to settle
-    action: wait
-    duration: 5s
-
-  # 4. Notify the on-call group (ntfy / email per their preferences).
-  - name: Tell settlements on-call
+  - name: Counterparty down or retry failed - tell settlements on-call
+    if: steps.health.ok = false OR steps.retry.ok = false
     action: escalate
     group: settlements-oncall
+
+  - name: "Recovered - post in #settlements"
+    if: steps.retry.ok = true
+    action: http
+    method: POST
+    url: http://demo-service:4100/chat/settlements
+    headers:
+      content-type: application/json
+    body: '{"text":"Workflow {{workflowId}} retried and recovered"}'

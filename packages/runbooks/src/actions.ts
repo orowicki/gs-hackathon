@@ -13,6 +13,10 @@ export interface ActionResult {
   ok: boolean;
   /** Short human-readable outcome. */
   result: string;
+  /** HTTP status (http actions). */
+  status?: number;
+  /** Parsed JSON response (http actions), available to later steps' `if` as steps.<id>.body. */
+  data?: unknown;
 }
 export interface ActionPlugin {
   type: string;
@@ -86,6 +90,9 @@ export function httpAction(opts: HttpActionOptions = {}): ActionPlugin {
       const label = `${step.method} ${url}`;
       const headers: Record<string, string> = {};
       for (const [k, v] of Object.entries(step.headers ?? {})) headers[k] = ctx.render(v).replace(/[\r\n]+/g, " ");
+      // Tell the target which runbook and alert made the call (the demo-service page shows it).
+      headers["x-alerting-runbook"] ??= ctx.runbookId;
+      headers["x-alerting-alert"] ??= ctx.alertId;
       const timeout = AbortSignal.timeout(timeoutMs);
       const signal = ctx.signal ? AbortSignal.any([ctx.signal, timeout]) : timeout;
       try {
@@ -100,8 +107,20 @@ export function httpAction(opts: HttpActionOptions = {}): ActionPlugin {
           await res.body?.cancel().catch(() => undefined);
           return { ok: false, result: `redirect to ${res.headers.get("location") ?? "?"} not followed` };
         }
-        const text = truncate((await readLimited(res, MAX_RESPONSE_BYTES)).trim(), 200);
-        return { ok: res.status >= 200 && res.status < 300, result: `${label} → ${res.status}${text ? ` ${text}` : ""}` };
+        const full = (await readLimited(res, MAX_RESPONSE_BYTES)).trim();
+        let data: unknown;
+        try {
+          data = full ? JSON.parse(full) : undefined;
+        } catch {
+          data = undefined;
+        }
+        const text = truncate(full, 200);
+        return {
+          ok: res.status >= 200 && res.status < 300,
+          result: `${label} → ${res.status}${text ? ` ${text}` : ""}`,
+          status: res.status,
+          ...(data !== undefined ? { data } : {}),
+        };
       } catch (e) {
         return { ok: false, result: `${label} failed: ${errMsg(e)}` };
       }

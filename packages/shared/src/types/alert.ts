@@ -36,7 +36,7 @@ export interface AuditEntry {
   at: IsoTimestamp;
   /** Person id or "system". */
   actor: string;
-  action: "created" | "acknowledged" | "unacknowledged" | "resolved" | "step_executed" | "step_approved" | "step_skipped" | "escalated" | "suggestion";
+  action: "created" | "acknowledged" | "unacknowledged" | "resolved" | "step_executed" | "step_approved" | "step_skipped" | "escalated" | "suggestion" | "runbook_removed" | "runbook_restored";
   runbookId?: Id;
   stepIndex?: number;
   result?: string;

@@ -311,6 +311,18 @@ export const operationSpecs: Record<string, OperationSpec> = {
     errors: [400, 404, 413, 503],
   },
   "GET /api/alerts/{id}/runbooks": { success: json(200, "Runbooks matching the alert, the rule's own first", list("MatchedRunbook")), errors: [400, 404] },
+  "DELETE /api/alerts/{id}/runbooks/{runbookId}": {
+    pathParams: { runbookId: { schema: { type: "string" }, description: "Runbook id" } },
+    query: [q("actor", { type: "string" }, "Who removed it (a signed-in account wins)")],
+    success: json(200, "Removed from this alert; steps not yet run are skipped", ref("RunbookRemoval")),
+    errors: [400, 404],
+  },
+  "POST /api/alerts/{id}/runbooks/{runbookId}/restore": {
+    pathParams: { runbookId: { schema: { type: "string" }, description: "Runbook id" } },
+    query: [q("actor", { type: "string" }, "Who restored it (a signed-in account wins)")],
+    success: json(200, "Shown on this alert again", ref("RunbookRemoval")),
+    errors: [400, 404],
+  },
   "POST /api/alerts/{id}/runbook-runs": {
     request: body("StartRunbookRequest"),
     success: json(200, "The run (an existing run of this runbook on this alert is returned as is)", ref("RunbookRun")),

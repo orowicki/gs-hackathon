@@ -63,6 +63,8 @@ export const ROUTES: RouteDef[] = [
   { method: "GET", path: "/api/alerts/{id}", summary: "Get an alert with its event, runbooks and suggestions", tag: "alerts", response: "Alert" },
   { method: "GET", path: "/api/alerts/{id}/runbook-runs", summary: "Runbook run state per step of an alert", tag: "runbooks", response: "RunbookRun[]" },
   { method: "GET", path: "/api/alerts/{id}/runbooks", summary: "Runbooks that apply to this alert: text ones filled in with the alert's values, automation ones with their step names", tag: "runbooks", response: "MatchedRunbook[]" },
+  { method: "DELETE", path: "/api/alerts/{id}/runbooks/{runbookId}", summary: "Remove a runbook from this alert (recorded in its audit); steps of its run that have not happened yet are skipped", tag: "runbooks", response: "{ alertId: string; runbookId: string; removed: true; run?: RunbookRun }" },
+  { method: "POST", path: "/api/alerts/{id}/runbooks/{runbookId}/restore", summary: "Show a removed runbook on this alert again", tag: "runbooks", response: "{ alertId: string; runbookId: string; removed: false }" },
   { method: "POST", path: "/api/alerts/{id}/runbook-runs", summary: "Start an automation runbook on this alert now (one run per alert and runbook; an existing run is returned). 202 while it is still running", tag: "runbooks", request: "{ runbookId: string }", response: "RunbookRun" },
   { method: "GET", path: "/api/approvals", summary: "Pending runbook step approvals", tag: "runbooks", response: "PendingApproval[]" },
   { method: "GET", path: "/api/audit", summary: "Global audit log (filter by query: alertId, actor, action, before, limit)", tag: "alerts", response: "AuditEntry[]" },

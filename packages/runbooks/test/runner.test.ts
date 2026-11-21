@@ -86,8 +86,8 @@ describe("runner", () => {
     expect(log).toEqual(["a", "b"]);
     const audit = await runner.listAudit({ alertId: aid });
     expect(audit.filter((e) => e.action === "step_skipped").map((e) => [e.actor, e.result])).toEqual([
-      ["system", "skipped after step 1 failed"],
-      ["system", "skipped after step 1 failed"],
+      ["system", "skipped after step 2 failed"],
+      ["system", "skipped after step 2 failed"],
     ]);
   });
 

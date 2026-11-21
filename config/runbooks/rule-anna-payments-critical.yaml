@@ -1,29 +1,52 @@
-# Anna's personal rule (critical payments-api alerts). Automation with two approval gates:
-# nothing disruptive happens until Anna approves it on the alert page.
+# Anna's personal rule (critical payments-api alerts): the Appendix B markdown runbook
+# ("HighErrorRate on payments-api") turned into automation with real branches.
+# Steer it on the demo-service page (http://localhost:4100): Payments errors → One region / All regions.
 id: rule-anna-payments-critical
 ruleId: anna-payments-critical
 matches: alert.ruleId = "anna-payments-critical"
 name: Payments API first response
 type: automation
 steps:
-  - name: "Check {{labels.service}} health in {{labels.region}}"
+  # 1. "Check if errors are in one region only."
+  - id: regions
+    name: "Check which regions {{labels.service}} is failing in"
     action: http
     method: GET
-    url: http://demo-service:4100/health
+    url: "http://demo-service:4100/regions/{{labels.service}}"
 
-  - name: "Restart {{labels.service}} in {{labels.region}}"
+  # 2. "If one region: fail traffic over to the other region (needs approval from the team lead)."
+  - id: failover
+    name: "One region failing: fail {{labels.service}} traffic over from {{labels.region}}"
+    if: steps.regions.body.scope = "one-region"
     action: http
     method: POST
-    url: "http://demo-service:4100/restart/{{labels.service}}-{{labels.region}}"
-    body: '{"reason":"{{alertname}}","summary":"{{annotations.summary}}"}'
+    url: "http://demo-service:4100/failover/{{labels.service}}"
+    headers:
+      content-type: application/json
+    body: '{"from":"{{labels.region}}","reason":"{{annotations.summary}}"}'
     approval: required
 
-  - name: Wait a minute before deciding to escalate
-    action: wait
-    duration: 1m
+  # 3. "If all regions: check the last deployment and roll it back."
+  - id: rollback
+    name: "All regions failing: roll back the last {{labels.service}} deployment"
+    if: steps.regions.body.scope = "all-regions"
+    action: http
+    method: POST
+    url: "http://demo-service:4100/deployments/{{labels.service}}/rollback"
+    approval: required
 
-  # Only if it is still bad: Anna approves or skips.
-  - name: Escalate to the settlements on-call
+  # 4. "Post an update in the #payments-incidents channel."
+  - name: "Post an update in #payments-incidents"
+    action: http
+    method: POST
+    url: http://demo-service:4100/chat/payments-incidents
+    headers:
+      content-type: application/json
+    body: '{"text":"{{alertname}} on {{labels.service}} ({{labels.region}}): {{annotations.summary}}"}'
+
+  # Anything above failed: a person decides whether to wake up on-call.
+  - name: Something failed - escalate to the settlements on-call
+    if: steps.failover.failed = true OR steps.rollback.failed = true
     action: escalate
     group: settlements-oncall
     approval: required

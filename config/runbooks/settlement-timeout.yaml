@@ -1,24 +1,30 @@
+# Appendix B "structured steps", as written by Team Settlements. "if: retry fails twice" is a real
+# condition here: the retry runs up to 2 times, and the escalation (with approval) only happens if
+# it still failed. Steer it live on the demo-service page (http://localhost:4100): Workflow retry → Fails.
 id: settlement-timeout
 name: Settlement workflow timeout
 type: automation
 matches: type = WORKFLOW_FAILED AND error.code = TIMEOUT
-# Note: the original "if retry fails twice" condition is approximated by the
-# approval gate on the escalate step (our format has no conditional steps).
 steps:
-  - name: Check counterparty-service health
+  - id: health
+    name: Is counterparty-service healthy?
     action: http
     method: GET
     url: http://demo-service:4100/health
-    approval: none
-  - name: "Retry workflow {{workflowId}}"
+
+  - id: retry
+    name: "Retry workflow {{workflowId}}"
     action: http
     method: POST
     url: "http://demo-service:4100/workflows/{{workflowId}}/retry"
     headers:
       content-type: application/json
     body: '{"workflowId":"{{workflowId}}","reason":"{{error.code}}"}'
+    retries: 1
     approval: none
-  - name: Escalate to counterparty-support
+
+  - name: Retry failed twice - escalate to counterparty-support
+    if: steps.retry.ok = false
     action: escalate
     group: counterparty-support
     approvers: settlements-oncall

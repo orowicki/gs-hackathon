@@ -14,7 +14,9 @@ export interface MatchedRunbook {
   /** "rule" = the alert rule's own runbook (written on the alert page), "config" = a shared one. */
   origin: "rule" | "config";
   content?: string;
-  steps?: Array<{ index: number; name: string; action: string; approval: string }>;
+  steps?: Array<{ index: number; name: string; action: string; approval: string; id?: string; if?: string; retries?: number }>;
+  /** Taken off this alert by a person (shown greyed with Restore; its run, if any, stopped). */
+  removed?: boolean;
 }
 
 export interface RunbookRoutesDeps {
@@ -130,12 +132,34 @@ export function createRunbookRoutes(deps: RunbookRoutesDeps): {
                 name: stepDisplayName(st, ctx),
                 action: st.action,
                 approval: st.approval ?? "none",
+                ...(st.id ? { id: st.id } : {}),
+                ...(st.if ? { if: st.if } : {}),
+                ...(st.retries ? { retries: st.retries } : {}),
               })),
             };
       });
+      const removed = await runner.removedRunbooks(alert.id);
+      for (const m of out) if (removed.has(m.id)) m.removed = true;
       // The rule's own runbook first.
       out.sort((a, b) => (a.origin === b.origin ? 0 : a.origin === "rule" ? -1 : 1));
       send(res, 200, out);
+      return true;
+    }
+    if (
+      (method === "DELETE" && (m = /^\/api\/alerts\/([^/]+)\/runbooks\/([^/]+)$/.exec(path))) ||
+      (method === "POST" && (m = /^\/api\/alerts\/([^/]+)\/runbooks\/([^/]+)\/restore$/.exec(path)))
+    ) {
+      const alertId = dec(m[1]!);
+      const runbookId = dec(m[2]!);
+      if (deps.loadAlert && !(await deps.loadAlert(alertId))) throw new HttpError(404, "alert not found", "not_found");
+      const actor = accountActor || url.searchParams.get("actor") || "anonymous";
+      if (method === "DELETE") {
+        const run = await runner.remove(alertId, runbookId, actor);
+        send(res, 200, { alertId, runbookId, removed: true, ...(run ? { run: toPublicRun(run) } : {}) });
+      } else {
+        await runner.restore(alertId, runbookId, actor);
+        send(res, 200, { alertId, runbookId, removed: false });
+      }
       return true;
     }
     if (method === "POST" && (m = /^\/api\/alerts\/([^/]+)\/runbook-runs$/.exec(path))) {

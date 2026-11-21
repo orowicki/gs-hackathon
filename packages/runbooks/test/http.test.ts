@@ -19,11 +19,14 @@ describe("runbook http routes", () => {
   const r = createRunner({
     store,
     actions: createDefaultActions({ notifyGroup: async (g) => (notified.push(g), `notified group ${g} (3 people)`) }),
+    retryDelayMs: 0,
   });
   const routes = createRunbookRoutes({ runner: r });
 
   beforeAll(async () => {
     demo = await loadDemo();
+    // The retry fails twice, so the run stops at the escalation (step 2) waiting for approval.
+    demo.setRetryFails(true);
     const text = readFileSync(new URL("../../../config/runbooks/settlement-timeout.yaml", import.meta.url), "utf8").replaceAll(
       "http://demo-service:4100",
       demo.url,
@@ -67,7 +70,7 @@ describe("runbook http routes", () => {
     expect(runs.status).toBe(200);
     expect(runs.type).toContain("application/json");
     expect(runs.json).toHaveLength(1);
-    expect(runs.json[0].steps.map((s: any) => s.state)).toEqual(["done", "done", "awaiting_approval"]);
+    expect(runs.json[0].steps.map((s: any) => s.state)).toEqual(["done", "failed", "awaiting_approval"]);
     expect(runs.json[0].steps[0].name).toBeTruthy();
     expect(runs.json[0].template).toBeUndefined();
     expect(runs.json[0].runbook).toBeUndefined();
@@ -91,7 +94,7 @@ describe("runbook http routes", () => {
     const ok = await post("/api/alerts/a-2/runbook-steps/2/approve", JSON.stringify({ actor: "p-alice" }));
     expect(ok.status).toBe(200);
     const audit = { json: (await store.listAudit({ alertId: "a-2" })) as any[] };
-    expect(audit.json.filter((e: any) => e.action === "step_executed")).toHaveLength(3);
+    expect(audit.json.filter((e: any) => e.action === "step_executed")).toHaveLength(4); // health, retry attempt 1, retry attempt 2, escalate
     const approved = audit.json.find((e: any) => e.action === "step_approved");
     expect(approved.actor).toBe("p-alice");
     expect(new Date(approved.at).toISOString()).toBe(approved.at);
