@@ -64,7 +64,9 @@ export function renderChart(results) {
   const rows = results
     .map(({ label, result: r }) => {
       const e = r.latencyMs?.e2e ?? {};
-      return `<tr><td>${esc(label)}</td><td>${fmt(r.config?.workers)}</td><td>${fmt(r.throughput?.sendRate)}</td><td>${fmt(r.throughput?.processedPerSec)}</td><td>${fmt(e.p50)}</td><td>${fmt(e.p99)}</td><td>${fmt(r.lost)}</td><td class="${r.targets?.met ? "ok" : "bad"}">${r.targets?.met ? "yes" : "no"}</td></tr>`;
+      const rg = r.aggregate?.range;
+      const withRange = (v, pair) => (pair && pair[0] !== pair[1] ? `${fmt(v)} (${fmt(pair[0])}-${fmt(pair[1])})` : fmt(v));
+      return `<tr><td>${esc(label)}</td><td>${fmt(r.config?.workers)}</td><td>${fmt(r.throughput?.sendRate)}</td><td>${withRange(r.throughput?.processedPerSec, rg?.processedPerSec)}</td><td>${withRange(e.p50, rg?.e2e?.p50)}</td><td>${withRange(e.p99, rg?.e2e?.p99)}</td><td>${fmt(r.lost)}</td><td class="${r.targets?.met ? "ok" : "bad"}">${r.targets?.met ? "yes" : "no"}</td></tr>`;
     })
     .join("");
   return `<!doctype html>
@@ -87,7 +89,7 @@ p.note{color:var(--mute)}
 ${lineChart(series)}
 <h2>End-to-end latency</h2>
 ${barChart(series)}
-<p class="note">${esc(results[0]?.result.measurement ?? "")}</p>
+<p class="note">${esc(results[0]?.result.aggregate ? `Median of ${results[0].result.aggregate.repeats} run(s), min-max in brackets; the throughput chart shows the first run. ` : "")}${esc(results[0]?.result.measurement ?? "")}</p>
 </body></html>
 `;
 }

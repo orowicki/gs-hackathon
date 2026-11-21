@@ -7,7 +7,8 @@ Load test results for the ingest to alert path against the SPEC targets: p50 < 5
 ```sh
 just loadtest                  # compose stack: 1 worker, then 2 workers (5000 ev/s for 60 s each)
 just loadtest --local          # no docker: processes on the host, local Postgres and Redis
-just loadtest --smoke          # short check: 5 s at 200 ev/s
+just loadtest --smoke          # short check: 5 s at 200 ev/s, 1 repeat, writes to results/smoke/
+just loadtest --repeat N       # N measurement windows per configuration (default 3), reported as the median
 just loadtest --workers N      # a single run with N workers instead of 1 then 2
 just loadtest --rate R --duration S
 ```
@@ -16,7 +17,7 @@ Flags combine (for example `just loadtest --local --workers 2`). Details of the 
 [scripts/loadtest/README.md](../scripts/loadtest/README.md), orchestration is in
 [scripts/loadtest/loadtest.sh](../scripts/loadtest/loadtest.sh).
 
-Outputs go to `results/`:
+Each configuration runs `--repeat` windows (default 3) back to back; the headline numbers are the median across windows, with min-max ranges in the JSON (`aggregate`) and in the chart table, and every window in `runs`. Outputs go to `results/` (`results/smoke/` for `--smoke`, so published results are never overwritten):
 
 - `loadtest-<date>.json` (1 worker) and `loadtest-<date>-workers<N>.json` (N > 1): raw results, including per-second sent/processed counts.
 - `loadtest-<date>[-workers<N>].html`: chart per run.

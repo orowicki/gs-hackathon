@@ -74,3 +74,81 @@ export function evaluateTargets(e2e, lost, coverageOk = true) {
   const met = coverageOk && e2e.count > 0 && e2e.p50 <= TARGETS.p50 && e2e.p99 <= TARGETS.p99 && lost <= TARGETS.lost;
   return { ...TARGETS, met };
 }
+
+/** Median of the finite numbers in `values`; null when there are none. Even counts average the middle two. */
+export function median(values) {
+  const v = values.filter((x) => typeof x === "number" && Number.isFinite(x)).sort((a, b) => a - b);
+  if (v.length === 0) return null;
+  const m = v.length >> 1;
+  return v.length % 2 ? v[m] : (v[m - 1] + v[m]) / 2;
+}
+
+const round2 = (x) => (x === null ? null : Math.round(x * 100) / 100);
+const range = (values) => {
+  const v = values.filter((x) => typeof x === "number" && Number.isFinite(x));
+  return v.length ? [Math.min(...v), Math.max(...v)] : null;
+};
+
+/** Per-field medians of latency summaries ({p50,p90,p99,max,mean,count}); null if no run has one. */
+export function medianSummary(summaries) {
+  const ok = summaries.filter((x) => x && x.count > 0);
+  if (ok.length === 0) return summaries.some((x) => x) ? summarize([]) : null;
+  const out = { count: ok.reduce((n, x) => n + x.count, 0) };
+  for (const k of ["p50", "p90", "p99", "max", "mean"]) out[k] = round2(median(ok.map((x) => x[k])));
+  return { p50: out.p50, p90: out.p90, p99: out.p99, max: out.max, mean: out.mean, count: out.count };
+}
+
+/**
+ * Merge per-run result objects (as produced by run.mjs) into one result: latency/throughput fields are medians
+ * across runs, counts are sums, `runs` keeps the full per-run objects, `aggregate` documents the method and ranges.
+ */
+export function aggregateRuns(runs) {
+  const first = runs[0];
+  const sum = (k) => runs.reduce((n, r) => n + (r[k] ?? 0), 0);
+  const e2e = medianSummary(runs.map((r) => r.latencyMs.e2e));
+  const lost = sum("lost");
+  const coverageOk = runs.every((r) => r.e2eCoverage >= 1);
+  const e2eCoverage = Math.min(...runs.map((r) => r.e2eCoverage));
+  const sendRate = round2(median(runs.map((r) => r.throughput.sendRate)));
+  const processedPerSec = round2(median(runs.map((r) => r.throughput.processedPerSec)));
+  return {
+    date: first.date,
+    commit: first.commit,
+    config: { ...first.config, repeat: runs.length },
+    sent: sum("sent"),
+    accepted: sum("accepted"),
+    rejected: sum("rejected"),
+    httpErrors: sum("httpErrors"),
+    alertsSeen: sum("alertsSeen"),
+    lost,
+    wallTimeSec: round2(sum("wallTimeSec")),
+    throughput: {
+      targetRate: first.throughput.targetRate,
+      sendRate,
+      processedPerSec,
+      // per-second series of the first run (the full series of every run is in `runs`)
+      perSecond: first.throughput.perSecond,
+    },
+    latencyMs: {
+      e2e,
+      e2eSource: first.latencyMs.e2eSource,
+      alertStream: medianSummary(runs.map((r) => r.latencyMs.alertStream)),
+      notification: medianSummary(runs.map((r) => r.latencyMs.notification)),
+    },
+    e2eCoverage,
+    targets: evaluateTargets(e2e, lost, coverageOk),
+    aggregate: {
+      repeats: runs.length,
+      method: "median of per-run values",
+      range: {
+        e2e: {
+          p50: range(runs.map((r) => r.latencyMs.e2e.p50)),
+          p99: range(runs.map((r) => r.latencyMs.e2e.p99)),
+        },
+        processedPerSec: range(runs.map((r) => r.throughput.processedPerSec)),
+      },
+    },
+    measurement: first.measurement,
+    runs,
+  };
+}

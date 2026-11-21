@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { renderChart } from "./chart.mjs";
 import { buildBatch, parseArgs } from "./run.mjs";
-import { evaluateTargets, histogram, percentile, perSecondSeries, summarize } from "./stats.mjs";
+import { aggregateRuns, evaluateTargets, median, histogram, percentile, perSecondSeries, summarize } from "./stats.mjs";
 
 describe("stats", () => {
   it("percentile uses nearest rank", () => {
@@ -86,5 +86,38 @@ describe("chart", () => {
 describe("coverage", () => {
   it("targets fail when push coverage is incomplete", () => {
     expect(evaluateTargets(summarize([10, 20]), 0, false).met).toBe(false);
+  });
+});
+
+describe("repeat aggregation", () => {
+  const mk = (p50, p99, proc, lost = 0) => ({
+    date: "d", commit: "c", config: { workers: 1 }, sent: 100, accepted: 100, rejected: 0, httpErrors: 0, alertsSeen: 100 - lost, lost,
+    wallTimeSec: 10, e2eCoverage: 1,
+    throughput: { targetRate: 100, sendRate: 100, processedPerSec: proc, perSecond: [{ t: 0, sent: 1, processed: 1 }] },
+    latencyMs: { e2e: { p50, p90: p50, p99, max: p99, mean: p50, count: 100 }, e2eSource: "ui-push", alertStream: summarize([1]), notification: null },
+    measurement: "m",
+  });
+  it("median handles odd, even and empty", () => {
+    expect(median([3, 1, 2])).toBe(2);
+    expect(median([1, 2, 3, 4])).toBe(2.5);
+    expect(median([])).toBeNull();
+  });
+  it("aggregates medians, sums and ranges", () => {
+    const a = aggregateRuns([mk(10, 5000, 90), mk(20, 100, 100), mk(30, 200, 95)]);
+    expect(a.latencyMs.e2e).toMatchObject({ p50: 20, p99: 200, count: 300 });
+    expect(a.sent).toBe(300);
+    expect(a.throughput.processedPerSec).toBe(95);
+    expect(a.aggregate).toMatchObject({ repeats: 3, method: "median of per-run values" });
+    expect(a.aggregate.range.e2e.p99).toEqual([100, 5000]);
+    expect(a.aggregate.range.processedPerSec).toEqual([90, 100]);
+    expect(a.runs).toHaveLength(3);
+    expect(a.targets.met).toBe(true);
+    expect(aggregateRuns([mk(10, 100, 1), mk(10, 100, 1, 1)]).targets.met).toBe(false);
+  });
+  it("parseArgs repeat defaults", () => {
+    expect(parseArgs([], {}).repeat).toBe(3);
+    expect(parseArgs(["--smoke"], {}).repeat).toBe(1);
+    expect(parseArgs(["--repeat", "5"], {}).repeat).toBe(5);
+    expect(parseArgs(["--smoke"], {}, new Date("2026-11-21T10:00:00Z")).out).toBe("results/smoke/loadtest-2026-11-21.json");
   });
 });

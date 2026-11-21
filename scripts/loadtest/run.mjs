@@ -8,7 +8,7 @@ import { pathToFileURL } from "node:url";
 import { createConfigStore } from "@alerting/config";
 import { Redis } from "ioredis";
 import { writeChart } from "./chart.mjs";
-import { evaluateTargets, perSecondSeries, summarize } from "./stats.mjs";
+import { aggregateRuns, evaluateTargets, perSecondSeries, summarize } from "./stats.mjs";
 
 const STREAM_EVENTS = "alerting:events";
 const STREAM_ALERTS = "alerting:alerts";
@@ -30,7 +30,7 @@ export const MEASUREMENT =
   "lost = events accepted (HTTP 202) with no alert observed after the drain.";
 
 export function parseArgs(argv, env = process.env, now = new Date()) {
-  const o = { rate: 5000, duration: 60, workers: 1, smoke: false, chart: true };
+  const o = { rate: 5000, duration: 60, workers: 1, smoke: false, chart: true, repeat: undefined };
   const num = (flag, v) => {
     const n = Number(v);
     if (!Number.isFinite(n) || n <= 0) throw new Error(`${flag} needs a positive number`);
@@ -51,6 +51,7 @@ export function parseArgs(argv, env = process.env, now = new Date()) {
     else if (a === "--config-dir") next(); // accepted and ignored (config goes straight into the store)
     else if (a === "--out") o.out = next();
     else if (a === "--smoke") o.smoke = true;
+    else if (a === "--repeat") o.repeat = Math.floor(num(a, next()));
     else if (a === "--no-chart") o.chart = false;
     else throw new Error(`unknown argument ${a}`);
   }
@@ -58,11 +59,12 @@ export function parseArgs(argv, env = process.env, now = new Date()) {
     o.rate = 200;
     o.duration = 5;
   }
+  o.repeat ??= o.smoke ? 1 : 3;
   o.baseUrl ??= env.BASE_URL || "http://localhost:3000";
   o.redis ??= env.REDIS_URL || "redis://localhost:6379";
   o.databaseUrl ??= env.DATABASE_URL;
   const date = now.toISOString().slice(0, 10);
-  o.out ??= `results/loadtest-${date}${o.workers > 1 ? `-workers${o.workers}` : ""}.json`;
+  o.out ??= `results/${o.smoke ? "smoke/" : ""}loadtest-${date}${o.workers > 1 ? `-workers${o.workers}` : ""}.json`;
   return o;
 }
 
@@ -86,7 +88,7 @@ function entities(runId) {
       id: RULE_ID,
       name: `Load test (temporary, ${runId})`,
       enabled: true,
-      when: `run = "${runId}"`,
+      when: `run matches "${runId}*"`,
       who: [{ recipients: [{ type: "person", id: PERSON_ID }], force: ["ui"] }],
       looks: { titleTemplate: "loadtest", fields: [] },
       createdAt: stamp,
@@ -233,7 +235,7 @@ function createCollector(redisUrl, runId) {
     const al = mk();
     loops.push(
       readStream(ev, STREAM_EVENTS, (eid, e) => {
-        if (e?.parsed?.run === runId && typeof e.parsed.seq === "number") {
+        if (typeof e?.parsed?.run === "string" && e.parsed.run.startsWith(runId) && typeof e.parsed.seq === "number") {
           eventSeq.set(e.id ?? eid, e.parsed.seq);
           tally(e.id ?? eid);
         }
@@ -318,7 +320,15 @@ async function main() {
     await sleep(500); // let probe leftovers settle
 
     phase = "measurement";
-    result = await measure(opts, runId, post, collector);
+    const runs = [];
+    let seqBase = 0;
+    for (let k = 1; k <= opts.repeat; k++) {
+      console.error(`loadtest: measurement window ${k}/${opts.repeat}`);
+      const r = await measure(opts, `${runId}w${k}`, post, collector, seqBase);
+      seqBase += r.sent;
+      runs.push(r);
+    }
+    result = aggregateRuns(runs);
   } catch (e) {
     console.error(`loadtest ${phase} failed: ${e.stack ?? e.message}`);
     await collector.stop();
@@ -339,7 +349,7 @@ async function main() {
   process.exit(0);
 }
 
-async function measure(opts, runId, post, collector) {
+async function measure(opts, runId, post, collector, seqBase = 0) {
   const batchMs = 10;
   const maxInflight = 32;
   const sendTs = new Map(); // seq -> ts
@@ -352,7 +362,8 @@ async function measure(opts, runId, post, collector) {
   let inflight = 0;
   const startMs = Date.now();
   const endMs = startMs + opts.duration * 1000;
-  let seq = 0;
+  let seq = seqBase;
+  const seenBase = collector.seen();
 
   const fire = (count) => {
     const ts = Date.now();
@@ -393,7 +404,7 @@ async function measure(opts, runId, post, collector) {
   let lastProgress = drainStart;
   let lastCount = -1;
   for (;;) {
-    const seen = collector.seen();
+    const seen = collector.seen() - seenBase;
     if (seen >= okSeqs.length) break;
     if (seen !== lastCount) {
       lastCount = seen;
@@ -447,6 +458,7 @@ async function measure(opts, runId, post, collector) {
   return {
     date: new Date().toISOString(),
     commit,
+    wallTimeSec: Math.round((Date.now() - startMs) / 10) / 100,
     config: { rate: opts.rate, duration: opts.duration, workers: opts.workers, smoke: opts.smoke, note: WORKERS_NOTE },
     sent,
     accepted,
