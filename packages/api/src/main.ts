@@ -3,6 +3,7 @@ import { Redis } from "ioredis";
 import { CHANNEL_UI_PUSH } from "@alerting/shared";
 import { createDeliveryQueue, createNtfyChannel, createUiChannel, registerChannel } from "@alerting/delivery";
 import { startIngestService, type IngestService } from "@alerting/ingest";
+import { createConfigStore, migrate, type ConfigStore } from "@alerting/config";
 import { createServer } from "./server.js";
 import { createUiPushHub } from "./stream/sse.js";
 import { createPgAlertStores, createPgEventLoader } from "./routes/alerts/store.js";
@@ -77,8 +78,31 @@ subRedis.on("message", (_ch: string, json: string) => {
 let publishWarned = false;
 const stores = createPgAlertStores(pool);
 
+// Config store: shared pool (close() does not end it); own Redis for change publishing that fails fast.
+// Alert stores run migrate lazily too, and it is idempotent.
+let config: ConfigStore | undefined;
+let configRedis: Redis | undefined;
+if (process.env.DATABASE_URL) {
+  try {
+    await migrate(pool);
+  } catch (err) {
+    console.error("config migrate failed:", (err as Error).message);
+  }
+  configRedis = new Redis(redisUrl, {
+    connectTimeout: 1500,
+    maxRetriesPerRequest: 1,
+    enableOfflineQueue: false,
+    retryStrategy: (times) => Math.min(times * 500, 5000),
+  });
+  configRedis.on("error", () => {
+    /* change publishing is best effort */
+  });
+  config = createConfigStore({ pool, redis: configRedis });
+}
+
 const server = createServer({
   delivery,
+  config,
   subscribeUiPush(onMessage) {
     return uiHub.subscribe(onMessage);
   },
@@ -123,8 +147,8 @@ function shutdown(): void {
   stopping = true;
   server.close();
   server.closeAllConnections?.();
-  void Promise.allSettled([delivery.stop(), ingest?.stop()])
-    .then(() => Promise.allSettled([pool.end(), redis.quit(), deliveryRedis.quit(), subRedis.quit()])).then(() => process.exit(0));
+  void Promise.allSettled([delivery.stop(), ingest?.stop(), config?.close()])
+    .then(() => Promise.allSettled([pool.end(), redis.quit(), configRedis?.quit(), deliveryRedis.quit(), subRedis.quit()])).then(() => process.exit(0));
 }
 process.on("SIGTERM", shutdown);
 process.on("SIGINT", shutdown);
