@@ -14,7 +14,7 @@ let redis: Redis;
 let q: DeliveryQueue | undefined;
 beforeEach(async () => {
   redis = makeRedis();
-  await redis.del(QUEUE_DELIVERY, QUEUE_DELIVERY_PROCESSING, ZSET_DELIVERY_RETRY, LIST_DEAD_LETTERS);
+  await redis.del(QUEUE_DELIVERY, QUEUE_DELIVERY_PROCESSING, ZSET_DELIVERY_RETRY, LIST_DEAD_LETTERS, `${QUEUE_DELIVERY_PROCESSING}:workers`);
 });
 afterEach(async () => {
   await q?.stop();
@@ -127,5 +127,88 @@ describe("ui channel", () => {
     sub.disconnect();
     const bad = createUiChannel({ publish: () => Promise.reject(new Error("down")) } as never);
     expect(await bad.send(note(1))).toMatchObject({ status: "failed", retryable: true });
+  });
+});
+
+describe("hardening", () => {
+  const ok = (got: string[]): Channel => ({ id: "ntfy", send: async (n) => (got.push(n.id), { status: "delivered" }) });
+
+  it("unavailable failures do not consume maxAttempts, until maxOutageMs", async () => {
+    let up = false;
+    const got: string[] = [];
+    const ch: Channel = {
+      id: "ntfy",
+      send: async (n) => (up ? (got.push(n.id), { status: "delivered" }) : { status: "failed", retryable: true, unavailable: true, error: "down" }),
+    };
+    q = createDeliveryQueue(redis, { ...fast, maxAttempts: 2, registry: reg(ch) });
+    await q.start();
+    await q.enqueue(note(1));
+    await new Promise((r) => setTimeout(r, 300));
+    expect(await q.listDeadLetters()).toEqual([]);
+    up = true;
+    await waitFor(() => got.length === 1);
+    await q.stop();
+    // outage limit
+    let t = 0;
+    q = createDeliveryQueue(redis, { ...fast, maxOutageMs: 50, now: () => (t += 20), registry: reg({ id: "ntfy", send: async () => ({ status: "failed", retryable: true, unavailable: true, error: "down" }) }) });
+    await q.start();
+    await q.enqueue(note(2));
+    await waitFor(async () => (await q!.listDeadLetters()).length === 1);
+  });
+
+  it("moveDueRetries does not double-move when raced", async () => {
+    q = createDeliveryQueue(redis, { now: () => 1000 });
+    await redis.zadd(ZSET_DELIVERY_RETRY, 500, JSON.stringify(note(1)));
+    const moved = await Promise.all([q.moveDueRetries(), q.moveDueRetries(), q.moveDueRetries()]);
+    expect(moved.reduce((a, b) => a + b, 0)).toBe(1);
+    expect(await redis.llen(QUEUE_DELIVERY)).toBe(1);
+  });
+
+  it("reaps items of a worker with an expired lease, leaves live workers alone", async () => {
+    const WK = `${QUEUE_DELIVERY_PROCESSING}:workers`;
+    await redis.sadd(WK, "dead", "live");
+    await redis.lpush(`${QUEUE_DELIVERY_PROCESSING}:dead`, JSON.stringify(note(1)));
+    await redis.lpush(`${QUEUE_DELIVERY_PROCESSING}:live`, JSON.stringify(note(2)));
+    await redis.set(`${QUEUE_DELIVERY_PROCESSING}:live:alive`, "1", "PX", 60_000);
+    await redis.lpush(QUEUE_DELIVERY_PROCESSING, JSON.stringify(note(3))); // legacy
+    const got: string[] = [];
+    q = createDeliveryQueue(redis, { ...fast, registry: reg(ok(got)) });
+    await q.start();
+    await waitFor(() => got.includes("n1") && got.includes("n3"));
+    expect(got).not.toContain("n2");
+    expect(await redis.llen(`${QUEUE_DELIVERY_PROCESSING}:live`)).toBe(1);
+    expect(await redis.smembers(WK)).not.toContain("dead");
+    expect((await q.channelStatus()).find((s) => s.id === "ntfy")!.pending).toBe(1);
+    await redis.del(`${QUEUE_DELIVERY_PROCESSING}:live`, `${QUEUE_DELIVERY_PROCESSING}:live:alive`);
+  });
+
+  it("keeps a trace of unparseable payloads and skips corrupt dead letters", async () => {
+    await redis.lpush(LIST_DEAD_LETTERS, "not json");
+    q = createDeliveryQueue(redis, { ...fast, registry: reg(ok([])) });
+    await q.start();
+    await redis.lpush(QUEUE_DELIVERY, "{garbage");
+    await waitFor(async () => (await q!.listDeadLetters()).length === 1);
+    const dl = (await q.listDeadLetters())[0]!;
+    expect(dl.id).toMatch(/^corrupt-/);
+    expect(dl.error).toBe("unparseable payload");
+    await q.channelStatus();
+    expect(await q.retryDeadLetter("zzz")).toBeNull();
+  });
+
+  it("does not strand an item when Redis fails mid-step", async () => {
+    const got: string[] = [];
+    let fail = true;
+    const orig = redis.multi.bind(redis);
+    (redis as unknown as { multi: typeof redis.multi }).multi = ((...a: unknown[]) => {
+      if (fail) {
+        fail = false;
+        throw new Error("redis blip");
+      }
+      return (orig as (...x: unknown[]) => unknown)(...a);
+    }) as typeof redis.multi;
+    q = createDeliveryQueue(redis, { ...fast, registry: reg(ok(got)) });
+    await q.start();
+    await q.enqueue(note(1));
+    await waitFor(async () => got.length >= 1 && (await q!.channelStatus()).every((s) => s.pending === 0));
   });
 });

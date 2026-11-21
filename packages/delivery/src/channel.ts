@@ -5,12 +5,24 @@ import type { ChannelId, DeliveryResult, Notification } from "@alerting/shared";
  * delivery-local extension: when set, ntfy shows an "Approve" action for that
  * runbook step.
  */
-export type QueuedNotification = Notification & { approveStepIndex?: number };
+export type QueuedNotification = Notification & {
+  approveStepIndex?: number;
+  /** Delivery-local outage bookkeeping (epoch ms of first "unavailable" failure, and count). */
+  outageSince?: number;
+  outageCount?: number;
+};
+
+/**
+ * Result a channel may return. `unavailable: true` means the channel itself is unreachable
+ * (network error/timeout, 5xx, 429): retried with backoff without consuming `maxAttempts`,
+ * until `maxOutageMs` elapses.
+ */
+export type ChannelResult = DeliveryResult | { status: "failed"; retryable: true; unavailable: true; error: string };
 
 /** A delivery channel plugin. */
 export interface Channel {
   id: ChannelId;
-  send(n: QueuedNotification): Promise<DeliveryResult>;
+  send(n: QueuedNotification): Promise<ChannelResult>;
 }
 
 export class ChannelRegistry {
@@ -26,7 +38,7 @@ export class ChannelRegistry {
     return [...this.channels.keys()];
   }
   /** Send via the channel registered for n.channel; unknown channel is a non-retryable failure. */
-  async send(n: QueuedNotification): Promise<DeliveryResult> {
+  async send(n: QueuedNotification): Promise<ChannelResult> {
     const ch = this.channels.get(n.channel);
     if (!ch) return { status: "failed", retryable: false, error: `unknown channel: ${n.channel}` };
     try {

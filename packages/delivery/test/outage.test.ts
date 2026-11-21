@@ -44,7 +44,7 @@ describe("ntfy outage (SPEC criterion 8)", () => {
     await redis.del(QUEUE_DELIVERY, QUEUE_DELIVERY_PROCESSING, ZSET_DELIVERY_RETRY, LIST_DEAD_LETTERS);
     const reg = new ChannelRegistry();
     reg.register(createNtfyChannel({ baseUrl: `http://127.0.0.1:${port}`, publicUrl: "http://app", timeoutMs: 1000 }));
-    q = createDeliveryQueue(redis, { registry: reg, baseMs: 20, capMs: 200, maxAttempts: 1000, pollMs: 10, concurrency: 2 });
+    q = createDeliveryQueue(redis, { registry: reg, baseMs: 20, capMs: 200, pollMs: 10, concurrency: 2 });
     await q.start();
     for (let i = 0; i < N; i++) await q.enqueue(note(i));
 

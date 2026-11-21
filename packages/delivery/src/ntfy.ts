@@ -1,5 +1,5 @@
-import type { DeliveryResult, Severity } from "@alerting/shared";
-import type { Channel, QueuedNotification } from "./channel.js";
+import type { Severity } from "@alerting/shared";
+import type { Channel, ChannelResult, QueuedNotification } from "./channel.js";
 
 export interface NtfyOptions {
   /** ntfy server root, e.g. http://ntfy:80 */
@@ -18,22 +18,37 @@ export function ntfyPriority(s: Severity): number {
   return NTFY_PRIORITY[s] ?? 3;
 }
 
+function safeHttpUrl(u: string | undefined): string | undefined {
+  if (!u) return undefined;
+  try {
+    const p = new URL(u).protocol;
+    return p === "http:" || p === "https:" ? u : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 function trimSlash(s: string): string {
   return s.replace(/\/+$/, "");
 }
 
 export function buildNtfyBody(n: QueuedNotification, o: Pick<NtfyOptions, "publicUrl" | "topicFor">): Record<string, unknown> {
   const pub = trimSlash(o.publicUrl);
-  const abs = (u: string): string => (/^[a-z][a-z0-9+.-]*:\/\//i.test(u) ? u : `${pub}${u.startsWith("/") ? "" : "/"}${u}`);
+  const abs = (u: string): string | undefined => {
+    if (/^[a-z][a-z0-9+.-]*:/i.test(u) && !/^[a-z][a-z0-9+.-]*:\/\//i.test(u)) return undefined;
+    if (/^[a-z][a-z0-9+.-]*:\/\//i.test(u)) return safeHttpUrl(u);
+    return `${pub}${u.startsWith("/") ? "" : "/"}${u}`;
+  };
+  const aid = encodeURIComponent(n.alertId);
   const topic = (o.topicFor ?? ((r: string) => `alerting-${r}`))(n.recipientId);
   const actions: Record<string, unknown>[] = [
-    { action: "http", label: "Acknowledge", url: `${pub}/api/alerts/${n.alertId}/ack`, method: "POST", clear: true },
+    { action: "http", label: "Acknowledge", url: `${pub}/api/alerts/${aid}/ack`, method: "POST", clear: true },
   ];
-  if (n.approveStepIndex !== undefined) {
+  if (Number.isInteger(n.approveStepIndex) && (n.approveStepIndex as number) >= 0) {
     actions.push({
       action: "http",
       label: "Approve",
-      url: `${pub}/api/alerts/${n.alertId}/runbook-steps/${n.approveStepIndex}/approve`,
+      url: `${pub}/api/alerts/${aid}/runbook-steps/${n.approveStepIndex}/approve`,
       method: "POST",
       clear: true,
     });
@@ -41,23 +56,25 @@ export function buildNtfyBody(n: QueuedNotification, o: Pick<NtfyOptions, "publi
   let message = n.body ?? "";
   if (n.runbookUrl) {
     message += `${message ? "\n" : ""}Runbook: ${n.runbookUrl}`;
-    if (actions.length < 3) actions.push({ action: "view", label: "Runbook", url: abs(n.runbookUrl) });
+    const rb = abs(n.runbookUrl);
+    if (rb && actions.length < 3) actions.push({ action: "view", label: "Runbook", url: rb });
   }
   return {
     topic,
     title: n.title,
     message,
     priority: ntfyPriority(n.severity),
-    click: abs(n.clickUrl),
+    ...(abs(n.clickUrl) ? { click: abs(n.clickUrl) } : {}),
     actions,
     tags: [n.severity],
   };
 }
 
-export function classifyStatus(status: number): DeliveryResult {
+export function classifyStatus(status: number): ChannelResult {
   if (status >= 200 && status < 300) return { status: "delivered" };
-  const retryable = status >= 500 || status === 429;
-  return { status: "failed", retryable, error: `ntfy responded HTTP ${status}` };
+  const error = `ntfy responded HTTP ${status}`;
+  if (status >= 500 || status === 429) return { status: "failed", retryable: true, unavailable: true, error };
+  return { status: "failed", retryable: false, error };
 }
 
 export function createNtfyChannel(opts: NtfyOptions): Channel {
@@ -75,7 +92,7 @@ export function createNtfyChannel(opts: NtfyOptions): Channel {
         await res.arrayBuffer().catch(() => undefined);
         return classifyStatus(res.status);
       } catch (e) {
-        return { status: "failed", retryable: true, error: `ntfy request failed: ${e instanceof Error ? e.message : String(e)}` };
+        return { status: "failed", retryable: true, unavailable: true, error: `ntfy request failed: ${e instanceof Error ? e.message : String(e)}` };
       }
     },
   };

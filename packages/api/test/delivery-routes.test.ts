@@ -63,6 +63,7 @@ describe("delivery routes", () => {
     const res = await fetch(`${url}/api/stream`, { signal: ac.signal });
     expect(res.headers.get("content-type")).toBe("text/event-stream");
     expect(res.headers.get("cache-control")).toBe("no-cache");
+    expect(res.headers.get("x-accel-buffering")).toBe("no");
     push!('{"type":"x"}');
     const reader = res.body!.getReader();
     let text = "";

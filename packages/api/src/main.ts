@@ -67,7 +67,13 @@ subRedis.subscribe(CHANNEL_UI_PUSH).catch(() => {
   /* resubscribed on reconnect */
 });
 subRedis.on("message", (_ch: string, json: string) => {
-  for (const cb of uiClients) cb(json);
+  for (const cb of uiClients) {
+    try {
+      cb(json);
+    } catch {
+      /* one failing client must not stop the others */
+    }
+  }
 });
 
 const server = createServer({

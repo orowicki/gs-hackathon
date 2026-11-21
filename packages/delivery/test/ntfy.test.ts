@@ -30,7 +30,8 @@ describe("ntfy", () => {
 
   it("classifies statuses", () => {
     expect(classifyStatus(200)).toEqual({ status: "delivered" });
-    expect(classifyStatus(503)).toMatchObject({ retryable: true });
+    expect(classifyStatus(503)).toMatchObject({ retryable: true, unavailable: true });
+    expect(classifyStatus(400)).not.toHaveProperty("unavailable");
     expect(classifyStatus(429)).toMatchObject({ retryable: true });
     expect(classifyStatus(400)).toMatchObject({ retryable: false });
     expect(classifyStatus(404)).toMatchObject({ retryable: false });
@@ -41,5 +42,19 @@ describe("ntfy", () => {
     expect(await bad.send(note(1))).toMatchObject({ status: "failed", retryable: true });
     const four = createNtfyChannel({ baseUrl: "http://x", publicUrl: "http://p", fetch: (() => Promise.resolve(new Response("", { status: 403 }))) as typeof fetch });
     expect(await four.send(note(1))).toMatchObject({ status: "failed", retryable: false });
+  });
+
+  it("hardens URLs and approve index", () => {
+    const b = buildNtfyBody(note(1, { alertId: "a/../b?x", approveStepIndex: -1, clickUrl: "javascript://x", runbookUrl: "ftp://rb" }), o) as {
+      click?: string;
+      actions: { label: string; url: string }[];
+    };
+    expect(b.click).toBeUndefined();
+    expect(b.actions).toHaveLength(1);
+    expect(b.actions[0]!.url).toBe("http://alerts.example/api/alerts/a%2F..%2Fb%3Fx/ack");
+    const c = buildNtfyBody(note(1, { approveStepIndex: 1.5 }), o) as typeof b;
+    expect(c.actions).toHaveLength(1);
+    const d = buildNtfyBody(note(1, { approveStepIndex: 0 }), o) as typeof b;
+    expect(d.actions).toHaveLength(2);
   });
 });

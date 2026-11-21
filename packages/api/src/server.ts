@@ -92,12 +92,19 @@ export function createServer(deps: Deps): http.Server {
         "content-type": "text/event-stream",
         "cache-control": "no-cache",
         connection: "keep-alive",
+        "x-accel-buffering": "no",
       });
+      const safeWrite = (chunk: string): void => {
+        if (res.destroyed || res.writableEnded) return;
+        try {
+          res.write(chunk);
+        } catch {
+          cleanup();
+        }
+      };
       res.write(": connected\n\n");
-      const unsubscribe = deps.subscribeUiPush((json) => {
-        res.write(`data: ${json}\n\n`);
-      });
-      const ping = setInterval(() => res.write(": ping\n\n"), SSE_PING_MS);
+      const unsubscribe = deps.subscribeUiPush((json) => safeWrite(`data: ${json}\n\n`));
+      const ping = setInterval(() => safeWrite(": ping\n\n"), SSE_PING_MS);
       let closed = false;
       const cleanup = (): void => {
         if (closed) return;
@@ -107,6 +114,7 @@ export function createServer(deps: Deps): http.Server {
       };
       req.on("close", cleanup);
       res.on("close", cleanup);
+      res.on("error", cleanup);
       return;
     }
     send(res, 404, { error: "not found" });
