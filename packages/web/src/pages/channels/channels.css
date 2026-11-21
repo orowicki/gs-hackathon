@@ -1,0 +1,53 @@
+.channels-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--text-sm);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.channels-table th,
+.channels-table td {
+  text-align: left;
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+}
+
+.channels-table th {
+  color: var(--muted);
+  font-weight: var(--weight-strong);
+}
+
+.channels-status {
+  font-weight: var(--weight-strong);
+}
+
+.channels-error {
+  color: var(--critical);
+  font-size: var(--text-sm);
+  margin: 0;
+}
+
+.channels-actions {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+}
+
+.channels-btn {
+  font: inherit;
+  font-size: var(--text-sm);
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: var(--space-1) var(--space-3);
+  cursor: pointer;
+}
+
+.channels-btn:disabled {
+  color: var(--muted);
+  cursor: default;
+}
