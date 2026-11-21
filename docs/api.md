@@ -3197,7 +3197,7 @@ Type: { id: string, name: string, type: "text", matches: [Filter](#schema-filter
 
 ### RunbookStep
 
-Type: { action: "http", name?: string, method: string, url: string, headers?: map<string, string>, body?: string, approval: "none" \| "required", approvers?: string, id?: string, if?: string, retries?: integer } \| { action: "escalate", name?: string, group: string, approval: "none" \| "required", approvers?: string, id?: string, if?: string, retries?: integer } \| { action: "wait", name?: string, duration: string, approval: "none" \| "required", approvers?: string, id?: string, if?: string, retries?: integer }
+Type: { action: "http", name?: string, method: string, url: string, headers?: map<string, string>, body?: string, approval?: "none" \| "required", approvers?: string, id?: string, if?: string, retries?: integer } \| { action: "escalate", name?: string, group: string, approval?: "none" \| "required", approvers?: string, id?: string, if?: string, retries?: integer } \| { action: "wait", name?: string, duration: string, approval?: "none" \| "required", approvers?: string, id?: string, if?: string, retries?: integer }
 
 <a id="schema-schema"></a>
 
