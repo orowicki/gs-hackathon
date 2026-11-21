@@ -3,6 +3,7 @@ import {
   exportYaml,
   fromYaml,
   importYaml,
+  toYaml,
   entityId,
   type ConfigStore,
   type Kind,
@@ -18,7 +19,8 @@ import {
   suggestContext,
   validateTree,
 } from "@alerting/filter";
-import type { Preference, StarredFilter } from "@alerting/shared";
+import { validateRunbook } from "@alerting/runbooks";
+import type { Preference, Runbook, StarredFilter } from "@alerting/shared";
 import { send } from "../../http.js";
 import { lookupFailed, ruleWriteForbidden } from "../accounts/actor.js";
 
@@ -300,6 +302,71 @@ async function handleYaml(
   return send(res, 200, await importYaml(store, kind, text)), true;
 }
 
+/** Step actions the worker can run (createDefaultActions in @alerting/runbooks). */
+const STEP_ACTIONS = new Set(["http", "escalate", "wait"]);
+
+/** Id of the one YAML runbook a rule can own (written from the alert page). */
+export const ruleRunbookId = (ruleId: string): string => `rule-${ruleId}`;
+
+/**
+ * GET/PUT/DELETE /api/rules/{id}/runbook: the rule's own runbook, written as YAML. PUT replaces it.
+ * id and matches are always set by the server so the runbook belongs to exactly this rule.
+ */
+async function handleRuleRunbook(
+  store: ConfigStore,
+  ruleId: string,
+  method: string,
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+): Promise<boolean> {
+  checkId(ruleId);
+  if ((await store.get("rule", ruleId)) === undefined) throw new HttpError(404, `rule not found: ${ruleId}`);
+  const rbId = ruleRunbookId(ruleId);
+  if (method === "GET") {
+    const rb = await store.get("runbook", rbId);
+    if (rb === undefined) throw new HttpError(404, "this rule has no runbook yet");
+    return send(res, 200, { runbook: rb, yaml: editableYaml(rb as unknown as Record<string, unknown>) }), true;
+  }
+  if (method === "DELETE") {
+    await store.delete("runbook", rbId);
+    res.writeHead(204).end();
+    return true;
+  }
+  const text = await readText(req, res);
+  if (text === undefined) return true;
+  let value: unknown;
+  try {
+    value = fromYaml(text);
+  } catch (e) {
+    throw bad(e instanceof Error ? e.message : String(e));
+  }
+  if (!isObj(value)) throw bad("the YAML must be a runbook object (name, type, content or steps)");
+  const candidate = {
+    ...value,
+    id: rbId,
+    ruleId,
+    matches: `alert.ruleId = ${JSON.stringify(ruleId)}`,
+    type: value.type ?? "text",
+  };
+  const r = validateRunbook(candidate);
+  if (!r.ok) throw bad(r.error);
+  const steps = (r.runbook as { steps?: { action: string }[] }).steps ?? [];
+  const unknown = steps.findIndex((st) => !STEP_ACTIONS.has(st.action));
+  if (unknown !== -1) throw bad(`steps[${unknown}].action must be one of: ${[...STEP_ACTIONS].join(", ")}`);
+  if (r.runbook.type === "automation" && steps.length === 0) throw bad("automation runbook needs at least one step");
+  await store.upsert("runbook", r.runbook as Runbook);
+  return send(res, 200, { runbook: r.runbook, yaml: editableYaml(r.runbook as unknown as Record<string, unknown>) }), true;
+}
+
+/** YAML for editing: without the fields the server sets itself. */
+function editableYaml(rb: Record<string, unknown>): string {
+  const rest = { ...rb };
+  delete rest.id;
+  delete rest.ruleId;
+  delete rest.matches;
+  return toYaml(rest);
+}
+
 function pickSuggestions(items: readonly string[], prefix: string): string[] {
   const p = prefix.toLowerCase();
   return items.filter((s) => s.toLowerCase().startsWith(p));
@@ -367,6 +434,7 @@ function allowedMethods(coll: string, a: string | undefined, b: string | undefin
   if (a === undefined) return ["GET", "POST"];
   if (b === undefined) return a === "import" && YAML_COLLECTIONS.has(coll) ? ["POST"] : ["GET", "PUT", "DELETE"];
   if (b === "export") return YAML_COLLECTIONS.has(coll) ? ["GET"] : [];
+  if (b === "runbook") return coll === "rules" ? ["GET", "PUT", "DELETE"] : [];
   if (b === "preferences") return coll === "people" || coll === "groups" ? ["GET", "PUT"] : [];
   if (b === "starred-filters") return coll === "people" ? ["GET", "PUT"] : [];
   return [];
@@ -396,6 +464,7 @@ export async function handleConfigRoute(
       return await handleCrud(store, kind, method, id, req, res);
     }
     if (b === "export") return await handleYaml(store, kind, id, req, res);
+    if (b === "runbook") return await handleRuleRunbook(store, id!, method, req, res);
     if (b === "preferences") {
       return await handlePreferences(store, coll === "people" ? "person" : "group", id!, method, req, res);
     }

@@ -1,7 +1,7 @@
 import { tryParse } from "@alerting/filter";
 import type { Alert } from "@alerting/shared";
 import { describe, expect, it } from "vitest";
-import { alertContext, fieldNames, filterAlerts, labelKey, parseFilter, relativeTime, severityLabel, sortAlerts, upsertAlert, valuesFor } from "./helpers";
+import { alertContext, fieldNames, filterAlerts, labelKey, mentionsStatus, parseFilter, relativeTime, severityLabel, sortAlerts, tabAlerts, upsertAlert, valuesFor } from "./helpers";
 import { seedAlerts } from "./mockSource";
 
 const NOW = Date.parse("2026-11-21T12:00:00Z");
@@ -86,5 +86,18 @@ describe("helpers", () => {
     expect(new Set(sev).size).toBe(sev.length);
     expect(sev[0]).toBe(sortAlerts(alerts)[0]!.severity);
     expect(valuesFor(alerts, "payload.x")).toEqual([]);
+  });
+});
+
+describe("feed tabs", () => {
+  const mk = (id: string, state: Alert["state"]) => ({ id, state }) as Alert;
+  const list = [mk("a", "open"), mk("b", "acknowledged"), mk("c", "resolved")];
+  it("splits open and acknowledged, hides resolved", () => {
+    expect(tabAlerts(list, "active", null).map((a) => a.id)).toEqual(["a"]);
+    expect(tabAlerts(list, "acknowledged", null).map((a) => a.id)).toEqual(["b"]);
+  });
+  it("lets a status filter override the tab", () => {
+    expect(tabAlerts(list, "active", tree("alert.status = resolved")).map((a) => a.id)).toEqual(["a", "b", "c"]);
+    expect(mentionsStatus(tree("alert.severity = critical"))).toBe(false);
   });
 });

@@ -132,7 +132,7 @@ runbooksReady
 let publishWarned = false;
 
 const server = createServer({
-  runbooks: runbookRegistry ? createRunbookRoutes({ runner, registry: runbookRegistry }) : undefined,
+  runbooks: runbookRegistry ? createRunbookRoutes({ runner, registry: runbookRegistry, loadAlert: runtime.loadAlert, loadEvent: runtime.loadEvent }) : undefined,
   delivery,
   config,
   pool,

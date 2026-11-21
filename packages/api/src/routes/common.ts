@@ -2,12 +2,14 @@ import type http from "node:http";
 import { randomUUID } from "node:crypto";
 import type { UiPush } from "@alerting/shared";
 import { accountOf } from "./accounts/actor.js";
-import type { AlertStore, AuditStore, EventLoader, SuggestionStore } from "./alerts/store.js";
+import type { AlertStore, AuditStore, EventLoader, RulebookStore, SuggestionStore } from "./alerts/store.js";
 
 export interface AlertsApiDeps {
   alerts: AlertStore;
   audit: AuditStore;
   suggestions: SuggestionStore;
+  /** "How to resolve" texts per rule; omitted = no rulebook (resolve still works). */
+  rulebook?: RulebookStore;
   events?: EventLoader;
   publish?(push: UiPush): void;
   now?(): Date;

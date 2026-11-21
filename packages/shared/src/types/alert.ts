@@ -20,6 +20,9 @@ export interface Alert {
   acknowledgedBy?: Id;
   acknowledgedAt?: IsoTimestamp;
   resolvedAt?: IsoTimestamp;
+  resolvedBy?: Id;
+  /** What the resolver wrote about how it was fixed. */
+  resolution?: string;
   /** Rendered `looks.fields`, in order. */
   fields: Array<{ label: string; value: string }>;
   colour?: string;
@@ -33,7 +36,7 @@ export interface AuditEntry {
   at: IsoTimestamp;
   /** Person id or "system". */
   actor: string;
-  action: "created" | "acknowledged" | "resolved" | "step_executed" | "step_approved" | "step_skipped" | "escalated" | "suggestion";
+  action: "created" | "acknowledged" | "unacknowledged" | "resolved" | "step_executed" | "step_approved" | "step_skipped" | "escalated" | "suggestion";
   runbookId?: Id;
   stepIndex?: number;
   result?: string;
@@ -48,4 +51,16 @@ export interface Suggestion {
   text: string;
   status: "open" | "accepted" | "dismissed";
   createdAt: IsoTimestamp;
+}
+
+/** The rulebook: one "how to resolve" text per rule, written by people when they resolve alerts. */
+/** One "how to resolve" comment on a rule; a rule keeps all of them, oldest first. */
+export interface RulebookEntry {
+  id: Id;
+  ruleId: Id;
+  text: string;
+  updatedBy: Id;
+  updatedAt: IsoTimestamp;
+  /** Alert whose resolution produced this text. */
+  alertId?: Id;
 }

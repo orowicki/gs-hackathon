@@ -195,7 +195,7 @@ Audit log of an alert
 
 ### POST `/api/alerts/{id}/resolve`
 
-Resolve an alert
+Resolve an alert (optional body: resolution text, contribute to the rule's rulebook)
 
 **Parameters**
 
@@ -215,11 +215,86 @@ Example `actor` (Resolve as Marek):
 }
 ```
 
+Example `contribute` (Resolve and add a how-to-resolve comment):
+
+```json
+{
+  "actor": "marek",
+  "resolution": "Restarted counterparty-service, then retried the workflow.",
+  "contribute": true
+}
+```
+
 **Responses**
 
 | status | media type | schema | description |
 | --- | --- | --- | --- |
 | 200 | `application/json` | [Alert](#schema-alert) | The resolved alert |
+| 400 | `application/json` | [Error](#schema-error) | Bad request (invalid id, body, filter or parameter) |
+| 404 | `application/json` | [Error](#schema-error) | Not found |
+| 409 | `application/json` | [Error](#schema-error) | Conflict with the current state |
+| 413 | `application/json` | [Error](#schema-error) | Payload too large |
+
+### POST `/api/alerts/{id}/rulebook`
+
+Add a "how to resolve" comment to the alert's rule (all alerts of the rule show the thread)
+
+**Parameters**
+
+| name | in | type | required | description |
+| --- | --- | --- | --- | --- |
+| `id` | path | string | yes |  |
+
+**Request body** (required)
+
+Media type `application/json`: [RulebookCommentRequest](#schema-rulebookcommentrequest)
+
+Example `text` (Add a how-to-resolve comment):
+
+```json
+{
+  "text": "Check counterparty-service health first; a retry fixes most timeouts.",
+  "actor": "julia"
+}
+```
+
+**Responses**
+
+| status | media type | schema | description |
+| --- | --- | --- | --- |
+| 201 | `application/json` | [RulebookEntry](#schema-rulebookentry) | The new comment |
+| 400 | `application/json` | [Error](#schema-error) | Bad request (invalid id, body, filter or parameter) |
+| 404 | `application/json` | [Error](#schema-error) | Not found |
+| 413 | `application/json` | [Error](#schema-error) | Payload too large |
+| 503 | `application/json` | [Error](#schema-error) | Dependency or component not configured |
+
+### POST `/api/alerts/{id}/unack`
+
+Undo an acknowledge: the alert goes back to open (resolved alerts cannot change)
+
+**Parameters**
+
+| name | in | type | required | description |
+| --- | --- | --- | --- | --- |
+| `id` | path | string | yes |  |
+
+**Request body**
+
+Media type `application/json`: [AlertTransitionRequest](#schema-alerttransitionrequest)
+
+Example `actor` (Undo Anna's acknowledge):
+
+```json
+{
+  "actor": "anna"
+}
+```
+
+**Responses**
+
+| status | media type | schema | description |
+| --- | --- | --- | --- |
+| 200 | `application/json` | [Alert](#schema-alert) | The alert, open again |
 | 400 | `application/json` | [Error](#schema-error) | Bad request (invalid id, body, filter or parameter) |
 | 404 | `application/json` | [Error](#schema-error) | Not found |
 | 409 | `application/json` | [Error](#schema-error) | Conflict with the current state |
@@ -1293,6 +1368,39 @@ Runbook run state per step of an alert
 | 200 | `application/json` | [RunbookRun](#schema-runbookrun)[] | Runs of matching runbooks for the alert |
 | 400 | `application/json` | [Error](#schema-error) | Bad request (invalid id, body, filter or parameter) |
 
+### POST `/api/alerts/{id}/runbook-runs`
+
+Start an automation runbook on this alert now (one run per alert and runbook; an existing run is returned). 202 while it is still running
+
+**Parameters**
+
+| name | in | type | required | description |
+| --- | --- | --- | --- | --- |
+| `id` | path | string | yes |  |
+
+**Request body** (required)
+
+Media type `application/json`: [StartRunbookRequest](#schema-startrunbookrequest)
+
+Example `run` (Run the rule's own runbook now):
+
+```json
+{
+  "runbookId": "rule-settlements-workflow-failed"
+}
+```
+
+**Responses**
+
+| status | media type | schema | description |
+| --- | --- | --- | --- |
+| 200 | `application/json` | [RunbookRun](#schema-runbookrun) | The run (an existing run of this runbook on this alert is returned as is) |
+| 202 | `application/json` | [RunbookRun](#schema-runbookrun) | Started; steps are still running |
+| 400 | `application/json` | [Error](#schema-error) | Bad request (invalid id, body, filter or parameter) |
+| 404 | `application/json` | [Error](#schema-error) | Not found |
+| 409 | `application/json` | [Error](#schema-error) | Conflict with the current state |
+| 413 | `application/json` | [Error](#schema-error) | Payload too large |
+
 ### POST `/api/alerts/{id}/runbook-steps/{stepIndex}/approve`
 
 Approve a runbook step awaiting approval
@@ -1341,6 +1449,24 @@ Example `skip` (Skip the step):
 | 409 | `application/json` | [Error](#schema-error) | Conflict with the current state |
 | 413 | `application/json` | [Error](#schema-error) | Payload too large |
 
+### GET `/api/alerts/{id}/runbooks`
+
+Runbooks that apply to this alert: text ones filled in with the alert's values, automation ones with their step names
+
+**Parameters**
+
+| name | in | type | required | description |
+| --- | --- | --- | --- | --- |
+| `id` | path | string | yes |  |
+
+**Responses**
+
+| status | media type | schema | description |
+| --- | --- | --- | --- |
+| 200 | `application/json` | [MatchedRunbook](#schema-matchedrunbook)[] | Runbooks matching the alert, the rule's own first |
+| 400 | `application/json` | [Error](#schema-error) | Bad request (invalid id, body, filter or parameter) |
+| 404 | `application/json` | [Error](#schema-error) | Not found |
+
 ### GET `/api/approvals`
 
 Pending runbook step approvals
@@ -1350,6 +1476,76 @@ Pending runbook step approvals
 | status | media type | schema | description |
 | --- | --- | --- | --- |
 | 200 | `application/json` | [PendingApproval](#schema-pendingapproval)[] | Steps awaiting approval |
+
+### GET `/api/rules/{id}/runbook`
+
+The rule's own runbook (404 when none) with its YAML for editing
+
+**Parameters**
+
+| name | in | type | required | description |
+| --- | --- | --- | --- | --- |
+| `id` | path | string | yes |  |
+
+**Responses**
+
+| status | media type | schema | description |
+| --- | --- | --- | --- |
+| 200 | `application/json` | [RuleRunbook](#schema-rulerunbook) | The rule's runbook |
+| 400 | `application/json` | [Error](#schema-error) | Bad request (invalid id, body, filter or parameter) |
+| 404 | `application/json` | [Error](#schema-error) | Not found |
+
+### PUT `/api/rules/{id}/runbook`
+
+Create or replace the rule's runbook from YAML (id and matches are set by the server)
+
+**Parameters**
+
+| name | in | type | required | description |
+| --- | --- | --- | --- | --- |
+| `id` | path | string | yes |  |
+
+**Request body** (required)
+
+Runbook YAML
+
+Media type `application/yaml`: string
+
+Example `text` (A text runbook):
+
+```yaml
+name: Restart and retry
+type: text
+content: |
+  Restart counterparty-service, then retry {{workflowId}}.
+```
+
+**Responses**
+
+| status | media type | schema | description |
+| --- | --- | --- | --- |
+| 200 | `application/json` | [RuleRunbook](#schema-rulerunbook) | The saved runbook |
+| 400 | `application/json` | [Error](#schema-error) | Bad request (invalid id, body, filter or parameter) |
+| 404 | `application/json` | [Error](#schema-error) | Not found |
+| 413 | `application/json` | [Error](#schema-error) | Payload too large |
+
+### DELETE `/api/rules/{id}/runbook`
+
+Remove the rule's runbook
+
+**Parameters**
+
+| name | in | type | required | description |
+| --- | --- | --- | --- | --- |
+| `id` | path | string | yes |  |
+
+**Responses**
+
+| status | media type | schema | description |
+| --- | --- | --- | --- |
+| 204 |  |  | Removed (or there was none) |
+| 400 | `application/json` | [Error](#schema-error) | Bad request (invalid id, body, filter or parameter) |
+| 404 | `application/json` | [Error](#schema-error) | Not found |
 
 ### GET `/api/runbooks`
 
@@ -2474,7 +2670,7 @@ Export a source as YAML
 
 An Alert with its opening event (null when unavailable) and its suggestions.
 
-Type: [Alert](#schema-alert) & { event: [Event](#schema-event) \| null, suggestions: [Suggestion](#schema-suggestion)[] }
+Type: [Alert](#schema-alert) & { event: [Event](#schema-event) \| null, suggestions: [Suggestion](#schema-suggestion)[], rulebook?: [RulebookEntry](#schema-rulebookentry)[] }
 
 <a id="schema-alertstate"></a>
 
@@ -2499,6 +2695,8 @@ Type: "open" \| "acknowledged" \| "resolved"
 | name | type | required | description |
 | --- | --- | --- | --- |
 | `actor` | string | no | Defaults to the x-actor header, else anonymous |
+| `resolution` | string | no | Resolve only: how it was fixed (max 4000 characters) |
+| `contribute` | boolean | no | Resolve only: also add the resolution as a how-to-resolve comment on the rule |
 
 <a id="schema-approvesteprequest"></a>
 
@@ -2520,7 +2718,7 @@ Type: "open" \| "acknowledged" \| "resolved"
 | `alertId` | string | yes |  |
 | `at` | string | yes |  |
 | `actor` | string | yes | Person id or system |
-| `action` | "created" \| "acknowledged" \| "resolved" \| "step_executed" \| "step_approved" \| "step_skipped" \| "escalated" \| "suggestion" | yes |  |
+| `action` | "created" \| "acknowledged" \| "unacknowledged" \| "resolved" \| "step_executed" \| "step_approved" \| "step_skipped" \| "escalated" \| "suggestion" | yes |  |
 | `runbookId` | string \| null | no |  |
 | `stepIndex` | integer \| null | no |  |
 | `result` | string \| null | no |  |
@@ -2701,6 +2899,19 @@ Type: object
 | `severityOverride` | [Severity](#schema-severity) | no |  |
 | `colour` | string | no |  |
 
+<a id="schema-matchedrunbook"></a>
+
+### MatchedRunbook
+
+| name | type | required | description |
+| --- | --- | --- | --- |
+| `id` | string | yes |  |
+| `name` | string | yes |  |
+| `type` | "text" \| "automation" | yes |  |
+| `origin` | "rule" \| "config" | yes |  |
+| `content` | string | no | Text runbooks: the instructions with the alert's values filled in |
+| `steps` | { index: integer, name: string, action: string, approval: "none" \| "required" }[] | no |  |
+
 <a id="schema-notification"></a>
 
 ### Notification
@@ -2811,6 +3022,37 @@ Type: object
 | `createdAt` | string | no |  |
 | `updatedAt` | string | no |  |
 
+<a id="schema-rulerunbook"></a>
+
+### RuleRunbook
+
+| name | type | required | description |
+| --- | --- | --- | --- |
+| `runbook` | [Runbook](#schema-runbook) | yes |  |
+| `yaml` | string | yes | The runbook as YAML, without the id and matches the server sets |
+
+<a id="schema-rulebookcommentrequest"></a>
+
+### RulebookCommentRequest
+
+| name | type | required | description |
+| --- | --- | --- | --- |
+| `text` | string | yes | 1 to 4000 characters |
+| `actor` | string | no | Defaults to the x-actor header, else anonymous |
+
+<a id="schema-rulebookentry"></a>
+
+### RulebookEntry
+
+| name | type | required | description |
+| --- | --- | --- | --- |
+| `id` | string | yes |  |
+| `ruleId` | string | yes |  |
+| `text` | string | yes |  |
+| `updatedBy` | string | yes | Author |
+| `updatedAt` | string | yes | When it was written |
+| `alertId` | string | no | Alert it was written on |
+
 <a id="schema-runbook"></a>
 
 ### Runbook
@@ -2833,7 +3075,7 @@ Type: { id: string, name: string, type: "text", matches: [Filter](#schema-filter
 
 ### RunbookStep
 
-Type: { action: "http", name?: string, method: string, url: string, headers?: map<string, string>, body?: string, approval: "none" \| "required" } \| { action: "escalate", name?: string, group: string, approval: "none" \| "required" } \| { action: "wait", name?: string, duration: string, approval: "none" \| "required" }
+Type: { action: "http", name?: string, method: string, url: string, headers?: map<string, string>, body?: string, approval: "none" \| "required", approvers?: string } \| { action: "escalate", name?: string, group: string, approval: "none" \| "required", approvers?: string } \| { action: "wait", name?: string, duration: string, approval: "none" \| "required", approvers?: string }
 
 <a id="schema-schema"></a>
 
@@ -2946,6 +3188,14 @@ Type: "http" \| "file_tail" \| "redis_stream"
 | `personId` | string | no | Set by the server from the path |
 | `name` | string | yes |  |
 | `filter` | [FilterNode](#schema-filternode) | yes |  |
+
+<a id="schema-startrunbookrequest"></a>
+
+### StartRunbookRequest
+
+| name | type | required | description |
+| --- | --- | --- | --- |
+| `runbookId` | string | yes | An automation runbook |
 
 <a id="schema-steprunstate"></a>
 

@@ -1,0 +1,34 @@
+# Demo runbook for rule "settlements-workflow-failed".
+# Paste it into Rule runbook > Write runbook on any settlements alert and save.
+# id and matches are set by the server: it applies to every alert of that rule.
+name: Settlement workflow recovery
+type: automation
+steps:
+  # 1. Runs straight away: is the counterparty service up?
+  - name: Check counterparty-service health
+    action: http
+    method: GET
+    url: http://demo-service:4100/health
+    approval: none
+
+  # 2. Stops here until someone clicks Approve (or Skip) on the alert page.
+  - name: "Retry workflow {{workflowId}} (failed at {{step}})"
+    action: http
+    method: POST
+    url: "http://demo-service:4100/workflows/{{workflowId}}/retry"
+    headers:
+      content-type: application/json
+    body: '{"workflowId":"{{workflowId}}","reason":"{{error.code}}"}'
+    approval: required
+
+  # 3. Give the retry a moment before telling people.
+  - name: Wait for the retry to settle
+    action: wait
+    duration: 5s
+    approval: none
+
+  # 4. Notify the on-call group (ntfy / email per their preferences).
+  - name: Tell settlements on-call
+    action: escalate
+    group: settlements-oncall
+    approval: none

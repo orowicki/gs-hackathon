@@ -41,6 +41,11 @@ up:
 demo *args:
     node --experimental-strip-types --no-warnings scripts/demo/demo.ts {{args}}
 
+# Run the MCP server on stdio (builds first; API base URL from ALERTING_API_URL, default http://localhost:3000)
+mcp:
+    @npm run build -w @alerting/mcp >&2
+    @node packages/mcp/dist/main.js
+
 # Stop the stack
 down:
     docker compose down

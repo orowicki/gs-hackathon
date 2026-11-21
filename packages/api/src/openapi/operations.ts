@@ -301,6 +301,30 @@ export const operationSpecs: Record<string, OperationSpec> = {
     success: json(200, "The resolved alert", ref("Alert")),
     errors: [400, 404, 409, 413],
   },
+  "POST /api/alerts/{id}/unack": {
+    request: body("AlertTransitionRequest", false),
+    success: json(200, "The alert, open again", ref("Alert")),
+    errors: [400, 404, 409, 413],
+  },
+  "POST /api/alerts/{id}/rulebook": {
+    request: body("RulebookCommentRequest"),
+    success: json(201, "The new comment", ref("RulebookEntry")),
+    errors: [400, 404, 413, 503],
+  },
+  "GET /api/alerts/{id}/runbooks": { success: json(200, "Runbooks matching the alert, the rule's own first", list("MatchedRunbook")), errors: [400, 404] },
+  "POST /api/alerts/{id}/runbook-runs": {
+    request: body("StartRunbookRequest"),
+    success: json(200, "The run (an existing run of this runbook on this alert is returned as is)", ref("RunbookRun")),
+    alsoSuccess: [json(202, "Started; steps are still running", ref("RunbookRun"))],
+    errors: [400, 404, 409, 413],
+  },
+  "GET /api/rules/{id}/runbook": { success: json(200, "The rule's runbook", ref("RuleRunbook")), errors: [400, 404] },
+  "PUT /api/rules/{id}/runbook": {
+    request: { required: true, description: "Runbook YAML", content: { [YAML_T]: { type: "string" } } },
+    success: json(200, "The saved runbook", ref("RuleRunbook")),
+    errors: [400, 404, 413],
+  },
+  "DELETE /api/rules/{id}/runbook": { success: { status: 204, description: "Removed (or there was none)" }, errors: [400, 404] },
   "GET /api/alerts/{id}/audit": { success: json(200, "Audit log of the alert", list("AuditEntry")), errors: [400, 404] },
   "POST /api/alerts/{id}/runbook-steps/{stepIndex}/approve": {
     pathParams: { stepIndex: { schema: { type: "integer", minimum: 0 }, description: "Zero-based index of the step" } },
