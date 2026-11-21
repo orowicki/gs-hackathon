@@ -1,0 +1,124 @@
+.filter-bar {
+  position: relative;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.filter-bar .filter {
+  position: relative;
+}
+
+.filter-bar .filter.valid {
+  border-left: 3px solid var(--valid);
+}
+
+.filter-bar .filter.invalid {
+  border-color: var(--critical);
+}
+
+.filter-menu {
+  position: relative;
+  display: flex;
+}
+
+.filter-dropdown {
+  position: absolute;
+  top: calc(100% + var(--space-1));
+  left: 0;
+  right: 0;
+  z-index: 20;
+  max-height: 280px;
+  overflow-y: auto;
+  margin: 0;
+  padding: var(--space-1) 0;
+  list-style: none;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+}
+
+.filter-dropdown[hidden] {
+  display: none;
+}
+
+.filter-starred {
+  left: auto;
+  right: 0;
+  min-width: 280px;
+}
+
+.filter-option {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  width: 100%;
+  padding: var(--space-1) var(--space-3);
+  background: transparent;
+  color: var(--text);
+  border: 0;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.filter-option:hover,
+.filter-option.active {
+  background: var(--bg);
+}
+
+.filter-option-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.filter-option-hint {
+  color: var(--muted);
+  font-family: var(--font-sans);
+}
+
+.filter-option-star {
+  display: flex;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.filter-option-star.on {
+  color: var(--accent);
+}
+
+.filter-option-star.on svg {
+  fill: currentColor;
+}
+
+.filter-empty {
+  padding: var(--space-1) var(--space-3);
+  color: var(--muted);
+  font-family: var(--font-sans);
+}
+
+.filter-marker {
+  height: 0.9em;
+  margin: 0;
+  padding-left: calc(var(--space-3) + 1px + var(--col) * 1ch);
+  color: var(--critical);
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  line-height: 1;
+}
+
+.filter-error {
+  margin: 0;
+  color: var(--critical);
+  font-size: var(--text-sm);
+}

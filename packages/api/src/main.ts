@@ -14,6 +14,9 @@ import {
 } from "@alerting/runbooks";
 import { startIngestService, type IngestService } from "@alerting/ingest";
 import { createServer } from "./server.js";
+import { createUiPushHub } from "./stream/sse.js";
+import { createPgAlertStores, createPgEventLoader } from "./routes/alerts/store.js";
+import { createRedisRecentEvents } from "./routes/events/http.js";
 
 const port = Number(process.env.PORT ?? 3000);
 
@@ -66,7 +69,7 @@ async function startWorker(): Promise<void> {
 void startWorker();
 
 // One SUBSCRIBE connection, fanned out in-process to all SSE clients.
-const uiClients = new Set<(json: string) => void>();
+const uiHub = createUiPushHub();
 const subRedis = new Redis(redisUrl, {
   maxRetriesPerRequest: null,
   retryStrategy: (times) => Math.min(times * 500, 5000),
@@ -78,13 +81,7 @@ subRedis.subscribe(CHANNEL_UI_PUSH).catch(() => {
   /* resubscribed on reconnect */
 });
 subRedis.on("message", (_ch: string, json: string) => {
-  for (const cb of uiClients) {
-    try {
-      cb(json);
-    } catch {
-      /* one failing client must not stop the others */
-    }
-  }
+  uiHub.publish(json);
 });
 
 // Runbooks: runs, approvals, audit. Lazy connections, so the API still starts when Postgres/Redis are down.
@@ -114,14 +111,27 @@ runbooksReady
   .then((n) => n > 0 && console.log(`runbooks: recovered ${n} interrupted run(s)`))
   .catch((err: unknown) => console.error("runbooks stale-run recovery failed:", (err as Error).message));
 // The alert worker (startRunbookWorker) is wired here once alerts are persisted (needs loadAlert/loadEvent).
+let publishWarned = false;
+const stores = createPgAlertStores(pool);
 
 const server = createServer({
   runbooks: createRunbookRoutes({ runner, registry: runbookRegistry }),
   delivery,
   subscribeUiPush(onMessage) {
-    uiClients.add(onMessage);
-    return () => void uiClients.delete(onMessage);
+    return uiHub.subscribe(onMessage);
   },
+  alerts: {
+    ...stores,
+    events: createPgEventLoader(pool),
+    publish(push) {
+      redis.publish(CHANNEL_UI_PUSH, JSON.stringify(push)).catch((err: unknown) => {
+        if (publishWarned) return;
+        publishWarned = true;
+        console.error("ui push publish failed:", (err as Error).message);
+      });
+    },
+  },
+  recentEvents: createRedisRecentEvents(redis),
   async checkPostgres() {
     await pool.query("SELECT 1");
     return true;
