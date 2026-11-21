@@ -4,7 +4,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { Step } from "../../components/EditorStep";
 import { Icon } from "../../components/Icon";
 import { getText, sendJson } from "../sources/api";
-import { cleanSchema, ID_RE, SCHEMA_INTRO, slugify, testSchema } from "./helpers";
+import { cleanSchema, describeMatch, generateMatch, ID_RE, SCHEMA_INTRO, slugify, testSchema } from "./helpers";
 import { MatchFilterInput } from "./MatchFilterInput";
 import { COMMON_FIELDS, RESERVED_IDS, type CommonFieldName, type FieldMapping, type MappingKind, type Schema } from "./types";
 import "./schemas.css";
@@ -270,6 +270,8 @@ export function SchemaEditor({
   const navigate = useNavigate();
   const [schema, setSchema] = useState<Schema>(initial);
   const [match, setMatch] = useState(initialMatch);
+  // No hand-written rule: write it from the sample and the mapping (see generateMatch).
+  const [autoMatch, setAutoMatch] = useState(initialMatch.trim() === "");
   const [idTouched, setIdTouched] = useState(!isNew || initial.id !== "");
   // The sample saved with the schema wins; examples pass theirs in.
   const [sampleText, setSampleText] = useState(initial.sample ?? initialSample);
@@ -280,7 +282,9 @@ export function SchemaEditor({
   const [busy, setBusy] = useState(false);
 
   const sample = useMemo(() => parseSample(sampleText), [sampleText]);
-  const test = useMemo(() => testSchema(schema, match, sample.obj), [schema, match, sample.obj]);
+  const generated = useMemo(() => generateMatch(sample.obj, schema.mapping), [sample.obj, schema.mapping]);
+  const effectiveMatch = autoMatch ? generated : match;
+  const test = useMemo(() => testSchema(schema, effectiveMatch, sample.obj), [schema, effectiveMatch, sample.obj]);
 
   const patch = (p: Partial<Schema>) => setSchema((s) => ({ ...s, ...p }));
   const setMapping = (name: CommonFieldName, m: FieldMapping | undefined) =>
@@ -312,12 +316,14 @@ export function SchemaEditor({
     const problems: string[] = [];
     if (schema.name.trim() === "") problems.push("Name is required.");
     if (idErr) problems.push(idErr);
-    if (test.matchError) problems.push("Fix the match filter: " + test.matchError);
+    if (test.matchError) problems.push("Fix the rule under Advanced: " + test.matchError);
+    if (effectiveMatch.trim() === "")
+      problems.push("Paste a sample event (or write a rule under Advanced), so this schema isn't used for every event.");
     setErrors(problems);
     if (problems.length) return;
     setBusy(true);
     try {
-      const body = cleanSchema(schema, match, sampleText);
+      const body = cleanSchema(schema, effectiveMatch, sampleText);
       if (isNew) await sendJson<Schema>("POST", "/api/schemas", body);
       else await sendJson<Schema>("PUT", `/api/schemas/${encodeURIComponent(schema.id)}`, body);
       navigate("/config/schemas");
@@ -414,16 +420,7 @@ export function SchemaEditor({
             {sample.error && <span className="sx-error">{sample.error}</span>}
           </Step>
 
-          <Step n={3} title="Which events" help="Only events matching this filter use this schema. Empty matches every event.">
-            <MatchFilterInput value={match} onChange={setMatch} />
-            {test.matched !== null && (
-              <span className={test.matched ? "sx-badge yes" : "sx-badge no"} role="status">
-                <Icon as={test.matched ? Check : X} /> {test.matched ? "The sample matches" : "The sample doesn't match"}
-              </span>
-            )}
-          </Step>
-
-          <Step n={4} title="Map to alert fields" help="Fill alert fields from the event: a field, a fixed value or a template. None are mandatory; unmapped fields stay empty and severity falls back to info.">
+          <Step n={3} title="Map to alert fields" help="Fill alert fields from the event: a field, a fixed value or a template. None are mandatory; unmapped fields stay empty and severity falls back to info.">
             <div className={sample.obj ? "sx-map-layout with-sample" : "sx-map-layout"}>
               <div className="sx-rows" aria-label="Field mappings">
                 <div className="sx-row-head" aria-hidden="true">
@@ -466,6 +463,41 @@ export function SchemaEditor({
             </div>
           </Step>
 
+          <details className="sx-advanced" open={!autoMatch}>
+            <summary>Advanced: which events use this schema</summary>
+            <p className="re-help">
+              Each event is mapped by the first schema (by id) whose rule it passes. The rule is written for you from the
+              sample and the mapping; write your own only if two kinds of events look alike.
+            </p>
+            {autoMatch ? (
+              <>
+                <code className="sx-rule">{generated || "Paste a sample event to generate the rule."}</code>
+                <button
+                  type="button"
+                  className="btn"
+                  onClick={() => {
+                    setMatch(generated);
+                    setAutoMatch(false);
+                  }}
+                >
+                  Write my own rule
+                </button>
+              </>
+            ) : (
+              <>
+                <MatchFilterInput value={match} onChange={setMatch} />
+                <button type="button" className="btn" onClick={() => setAutoMatch(true)}>
+                  Generate it from the sample instead
+                </button>
+              </>
+            )}
+            {test.matched !== null && (
+              <span className={test.matched ? "sx-badge yes" : "sx-badge no"} role="status">
+                <Icon as={test.matched ? Check : X} /> {test.matched ? "The sample passes the rule" : "The sample doesn't pass the rule"}
+              </span>
+            )}
+          </details>
+
           {yaml !== null && (
             <pre className="code-block" aria-label="Exported YAML">
               {yaml}
@@ -476,14 +508,16 @@ export function SchemaEditor({
         <aside className="re-summary" aria-label="Schema summary">
           <h2>Summary</h2>
           <p className="re-sentence">
-            {match.trim() ? (
-              <>
-                Applies to events matching <code>{match.trim()}</code>
-              </>
+            {!effectiveMatch.trim() ? (
+              <>Paste a sample event so the schema knows which events it is for.</>
+            ) : autoMatch && describeMatch(effectiveMatch) ? (
+              <>Used for {describeMatch(effectiveMatch)}</>
             ) : (
-              <>Applies to every event</>
-            )}{" "}
-            and fills {mappedCount} of {COMMON_FIELDS.length} alert fields.
+              <>
+                Used for events matching <code>{effectiveMatch.trim()}</code>
+              </>
+            )}
+            . Fills {mappedCount} of {COMMON_FIELDS.length} alert fields.
             {missing.length > 0 && <> Recommended but not mapped: {missing.join(", ")}.</>}
           </p>
           <div className="sx-preview" aria-label="Alert preview">

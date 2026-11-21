@@ -147,10 +147,8 @@ for (const scheme of ["light", "dark"] as const) {
       await page.getByRole("radio", { name: /Build step by step/ }).click();
       await page.getByLabel("Id", { exact: true }).fill("schema-new");
       await page.getByLabel("Name", { exact: true }).fill("New workflow schema");
-      await page.getByLabel("Match filter").fill('type = "WORKFLOW_FAILED"');
       await page.getByLabel("Sample event (JSON)").fill(SAMPLE);
       await expect(page.getByLabel("Map field error.code")).toBeVisible();
-      await expect(page.getByRole("status").filter({ hasText: "The sample matches" })).toBeVisible();
 
       // Map by clicking the sample: severity with a value translation, title with a default.
       await page.getByRole("button", { name: "Map severity" }).click();
@@ -171,10 +169,12 @@ for (const scheme of ["light", "dark"] as const) {
       await expect(page.getByRole("group", { name: "Mapping for title" })).toContainText("order-settlement");
       await page.screenshot({ path: path.join(shots, `schemas-edit-${scheme}.png`), fullPage: true });
 
+      await expect(page.getByText("Used for events where type is WORKFLOW_FAILED and that have severity")).toBeVisible();
       await page.getByRole("button", { name: "Save schema" }).click();
       await expect(page.getByRole("link", { name: "New workflow schema" })).toBeVisible();
       const saved = schemas.find((x) => x.id === "schema-new");
-      expect(saved?.match).toBe('type = "WORKFLOW_FAILED"');
+      // No rule typed: it was written from the sample (type pinned; title has a default so it's optional).
+      expect(saved?.match).toBe("type = WORKFLOW_FAILED AND severity matches *");
       expect(saved?.mapping.severity).toMatchObject({ kind: "path", path: "severity", valueMap: { ERROR: "error" } });
       expect(saved?.mapping.title?.default).toBe("Workflow failed");
       // The sample is saved with the schema, so the next edit can test against it.

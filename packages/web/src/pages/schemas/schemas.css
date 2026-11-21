@@ -161,3 +161,30 @@
   .sx-map-layout.with-sample { grid-template-columns: minmax(0, 1fr); }
   .sx-sample-panel { position: static; }
 }
+
+/* Advanced: the generated "which events" rule. */
+.sx-advanced {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+}
+.sx-advanced[open] { padding-bottom: var(--space-4); }
+.sx-advanced summary { color: var(--text); font-weight: var(--weight-strong); cursor: pointer; }
+.sx-advanced .re-help { margin: var(--space-2) 0 var(--space-3); }
+.sx-advanced > .btn { align-self: flex-start; margin-top: var(--space-3); }
+.sx-advanced .sx-badge { margin-top: var(--space-3); }
+.sx-rule {
+  display: block;
+  padding: var(--space-2) var(--space-3);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  color: var(--accent);
+  overflow-wrap: anywhere;
+}

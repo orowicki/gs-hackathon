@@ -47,7 +47,7 @@ export const SCHEMA_EXAMPLES: SchemaExample[] = [
     schema: {
       id: "datadog-monitor",
       name: "Datadog monitor",
-      match: "aggregate matches * AND alert_type matches *",
+      match: "",
       mapping: {
         title: { kind: "path", path: "title" },
         severity: { kind: "path", path: "alert_type", valueMap: { success: "info" } },
@@ -79,7 +79,7 @@ export const SCHEMA_EXAMPLES: SchemaExample[] = [
     schema: {
       id: "cloudwatch-alarm",
       name: "AWS CloudWatch alarm",
-      match: "AlarmName matches * AND NewStateValue matches *",
+      match: "",
       mapping: {
         title: { kind: "template", template: "{{AlarmName}}: {{Trigger.MetricName}}" },
         severity: { kind: "constant", value: "error" },
@@ -112,7 +112,7 @@ export const SCHEMA_EXAMPLES: SchemaExample[] = [
     schema: {
       id: "kubernetes-event",
       name: "Kubernetes event",
-      match: "involvedObject.kind matches * AND reason matches *",
+      match: "",
       mapping: {
         title: { kind: "template", template: "{{reason}}: {{involvedObject.name}}" },
         severity: { kind: "path", path: "type", valueMap: { Warning: "warning", Normal: "info" } },
@@ -203,4 +203,67 @@ export function yamlToSchema(text: string, parse: (t: string) => unknown): { sch
     ...(typeof r.sample === "string" ? { sample: r.sample } : {}),
   };
   return { schema, match: typeof schema.match === "string" ? schema.match : "" };
+}
+
+const TYPE_KEYS = ["type", "kind", "event_type", "eventType"];
+
+function has(obj: unknown, path: string): boolean {
+  let cur: unknown = obj;
+  for (const seg of path.split(".")) {
+    if (cur === null || typeof cur !== "object") return false;
+    cur = (cur as Record<string, unknown>)[seg];
+  }
+  return cur !== undefined && cur !== null;
+}
+
+const quote = (v: string) => (/^[\w.-]+$/.test(v) ? v : JSON.stringify(v));
+
+/**
+ * The "which events" rule, written from the sample so nobody has to: the event must have
+ * the fields the mapping reads (skipping ones with a default, they're optional), at most 3,
+ * top-level first; plus an exact type/kind if the sample has one. Falls back to the
+ * sample's first top-level fields when nothing is mapped yet. "" when there's no sample.
+ */
+export function generateMatch(sample: unknown, mapping: Schema["mapping"]): string {
+  if (!sample || typeof sample !== "object" || Array.isArray(sample)) return "";
+  const s = sample as Record<string, unknown>;
+  const parts: string[] = [];
+  // A type field that feeds severity or status varies per event (k8s "Warning"/"Normal"): don't pin it.
+  const varying = new Set(
+    (["severity", "sourceStatus"] as const).flatMap((f) => {
+      const m = mapping[f];
+      return m?.kind === "path" ? [m.path] : [];
+    }),
+  );
+  const typeKey = TYPE_KEYS.find((k) => typeof s[k] === "string" && s[k] !== "" && !varying.has(k));
+  if (typeKey) parts.push(`${typeKey} = ${quote(String(s[typeKey]))}`);
+
+  const read = new Set<string>();
+  for (const m of Object.values(mapping)) {
+    if (!m || (m.default !== undefined && m.default !== "")) continue;
+    if (m.kind === "path" && m.path) read.add(m.path);
+    if (m.kind === "template") for (const x of m.template.matchAll(/\{\{\s*([\w.]+)\s*\}\}/g)) read.add(x[1]!);
+  }
+  let fields = [...read].filter((p) => has(s, p) && p !== typeKey);
+  if (fields.length === 0)
+    fields = Object.keys(s).filter((k) => k !== typeKey && s[k] !== null && typeof s[k] !== "object").slice(0, 2);
+  fields.sort((a, b) => a.split(".").length - b.split(".").length || a.localeCompare(b));
+  for (const f of fields.slice(0, typeKey ? 2 : 3)) parts.push(`${f} matches *`);
+  return parts.join(" AND ");
+}
+
+/** Plain-English version of a generated rule for the summary. */
+export function describeMatch(match: string): string {
+  const exists: string[] = [];
+  const equals: string[] = [];
+  for (const part of match.split(" AND ")) {
+    const m = /^(\S+) matches \*$/.exec(part.trim());
+    const e = /^(\S+) = (.+)$/.exec(part.trim());
+    if (m) exists.push(m[1]!);
+    else if (e) equals.push(`${e[1]} is ${e[2]}`);
+    else return "";
+  }
+  const list = (xs: string[]) => (xs.length <= 1 ? xs.join("") : `${xs.slice(0, -1).join(", ")} and ${xs.at(-1)}`);
+  const bits = [equals.length ? `where ${list(equals)}` : "", exists.length ? `that have ${list(exists)}` : ""].filter(Boolean);
+  return bits.length ? `events ${bits.join(" and ")}` : "";
 }
