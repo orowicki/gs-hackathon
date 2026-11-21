@@ -1,663 +1,363 @@
 {
-  "date": "2026-11-21T04:24:01.194Z",
-  "commit": "dd583dd",
+  "date": "2026-11-21T08:29:06.469Z",
+  "commit": "37330d5",
   "config": {
     "rate": 5000,
     "duration": 60,
     "workers": 1,
     "smoke": false,
     "note": "The api process runs an in-process ingest parse worker, so N workers means N engines and N+1 parse consumers (N standalone ingest workers plus the api's own).",
-    "repeat": 1
+    "repeat": 3
   },
-  "sent": 299950,
-  "accepted": 299950,
+  "sent": 899935,
+  "accepted": 899935,
   "rejected": 0,
   "httpErrors": 0,
-  "alertsSeen": 62596,
-  "unprocessedAtEnd": 237354,
-  "backlogAtEnd": 237354,
-  "overloaded": true,
-  "windowsCompleted": 1,
+  "alertsSeen": 899935,
+  "unprocessedAtEnd": 0,
+  "backlogAtEnd": 0,
+  "overloaded": false,
+  "windowsCompleted": 3,
   "windowsPlanned": 3,
   "lost": 0,
-  "wallTimeSec": 120.67,
+  "wallTimeSec": 189.09,
   "throughput": {
     "targetRate": 5000,
-    "sendRate": 4999.1,
-    "processedPerSec": 519.3,
+    "sendRate": 4999.2,
+    "processedPerSec": 4994.9,
     "perSecond": [
       {
         "t": 0,
-        "sent": 4990,
-        "processed": 284
+        "sent": 4960,
+        "processed": 4534
       },
       {
         "t": 1,
-        "sent": 4975,
-        "processed": 195
+        "sent": 5020,
+        "processed": 4939
       },
       {
         "t": 2,
-        "sent": 4985,
-        "processed": 328
+        "sent": 4975,
+        "processed": 5148
       },
       {
         "t": 3,
-        "sent": 5045,
-        "processed": 272
+        "sent": 5030,
+        "processed": 5057
       },
       {
         "t": 4,
-        "sent": 4965,
-        "processed": 368
+        "sent": 4985,
+        "processed": 4557
       },
       {
         "t": 5,
-        "sent": 5005,
-        "processed": 223
+        "sent": 5010,
+        "processed": 5419
       },
       {
         "t": 6,
-        "sent": 5020,
-        "processed": 398
+        "sent": 4985,
+        "processed": 4333
       },
       {
         "t": 7,
-        "sent": 4965,
-        "processed": 415
+        "sent": 4985,
+        "processed": 5660
       },
       {
         "t": 8,
-        "sent": 5000,
-        "processed": 467
+        "sent": 5040,
+        "processed": 5106
       },
       {
         "t": 9,
-        "sent": 5005,
-        "processed": 449
+        "sent": 4984,
+        "processed": 4985
       },
       {
         "t": 10,
-        "sent": 4995,
-        "processed": 395
+        "sent": 5021,
+        "processed": 4838
       },
       {
         "t": 11,
-        "sent": 5040,
-        "processed": 515
+        "sent": 4995,
+        "processed": 5129
       },
       {
         "t": 12,
-        "sent": 4965,
-        "processed": 472
+        "sent": 4970,
+        "processed": 5024
       },
       {
         "t": 13,
-        "sent": 5000,
-        "processed": 456
+        "sent": 5025,
+        "processed": 5012
       },
       {
         "t": 14,
-        "sent": 5035,
-        "processed": 531
+        "sent": 5010,
+        "processed": 4828
       },
       {
         "t": 15,
-        "sent": 4970,
-        "processed": 496
+        "sent": 4960,
+        "processed": 5104
       },
       {
         "t": 16,
-        "sent": 4989,
-        "processed": 516
+        "sent": 4985,
+        "processed": 4966
       },
       {
         "t": 17,
-        "sent": 5006,
-        "processed": 326
+        "sent": 5055,
+        "processed": 5049
       },
       {
         "t": 18,
-        "sent": 5020,
-        "processed": 459
+        "sent": 4990,
+        "processed": 4917
       },
       {
         "t": 19,
-        "sent": 4974,
-        "processed": 337
+        "sent": 5010,
+        "processed": 4950
       },
       {
         "t": 20,
-        "sent": 5036,
-        "processed": 429
+        "sent": 4954,
+        "processed": 4966
       },
       {
         "t": 21,
-        "sent": 4990,
-        "processed": 576
+        "sent": 5011,
+        "processed": 5005
       },
       {
         "t": 22,
-        "sent": 4985,
-        "processed": 549
+        "sent": 5030,
+        "processed": 5078
       },
       {
         "t": 23,
-        "sent": 5000,
-        "processed": 402
+        "sent": 4990,
+        "processed": 4816
       },
       {
         "t": 24,
-        "sent": 5000,
-        "processed": 486
+        "sent": 4975,
+        "processed": 5191
       },
       {
         "t": 25,
         "sent": 5015,
-        "processed": 445
+        "processed": 5022
       },
       {
         "t": 26,
-        "sent": 4965,
-        "processed": 480
+        "sent": 4975,
+        "processed": 4924
       },
       {
         "t": 27,
-        "sent": 5040,
-        "processed": 449
+        "sent": 5005,
+        "processed": 5062
       },
       {
         "t": 28,
-        "sent": 4965,
-        "processed": 527
+        "sent": 5020,
+        "processed": 4485
       },
       {
         "t": 29,
-        "sent": 5030,
-        "processed": 527
+        "sent": 5010,
+        "processed": 5617
       },
       {
         "t": 30,
-        "sent": 4970,
-        "processed": 546
+        "sent": 5005,
+        "processed": 4963
       },
       {
         "t": 31,
-        "sent": 5030,
-        "processed": 517
+        "sent": 5000,
+        "processed": 5102
       },
       {
         "t": 32,
-        "sent": 4995,
-        "processed": 552
+        "sent": 5010,
+        "processed": 4910
       },
       {
         "t": 33,
-        "sent": 4995,
-        "processed": 533
+        "sent": 4970,
+        "processed": 4994
       },
       {
         "t": 34,
         "sent": 5030,
-        "processed": 508
+        "processed": 4980
       },
       {
         "t": 35,
-        "sent": 4985,
-        "processed": 521
+        "sent": 4995,
+        "processed": 5049
       },
       {
         "t": 36,
-        "sent": 5000,
-        "processed": 202
+        "sent": 4975,
+        "processed": 4953
       },
       {
         "t": 37,
-        "sent": 4975,
-        "processed": 434
+        "sent": 5020,
+        "processed": 5062
       },
       {
         "t": 38,
-        "sent": 5030,
-        "processed": 451
+        "sent": 4985,
+        "processed": 4986
       },
       {
         "t": 39,
-        "sent": 5010,
-        "processed": 475
+        "sent": 5025,
+        "processed": 4959
       },
       {
         "t": 40,
-        "sent": 4995,
-        "processed": 463
+        "sent": 4960,
+        "processed": 2849
       },
       {
         "t": 41,
-        "sent": 5005,
-        "processed": 463
+        "sent": 5035,
+        "processed": 4614
       },
       {
         "t": 42,
         "sent": 4960,
-        "processed": 475
+        "processed": 4909
       },
       {
         "t": 43,
-        "sent": 5005,
-        "processed": 426
+        "sent": 5030,
+        "processed": 3786
       },
       {
         "t": 44,
-        "sent": 4990,
-        "processed": 488
+        "sent": 4985,
+        "processed": 3000
       },
       {
         "t": 45,
-        "sent": 5020,
-        "processed": 480
+        "sent": 4985,
+        "processed": 4814
       },
       {
         "t": 46,
-        "sent": 4980,
-        "processed": 460
+        "sent": 5045,
+        "processed": 7600
       },
       {
         "t": 47,
-        "sent": 5045,
-        "processed": 485
+        "sent": 4990,
+        "processed": 8200
       },
       {
         "t": 48,
-        "sent": 4970,
-        "processed": 165
+        "sent": 4995,
+        "processed": 5261
       },
       {
         "t": 49,
-        "sent": 5010,
-        "processed": 292
+        "sent": 4980,
+        "processed": 4998
       },
       {
         "t": 50,
-        "sent": 4970,
-        "processed": 430
+        "sent": 5020,
+        "processed": 5018
       },
       {
         "t": 51,
-        "sent": 5020,
-        "processed": 360
+        "sent": 4975,
+        "processed": 5033
       },
       {
         "t": 52,
-        "sent": 5030,
-        "processed": 346
+        "sent": 5025,
+        "processed": 4865
       },
       {
         "t": 53,
-        "sent": 4955,
-        "processed": 186
+        "sent": 4985,
+        "processed": 4941
       },
       {
         "t": 54,
-        "sent": 5030,
-        "processed": 237
+        "sent": 5020,
+        "processed": 4968
       },
       {
         "t": 55,
-        "sent": 5010,
-        "processed": 179
+        "sent": 4975,
+        "processed": 5166
       },
       {
         "t": 56,
-        "sent": 4970,
-        "processed": 284
+        "sent": 4990,
+        "processed": 5045
       },
       {
         "t": 57,
-        "sent": 5000,
-        "processed": 447
+        "sent": 5020,
+        "processed": 4947
       },
       {
         "t": 58,
         "sent": 4990,
-        "processed": 347
+        "processed": 5009
       },
       {
         "t": 59,
-        "sent": 5000,
-        "processed": 387
+        "sent": 5025,
+        "processed": 4991
       },
       {
         "t": 60,
         "sent": 0,
-        "processed": 637
-      },
-      {
-        "t": 61,
-        "sent": 0,
-        "processed": 566
-      },
-      {
-        "t": 62,
-        "sent": 0,
-        "processed": 631
-      },
-      {
-        "t": 63,
-        "sent": 0,
-        "processed": 651
-      },
-      {
-        "t": 64,
-        "sent": 0,
-        "processed": 664
-      },
-      {
-        "t": 65,
-        "sent": 0,
-        "processed": 650
-      },
-      {
-        "t": 66,
-        "sent": 0,
-        "processed": 527
-      },
-      {
-        "t": 67,
-        "sent": 0,
-        "processed": 655
-      },
-      {
-        "t": 68,
-        "sent": 0,
-        "processed": 671
-      },
-      {
-        "t": 69,
-        "sent": 0,
-        "processed": 656
-      },
-      {
-        "t": 70,
-        "sent": 0,
-        "processed": 685
-      },
-      {
-        "t": 71,
-        "sent": 0,
-        "processed": 670
-      },
-      {
-        "t": 72,
-        "sent": 0,
-        "processed": 677
-      },
-      {
-        "t": 73,
-        "sent": 0,
-        "processed": 613
-      },
-      {
-        "t": 74,
-        "sent": 0,
-        "processed": 531
-      },
-      {
-        "t": 75,
-        "sent": 0,
-        "processed": 504
-      },
-      {
-        "t": 76,
-        "sent": 0,
-        "processed": 637
-      },
-      {
-        "t": 77,
-        "sent": 0,
-        "processed": 676
-      },
-      {
-        "t": 78,
-        "sent": 0,
-        "processed": 855
-      },
-      {
-        "t": 79,
-        "sent": 0,
-        "processed": 583
-      },
-      {
-        "t": 80,
-        "sent": 0,
-        "processed": 684
-      },
-      {
-        "t": 81,
-        "sent": 0,
-        "processed": 641
-      },
-      {
-        "t": 82,
-        "sent": 0,
-        "processed": 611
-      },
-      {
-        "t": 83,
-        "sent": 0,
-        "processed": 658
-      },
-      {
-        "t": 84,
-        "sent": 0,
-        "processed": 624
-      },
-      {
-        "t": 85,
-        "sent": 0,
-        "processed": 638
-      },
-      {
-        "t": 86,
-        "sent": 0,
-        "processed": 800
-      },
-      {
-        "t": 87,
-        "sent": 0,
-        "processed": 342
-      },
-      {
-        "t": 88,
-        "sent": 0,
-        "processed": 635
-      },
-      {
-        "t": 89,
-        "sent": 0,
-        "processed": 691
-      },
-      {
-        "t": 90,
-        "sent": 0,
-        "processed": 620
-      },
-      {
-        "t": 91,
-        "sent": 0,
-        "processed": 705
-      },
-      {
-        "t": 92,
-        "sent": 0,
-        "processed": 665
-      },
-      {
-        "t": 93,
-        "sent": 0,
-        "processed": 688
-      },
-      {
-        "t": 94,
-        "sent": 0,
-        "processed": 596
-      },
-      {
-        "t": 95,
-        "sent": 0,
-        "processed": 638
-      },
-      {
-        "t": 96,
-        "sent": 0,
-        "processed": 427
-      },
-      {
-        "t": 97,
-        "sent": 0,
-        "processed": 632
-      },
-      {
-        "t": 98,
-        "sent": 0,
-        "processed": 682
-      },
-      {
-        "t": 99,
-        "sent": 0,
-        "processed": 571
-      },
-      {
-        "t": 100,
-        "sent": 0,
-        "processed": 645
-      },
-      {
-        "t": 101,
-        "sent": 0,
-        "processed": 598
-      },
-      {
-        "t": 102,
-        "sent": 0,
-        "processed": 694
-      },
-      {
-        "t": 103,
-        "sent": 0,
-        "processed": 676
-      },
-      {
-        "t": 104,
-        "sent": 0,
-        "processed": 587
-      },
-      {
-        "t": 105,
-        "sent": 0,
-        "processed": 663
-      },
-      {
-        "t": 106,
-        "sent": 0,
-        "processed": 655
-      },
-      {
-        "t": 107,
-        "sent": 0,
-        "processed": 683
-      },
-      {
-        "t": 108,
-        "sent": 0,
-        "processed": 672
-      },
-      {
-        "t": 109,
-        "sent": 0,
-        "processed": 668
-      },
-      {
-        "t": 110,
-        "sent": 0,
-        "processed": 653
-      },
-      {
-        "t": 111,
-        "sent": 0,
-        "processed": 512
-      },
-      {
-        "t": 112,
-        "sent": 0,
-        "processed": 400
-      },
-      {
-        "t": 113,
-        "sent": 0,
-        "processed": 496
-      },
-      {
-        "t": 114,
-        "sent": 0,
-        "processed": 503
-      },
-      {
-        "t": 115,
-        "sent": 0,
-        "processed": 547
-      },
-      {
-        "t": 116,
-        "sent": 0,
-        "processed": 520
-      },
-      {
-        "t": 117,
-        "sent": 0,
-        "processed": 647
-      },
-      {
-        "t": 118,
-        "sent": 0,
-        "processed": 535
-      },
-      {
-        "t": 119,
-        "sent": 0,
-        "processed": 668
-      },
-      {
-        "t": 120,
-        "sent": 0,
-        "processed": 376
+        "processed": 292
       }
     ]
   },
   "latencyMs": {
     "e2e": {
-      "p50": 63843,
-      "p90": 98133,
-      "p99": 107226,
-      "max": 108004,
-      "mean": 59547.99,
-      "count": 62596
+      "p50": 67,
+      "p90": 544,
+      "p99": 1342,
+      "max": 1536,
+      "mean": 162.41,
+      "count": 899935
     },
     "e2eSource": "ui-push",
     "alertStream": {
-      "p50": 63843,
-      "p90": 98133,
-      "p99": 107225,
-      "max": 108003,
-      "mean": 59547.89,
-      "count": 62596
+      "p50": 67,
+      "p90": 543,
+      "p99": 1341,
+      "max": 1535,
+      "mean": 161.64,
+      "count": 899935
     },
     "notification": {
-      "p50": 63826,
-      "p90": 98105,
-      "p99": 107199,
-      "max": 107983,
-      "mean": 59527.47,
-      "count": 62572
+      "p50": 35,
+      "p90": 59,
+      "p99": 103,
+      "max": 156,
+      "mean": 39.02,
+      "count": 87937
     }
   },
   "e2eCoverage": 1,
@@ -668,31 +368,31 @@
     "met": false
   },
   "aggregate": {
-    "repeats": 1,
+    "repeats": 3,
     "method": "median of per-run values",
     "range": {
       "e2e": {
         "p50": [
-          63843,
-          63843
+          50,
+          77
         ],
         "p99": [
-          107226,
-          107226
+          402,
+          2335
         ]
       },
       "processedPerSec": [
-        519.3,
-        519.3
+        4990.9,
+        4996.1
       ]
     }
   },
   "measurement": "Each event has a unique seq and send timestamp (Date.now() in this process, same host clock assumed). e2e = time this process receives the pub/sub UI push {type:alert,alertId} on alerting:ui:push minus the send time of the event that produced the alert (alertId -> eventId from alerting:alerts, eventId -> seq from alerting:events). alertStream = alerting:alerts stream-entry time (Redis server clock) minus send time. notification = Notification.createdAt (enqueue time in the engine) minus send time, read from the ui-channel {type:notification} push; null when no delivery worker is running. Send time is taken just before the HTTP batch is written, so it includes HTTP, XADD, parse worker, Postgres insert, engine and pub/sub. Latency covers events whose alert was observed; lost = events accepted (HTTP 202) with no alert observed after the drain.",
   "runs": [
     {
-      "date": "2026-11-21T04:24:01.194Z",
-      "commit": "dd583dd",
-      "wallTimeSec": 120.67,
+      "date": "2026-11-21T08:29:06.469Z",
+      "commit": "37330d5",
+      "wallTimeSec": 62.41,
       "config": {
         "rate": 5000,
         "duration": 60,
@@ -700,657 +400,357 @@
         "smoke": false,
         "note": "The api process runs an in-process ingest parse worker, so N workers means N engines and N+1 parse consumers (N standalone ingest workers plus the api's own)."
       },
-      "sent": 299950,
-      "accepted": 299950,
+      "sent": 299985,
+      "accepted": 299985,
       "rejected": 0,
       "httpErrors": 0,
-      "alertsSeen": 62596,
-      "unprocessedAtEnd": 237354,
-      "backlogAtEnd": 237354,
+      "alertsSeen": 299985,
+      "unprocessedAtEnd": 0,
+      "backlogAtEnd": 0,
       "backlog": {
         "parse": 0,
-        "engine": 237354,
-        "total": 237354
+        "engine": 0,
+        "total": 0
       },
-      "overloaded": true,
+      "overloaded": false,
       "lost": 0,
       "throughput": {
         "targetRate": 5000,
-        "sendRate": 4999.1,
-        "processedPerSec": 519.3,
+        "sendRate": 4999.2,
+        "processedPerSec": 4994.9,
         "perSecond": [
           {
             "t": 0,
-            "sent": 4990,
-            "processed": 284
+            "sent": 4960,
+            "processed": 4534
           },
           {
             "t": 1,
-            "sent": 4975,
-            "processed": 195
+            "sent": 5020,
+            "processed": 4939
           },
           {
             "t": 2,
-            "sent": 4985,
-            "processed": 328
+            "sent": 4975,
+            "processed": 5148
           },
           {
             "t": 3,
-            "sent": 5045,
-            "processed": 272
+            "sent": 5030,
+            "processed": 5057
           },
           {
             "t": 4,
-            "sent": 4965,
-            "processed": 368
+            "sent": 4985,
+            "processed": 4557
           },
           {
             "t": 5,
-            "sent": 5005,
-            "processed": 223
+            "sent": 5010,
+            "processed": 5419
           },
           {
             "t": 6,
-            "sent": 5020,
-            "processed": 398
+            "sent": 4985,
+            "processed": 4333
           },
           {
             "t": 7,
-            "sent": 4965,
-            "processed": 415
+            "sent": 4985,
+            "processed": 5660
           },
           {
             "t": 8,
-            "sent": 5000,
-            "processed": 467
+            "sent": 5040,
+            "processed": 5106
           },
           {
             "t": 9,
-            "sent": 5005,
-            "processed": 449
+            "sent": 4984,
+            "processed": 4985
           },
           {
             "t": 10,
-            "sent": 4995,
-            "processed": 395
+            "sent": 5021,
+            "processed": 4838
           },
           {
             "t": 11,
-            "sent": 5040,
-            "processed": 515
+            "sent": 4995,
+            "processed": 5129
           },
           {
             "t": 12,
-            "sent": 4965,
-            "processed": 472
+            "sent": 4970,
+            "processed": 5024
           },
           {
             "t": 13,
-            "sent": 5000,
-            "processed": 456
+            "sent": 5025,
+            "processed": 5012
           },
           {
             "t": 14,
-            "sent": 5035,
-            "processed": 531
+            "sent": 5010,
+            "processed": 4828
           },
           {
             "t": 15,
-            "sent": 4970,
-            "processed": 496
+            "sent": 4960,
+            "processed": 5104
           },
           {
             "t": 16,
-            "sent": 4989,
-            "processed": 516
+            "sent": 4985,
+            "processed": 4966
           },
           {
             "t": 17,
-            "sent": 5006,
-            "processed": 326
+            "sent": 5055,
+            "processed": 5049
           },
           {
             "t": 18,
-            "sent": 5020,
-            "processed": 459
+            "sent": 4990,
+            "processed": 4917
           },
           {
             "t": 19,
-            "sent": 4974,
-            "processed": 337
+            "sent": 5010,
+            "processed": 4950
           },
           {
             "t": 20,
-            "sent": 5036,
-            "processed": 429
+            "sent": 4954,
+            "processed": 4966
           },
           {
             "t": 21,
-            "sent": 4990,
-            "processed": 576
+            "sent": 5011,
+            "processed": 5005
           },
           {
             "t": 22,
-            "sent": 4985,
-            "processed": 549
+            "sent": 5030,
+            "processed": 5078
           },
           {
             "t": 23,
-            "sent": 5000,
-            "processed": 402
+            "sent": 4990,
+            "processed": 4816
           },
           {
             "t": 24,
-            "sent": 5000,
-            "processed": 486
+            "sent": 4975,
+            "processed": 5191
           },
           {
             "t": 25,
             "sent": 5015,
-            "processed": 445
+            "processed": 5022
           },
           {
             "t": 26,
-            "sent": 4965,
-            "processed": 480
+            "sent": 4975,
+            "processed": 4924
           },
           {
             "t": 27,
-            "sent": 5040,
-            "processed": 449
+            "sent": 5005,
+            "processed": 5062
           },
           {
             "t": 28,
-            "sent": 4965,
-            "processed": 527
+            "sent": 5020,
+            "processed": 4485
           },
           {
             "t": 29,
-            "sent": 5030,
-            "processed": 527
+            "sent": 5010,
+            "processed": 5617
           },
           {
             "t": 30,
-            "sent": 4970,
-            "processed": 546
+            "sent": 5005,
+            "processed": 4963
           },
           {
             "t": 31,
-            "sent": 5030,
-            "processed": 517
+            "sent": 5000,
+            "processed": 5102
           },
           {
             "t": 32,
-            "sent": 4995,
-            "processed": 552
+            "sent": 5010,
+            "processed": 4910
           },
           {
             "t": 33,
-            "sent": 4995,
-            "processed": 533
+            "sent": 4970,
+            "processed": 4994
           },
           {
             "t": 34,
             "sent": 5030,
-            "processed": 508
+            "processed": 4980
           },
           {
             "t": 35,
-            "sent": 4985,
-            "processed": 521
+            "sent": 4995,
+            "processed": 5049
           },
           {
             "t": 36,
-            "sent": 5000,
-            "processed": 202
+            "sent": 4975,
+            "processed": 4953
           },
           {
             "t": 37,
-            "sent": 4975,
-            "processed": 434
+            "sent": 5020,
+            "processed": 5062
           },
           {
             "t": 38,
-            "sent": 5030,
-            "processed": 451
+            "sent": 4985,
+            "processed": 4986
           },
           {
             "t": 39,
-            "sent": 5010,
-            "processed": 475
+            "sent": 5025,
+            "processed": 4959
           },
           {
             "t": 40,
-            "sent": 4995,
-            "processed": 463
+            "sent": 4960,
+            "processed": 2849
           },
           {
             "t": 41,
-            "sent": 5005,
-            "processed": 463
+            "sent": 5035,
+            "processed": 4614
           },
           {
             "t": 42,
             "sent": 4960,
-            "processed": 475
+            "processed": 4909
           },
           {
             "t": 43,
-            "sent": 5005,
-            "processed": 426
+            "sent": 5030,
+            "processed": 3786
           },
           {
             "t": 44,
-            "sent": 4990,
-            "processed": 488
+            "sent": 4985,
+            "processed": 3000
           },
           {
             "t": 45,
-            "sent": 5020,
-            "processed": 480
+            "sent": 4985,
+            "processed": 4814
           },
           {
             "t": 46,
-            "sent": 4980,
-            "processed": 460
+            "sent": 5045,
+            "processed": 7600
           },
           {
             "t": 47,
-            "sent": 5045,
-            "processed": 485
+            "sent": 4990,
+            "processed": 8200
           },
           {
             "t": 48,
-            "sent": 4970,
-            "processed": 165
+            "sent": 4995,
+            "processed": 5261
           },
           {
             "t": 49,
-            "sent": 5010,
-            "processed": 292
+            "sent": 4980,
+            "processed": 4998
           },
           {
             "t": 50,
-            "sent": 4970,
-            "processed": 430
+            "sent": 5020,
+            "processed": 5018
           },
           {
             "t": 51,
-            "sent": 5020,
-            "processed": 360
+            "sent": 4975,
+            "processed": 5033
           },
           {
             "t": 52,
-            "sent": 5030,
-            "processed": 346
+            "sent": 5025,
+            "processed": 4865
           },
           {
             "t": 53,
-            "sent": 4955,
-            "processed": 186
+            "sent": 4985,
+            "processed": 4941
           },
           {
             "t": 54,
-            "sent": 5030,
-            "processed": 237
+            "sent": 5020,
+            "processed": 4968
           },
           {
             "t": 55,
-            "sent": 5010,
-            "processed": 179
+            "sent": 4975,
+            "processed": 5166
           },
           {
             "t": 56,
-            "sent": 4970,
-            "processed": 284
+            "sent": 4990,
+            "processed": 5045
           },
           {
             "t": 57,
-            "sent": 5000,
-            "processed": 447
+            "sent": 5020,
+            "processed": 4947
           },
           {
             "t": 58,
             "sent": 4990,
-            "processed": 347
+            "processed": 5009
           },
           {
             "t": 59,
-            "sent": 5000,
-            "processed": 387
+            "sent": 5025,
+            "processed": 4991
           },
           {
             "t": 60,
             "sent": 0,
-            "processed": 637
-          },
-          {
-            "t": 61,
-            "sent": 0,
-            "processed": 566
-          },
-          {
-            "t": 62,
-            "sent": 0,
-            "processed": 631
-          },
-          {
-            "t": 63,
-            "sent": 0,
-            "processed": 651
-          },
-          {
-            "t": 64,
-            "sent": 0,
-            "processed": 664
-          },
-          {
-            "t": 65,
-            "sent": 0,
-            "processed": 650
-          },
-          {
-            "t": 66,
-            "sent": 0,
-            "processed": 527
-          },
-          {
-            "t": 67,
-            "sent": 0,
-            "processed": 655
-          },
-          {
-            "t": 68,
-            "sent": 0,
-            "processed": 671
-          },
-          {
-            "t": 69,
-            "sent": 0,
-            "processed": 656
-          },
-          {
-            "t": 70,
-            "sent": 0,
-            "processed": 685
-          },
-          {
-            "t": 71,
-            "sent": 0,
-            "processed": 670
-          },
-          {
-            "t": 72,
-            "sent": 0,
-            "processed": 677
-          },
-          {
-            "t": 73,
-            "sent": 0,
-            "processed": 613
-          },
-          {
-            "t": 74,
-            "sent": 0,
-            "processed": 531
-          },
-          {
-            "t": 75,
-            "sent": 0,
-            "processed": 504
-          },
-          {
-            "t": 76,
-            "sent": 0,
-            "processed": 637
-          },
-          {
-            "t": 77,
-            "sent": 0,
-            "processed": 676
-          },
-          {
-            "t": 78,
-            "sent": 0,
-            "processed": 855
-          },
-          {
-            "t": 79,
-            "sent": 0,
-            "processed": 583
-          },
-          {
-            "t": 80,
-            "sent": 0,
-            "processed": 684
-          },
-          {
-            "t": 81,
-            "sent": 0,
-            "processed": 641
-          },
-          {
-            "t": 82,
-            "sent": 0,
-            "processed": 611
-          },
-          {
-            "t": 83,
-            "sent": 0,
-            "processed": 658
-          },
-          {
-            "t": 84,
-            "sent": 0,
-            "processed": 624
-          },
-          {
-            "t": 85,
-            "sent": 0,
-            "processed": 638
-          },
-          {
-            "t": 86,
-            "sent": 0,
-            "processed": 800
-          },
-          {
-            "t": 87,
-            "sent": 0,
-            "processed": 342
-          },
-          {
-            "t": 88,
-            "sent": 0,
-            "processed": 635
-          },
-          {
-            "t": 89,
-            "sent": 0,
-            "processed": 691
-          },
-          {
-            "t": 90,
-            "sent": 0,
-            "processed": 620
-          },
-          {
-            "t": 91,
-            "sent": 0,
-            "processed": 705
-          },
-          {
-            "t": 92,
-            "sent": 0,
-            "processed": 665
-          },
-          {
-            "t": 93,
-            "sent": 0,
-            "processed": 688
-          },
-          {
-            "t": 94,
-            "sent": 0,
-            "processed": 596
-          },
-          {
-            "t": 95,
-            "sent": 0,
-            "processed": 638
-          },
-          {
-            "t": 96,
-            "sent": 0,
-            "processed": 427
-          },
-          {
-            "t": 97,
-            "sent": 0,
-            "processed": 632
-          },
-          {
-            "t": 98,
-            "sent": 0,
-            "processed": 682
-          },
-          {
-            "t": 99,
-            "sent": 0,
-            "processed": 571
-          },
-          {
-            "t": 100,
-            "sent": 0,
-            "processed": 645
-          },
-          {
-            "t": 101,
-            "sent": 0,
-            "processed": 598
-          },
-          {
-            "t": 102,
-            "sent": 0,
-            "processed": 694
-          },
-          {
-            "t": 103,
-            "sent": 0,
-            "processed": 676
-          },
-          {
-            "t": 104,
-            "sent": 0,
-            "processed": 587
-          },
-          {
-            "t": 105,
-            "sent": 0,
-            "processed": 663
-          },
-          {
-            "t": 106,
-            "sent": 0,
-            "processed": 655
-          },
-          {
-            "t": 107,
-            "sent": 0,
-            "processed": 683
-          },
-          {
-            "t": 108,
-            "sent": 0,
-            "processed": 672
-          },
-          {
-            "t": 109,
-            "sent": 0,
-            "processed": 668
-          },
-          {
-            "t": 110,
-            "sent": 0,
-            "processed": 653
-          },
-          {
-            "t": 111,
-            "sent": 0,
-            "processed": 512
-          },
-          {
-            "t": 112,
-            "sent": 0,
-            "processed": 400
-          },
-          {
-            "t": 113,
-            "sent": 0,
-            "processed": 496
-          },
-          {
-            "t": 114,
-            "sent": 0,
-            "processed": 503
-          },
-          {
-            "t": 115,
-            "sent": 0,
-            "processed": 547
-          },
-          {
-            "t": 116,
-            "sent": 0,
-            "processed": 520
-          },
-          {
-            "t": 117,
-            "sent": 0,
-            "processed": 647
-          },
-          {
-            "t": 118,
-            "sent": 0,
-            "processed": 535
-          },
-          {
-            "t": 119,
-            "sent": 0,
-            "processed": 668
-          },
-          {
-            "t": 120,
-            "sent": 0,
-            "processed": 376
+            "processed": 292
           }
         ]
       },
       "latencyMs": {
         "e2e": {
-          "p50": 63843,
-          "p90": 98133,
-          "p99": 107226,
-          "max": 108004,
-          "mean": 59547.99,
-          "count": 62596
+          "p50": 67,
+          "p90": 544,
+          "p99": 1342,
+          "max": 1536,
+          "mean": 162.41,
+          "count": 299985
         },
         "e2eSource": "ui-push",
         "alertStream": {
-          "p50": 63843,
-          "p90": 98133,
-          "p99": 107225,
-          "max": 108003,
-          "mean": 59547.89,
-          "count": 62596
+          "p50": 67,
+          "p90": 543,
+          "p99": 1341,
+          "max": 1535,
+          "mean": 161.64,
+          "count": 299985
         },
         "notification": {
-          "p50": 63826,
-          "p90": 98105,
-          "p99": 107199,
-          "max": 107983,
-          "mean": 59527.47,
-          "count": 62572
+          "p50": 35,
+          "p90": 59,
+          "p99": 103,
+          "max": 156,
+          "mean": 39.02,
+          "count": 87937
         }
       },
       "e2eCoverage": 1,
@@ -1361,6 +761,746 @@
         "met": false
       },
       "measurement": "Each event has a unique seq and send timestamp (Date.now() in this process, same host clock assumed). e2e = time this process receives the pub/sub UI push {type:alert,alertId} on alerting:ui:push minus the send time of the event that produced the alert (alertId -> eventId from alerting:alerts, eventId -> seq from alerting:events). alertStream = alerting:alerts stream-entry time (Redis server clock) minus send time. notification = Notification.createdAt (enqueue time in the engine) minus send time, read from the ui-channel {type:notification} push; null when no delivery worker is running. Send time is taken just before the HTTP batch is written, so it includes HTTP, XADD, parse worker, Postgres insert, engine and pub/sub. Latency covers events whose alert was observed; lost = events accepted (HTTP 202) with no alert observed after the drain."
+    },
+    {
+      "date": "2026-11-21T08:30:09.533Z",
+      "commit": "37330d5",
+      "wallTimeSec": 62.96,
+      "config": {
+        "rate": 5000,
+        "duration": 60,
+        "workers": 1,
+        "smoke": false,
+        "note": "The api process runs an in-process ingest parse worker, so N workers means N engines and N+1 parse consumers (N standalone ingest workers plus the api's own)."
+      },
+      "sent": 299965,
+      "accepted": 299965,
+      "rejected": 0,
+      "httpErrors": 0,
+      "alertsSeen": 299965,
+      "unprocessedAtEnd": 0,
+      "backlogAtEnd": 0,
+      "backlog": {
+        "parse": 0,
+        "engine": 0,
+        "total": 0
+      },
+      "overloaded": false,
+      "lost": 0,
+      "throughput": {
+        "targetRate": 5000,
+        "sendRate": 4999.2,
+        "processedPerSec": 4996.1,
+        "perSecond": [
+          {
+            "t": 0,
+            "sent": 4990,
+            "processed": 4795
+          },
+          {
+            "t": 1,
+            "sent": 4970,
+            "processed": 4872
+          },
+          {
+            "t": 2,
+            "sent": 5020,
+            "processed": 5130
+          },
+          {
+            "t": 3,
+            "sent": 4995,
+            "processed": 4906
+          },
+          {
+            "t": 4,
+            "sent": 5015,
+            "processed": 5013
+          },
+          {
+            "t": 5,
+            "sent": 4960,
+            "processed": 4956
+          },
+          {
+            "t": 6,
+            "sent": 5030,
+            "processed": 5100
+          },
+          {
+            "t": 7,
+            "sent": 4970,
+            "processed": 4975
+          },
+          {
+            "t": 8,
+            "sent": 5030,
+            "processed": 4888
+          },
+          {
+            "t": 9,
+            "sent": 5015,
+            "processed": 5103
+          },
+          {
+            "t": 10,
+            "sent": 4985,
+            "processed": 5040
+          },
+          {
+            "t": 11,
+            "sent": 5000,
+            "processed": 4949
+          },
+          {
+            "t": 12,
+            "sent": 4970,
+            "processed": 4944
+          },
+          {
+            "t": 13,
+            "sent": 5025,
+            "processed": 5056
+          },
+          {
+            "t": 14,
+            "sent": 5005,
+            "processed": 5044
+          },
+          {
+            "t": 15,
+            "sent": 5005,
+            "processed": 4814
+          },
+          {
+            "t": 16,
+            "sent": 5000,
+            "processed": 5166
+          },
+          {
+            "t": 17,
+            "sent": 4975,
+            "processed": 4947
+          },
+          {
+            "t": 18,
+            "sent": 5030,
+            "processed": 5050
+          },
+          {
+            "t": 19,
+            "sent": 4985,
+            "processed": 5072
+          },
+          {
+            "t": 20,
+            "sent": 4980,
+            "processed": 4857
+          },
+          {
+            "t": 21,
+            "sent": 5010,
+            "processed": 5053
+          },
+          {
+            "t": 22,
+            "sent": 5020,
+            "processed": 4926
+          },
+          {
+            "t": 23,
+            "sent": 4995,
+            "processed": 4965
+          },
+          {
+            "t": 24,
+            "sent": 4990,
+            "processed": 5123
+          },
+          {
+            "t": 25,
+            "sent": 5015,
+            "processed": 4943
+          },
+          {
+            "t": 26,
+            "sent": 4970,
+            "processed": 4974
+          },
+          {
+            "t": 27,
+            "sent": 5025,
+            "processed": 5075
+          },
+          {
+            "t": 28,
+            "sent": 5010,
+            "processed": 4866
+          },
+          {
+            "t": 29,
+            "sent": 4995,
+            "processed": 4990
+          },
+          {
+            "t": 30,
+            "sent": 4980,
+            "processed": 3444
+          },
+          {
+            "t": 31,
+            "sent": 4995,
+            "processed": 5050
+          },
+          {
+            "t": 32,
+            "sent": 5030,
+            "processed": 6697
+          },
+          {
+            "t": 33,
+            "sent": 4960,
+            "processed": 4969
+          },
+          {
+            "t": 34,
+            "sent": 5040,
+            "processed": 5045
+          },
+          {
+            "t": 35,
+            "sent": 5000,
+            "processed": 4917
+          },
+          {
+            "t": 36,
+            "sent": 4995,
+            "processed": 5043
+          },
+          {
+            "t": 37,
+            "sent": 4975,
+            "processed": 4948
+          },
+          {
+            "t": 38,
+            "sent": 5005,
+            "processed": 4982
+          },
+          {
+            "t": 39,
+            "sent": 5025,
+            "processed": 5017
+          },
+          {
+            "t": 40,
+            "sent": 4995,
+            "processed": 5012
+          },
+          {
+            "t": 41,
+            "sent": 5000,
+            "processed": 5070
+          },
+          {
+            "t": 42,
+            "sent": 4990,
+            "processed": 4941
+          },
+          {
+            "t": 43,
+            "sent": 5015,
+            "processed": 4979
+          },
+          {
+            "t": 44,
+            "sent": 4730,
+            "processed": 4596
+          },
+          {
+            "t": 45,
+            "sent": 5250,
+            "processed": 5328
+          },
+          {
+            "t": 46,
+            "sent": 5000,
+            "processed": 5012
+          },
+          {
+            "t": 47,
+            "sent": 4990,
+            "processed": 4997
+          },
+          {
+            "t": 48,
+            "sent": 5030,
+            "processed": 5039
+          },
+          {
+            "t": 49,
+            "sent": 4985,
+            "processed": 4925
+          },
+          {
+            "t": 50,
+            "sent": 5000,
+            "processed": 5063
+          },
+          {
+            "t": 51,
+            "sent": 5020,
+            "processed": 5136
+          },
+          {
+            "t": 52,
+            "sent": 5000,
+            "processed": 4775
+          },
+          {
+            "t": 53,
+            "sent": 4970,
+            "processed": 5184
+          },
+          {
+            "t": 54,
+            "sent": 4995,
+            "processed": 4880
+          },
+          {
+            "t": 55,
+            "sent": 5000,
+            "processed": 5017
+          },
+          {
+            "t": 56,
+            "sent": 5035,
+            "processed": 4987
+          },
+          {
+            "t": 57,
+            "sent": 4960,
+            "processed": 5159
+          },
+          {
+            "t": 58,
+            "sent": 5020,
+            "processed": 4972
+          },
+          {
+            "t": 59,
+            "sent": 4990,
+            "processed": 4925
+          },
+          {
+            "t": 60,
+            "sent": 0,
+            "processed": 264
+          }
+        ]
+      },
+      "latencyMs": {
+        "e2e": {
+          "p50": 50,
+          "p90": 80,
+          "p99": 402,
+          "max": 630,
+          "mean": 64.55,
+          "count": 299965
+        },
+        "e2eSource": "ui-push",
+        "alertStream": {
+          "p50": 50,
+          "p90": 79,
+          "p99": 402,
+          "max": 630,
+          "mean": 63.85,
+          "count": 299965
+        },
+        "notification": null
+      },
+      "e2eCoverage": 1,
+      "targets": {
+        "p50": 50,
+        "p99": 250,
+        "lost": 0,
+        "met": false
+      },
+      "measurement": "Each event has a unique seq and send timestamp (Date.now() in this process, same host clock assumed). e2e = time this process receives the pub/sub UI push {type:alert,alertId} on alerting:ui:push minus the send time of the event that produced the alert (alertId -> eventId from alerting:alerts, eventId -> seq from alerting:events). alertStream = alerting:alerts stream-entry time (Redis server clock) minus send time. notification = Notification.createdAt (enqueue time in the engine) minus send time, read from the ui-channel {type:notification} push; null when no delivery worker is running. Send time is taken just before the HTTP batch is written, so it includes HTTP, XADD, parse worker, Postgres insert, engine and pub/sub. Latency covers events whose alert was observed; lost = events accepted (HTTP 202) with no alert observed after the drain."
+    },
+    {
+      "date": "2026-11-21T08:31:13.356Z",
+      "commit": "37330d5",
+      "wallTimeSec": 63.72,
+      "config": {
+        "rate": 5000,
+        "duration": 60,
+        "workers": 1,
+        "smoke": false,
+        "note": "The api process runs an in-process ingest parse worker, so N workers means N engines and N+1 parse consumers (N standalone ingest workers plus the api's own)."
+      },
+      "sent": 299985,
+      "accepted": 299985,
+      "rejected": 0,
+      "httpErrors": 0,
+      "alertsSeen": 299985,
+      "unprocessedAtEnd": 0,
+      "backlogAtEnd": 0,
+      "backlog": {
+        "parse": 0,
+        "engine": 0,
+        "total": 0
+      },
+      "overloaded": false,
+      "lost": 0,
+      "throughput": {
+        "targetRate": 5000,
+        "sendRate": 4999.2,
+        "processedPerSec": 4990.9,
+        "perSecond": [
+          {
+            "t": 0,
+            "sent": 4950,
+            "processed": 4713
+          },
+          {
+            "t": 1,
+            "sent": 5030,
+            "processed": 5050
+          },
+          {
+            "t": 2,
+            "sent": 5005,
+            "processed": 4820
+          },
+          {
+            "t": 3,
+            "sent": 4995,
+            "processed": 5111
+          },
+          {
+            "t": 4,
+            "sent": 5015,
+            "processed": 5117
+          },
+          {
+            "t": 5,
+            "sent": 4960,
+            "processed": 4761
+          },
+          {
+            "t": 6,
+            "sent": 5015,
+            "processed": 4986
+          },
+          {
+            "t": 7,
+            "sent": 5005,
+            "processed": 5103
+          },
+          {
+            "t": 8,
+            "sent": 4999,
+            "processed": 5068
+          },
+          {
+            "t": 9,
+            "sent": 4991,
+            "processed": 5034
+          },
+          {
+            "t": 10,
+            "sent": 5020,
+            "processed": 4960
+          },
+          {
+            "t": 11,
+            "sent": 5000,
+            "processed": 4897
+          },
+          {
+            "t": 12,
+            "sent": 4960,
+            "processed": 4621
+          },
+          {
+            "t": 13,
+            "sent": 5005,
+            "processed": 5325
+          },
+          {
+            "t": 14,
+            "sent": 5045,
+            "processed": 4406
+          },
+          {
+            "t": 15,
+            "sent": 4965,
+            "processed": 5372
+          },
+          {
+            "t": 16,
+            "sent": 5000,
+            "processed": 5133
+          },
+          {
+            "t": 17,
+            "sent": 5010,
+            "processed": 5152
+          },
+          {
+            "t": 18,
+            "sent": 4975,
+            "processed": 4982
+          },
+          {
+            "t": 19,
+            "sent": 5015,
+            "processed": 4955
+          },
+          {
+            "t": 20,
+            "sent": 5020,
+            "processed": 4757
+          },
+          {
+            "t": 21,
+            "sent": 4985,
+            "processed": 4882
+          },
+          {
+            "t": 22,
+            "sent": 5015,
+            "processed": 5263
+          },
+          {
+            "t": 23,
+            "sent": 4975,
+            "processed": 5184
+          },
+          {
+            "t": 24,
+            "sent": 5025,
+            "processed": 4589
+          },
+          {
+            "t": 25,
+            "sent": 4969,
+            "processed": 5455
+          },
+          {
+            "t": 26,
+            "sent": 5036,
+            "processed": 5007
+          },
+          {
+            "t": 27,
+            "sent": 5000,
+            "processed": 4991
+          },
+          {
+            "t": 28,
+            "sent": 4995,
+            "processed": 4702
+          },
+          {
+            "t": 29,
+            "sent": 4995,
+            "processed": 5257
+          },
+          {
+            "t": 30,
+            "sent": 4990,
+            "processed": 5029
+          },
+          {
+            "t": 31,
+            "sent": 4995,
+            "processed": 4796
+          },
+          {
+            "t": 32,
+            "sent": 4990,
+            "processed": 5272
+          },
+          {
+            "t": 33,
+            "sent": 5000,
+            "processed": 4648
+          },
+          {
+            "t": 34,
+            "sent": 5010,
+            "processed": 5254
+          },
+          {
+            "t": 35,
+            "sent": 5005,
+            "processed": 3232
+          },
+          {
+            "t": 36,
+            "sent": 5010,
+            "processed": 3400
+          },
+          {
+            "t": 37,
+            "sent": 4980,
+            "processed": 3000
+          },
+          {
+            "t": 38,
+            "sent": 5015,
+            "processed": 3000
+          },
+          {
+            "t": 39,
+            "sent": 4990,
+            "processed": 2600
+          },
+          {
+            "t": 40,
+            "sent": 5025,
+            "processed": 3400
+          },
+          {
+            "t": 41,
+            "sent": 4960,
+            "processed": 6007
+          },
+          {
+            "t": 42,
+            "sent": 5040,
+            "processed": 7193
+          },
+          {
+            "t": 43,
+            "sent": 4975,
+            "processed": 7000
+          },
+          {
+            "t": 44,
+            "sent": 5015,
+            "processed": 7400
+          },
+          {
+            "t": 45,
+            "sent": 5000,
+            "processed": 7000
+          },
+          {
+            "t": 46,
+            "sent": 4975,
+            "processed": 6200
+          },
+          {
+            "t": 47,
+            "sent": 5005,
+            "processed": 5524
+          },
+          {
+            "t": 48,
+            "sent": 5040,
+            "processed": 4862
+          },
+          {
+            "t": 49,
+            "sent": 5000,
+            "processed": 5232
+          },
+          {
+            "t": 50,
+            "sent": 4995,
+            "processed": 5018
+          },
+          {
+            "t": 51,
+            "sent": 5000,
+            "processed": 4712
+          },
+          {
+            "t": 52,
+            "sent": 4995,
+            "processed": 5191
+          },
+          {
+            "t": 53,
+            "sent": 4970,
+            "processed": 5182
+          },
+          {
+            "t": 54,
+            "sent": 5030,
+            "processed": 4616
+          },
+          {
+            "t": 55,
+            "sent": 4990,
+            "processed": 5260
+          },
+          {
+            "t": 56,
+            "sent": 5015,
+            "processed": 4672
+          },
+          {
+            "t": 57,
+            "sent": 4995,
+            "processed": 5189
+          },
+          {
+            "t": 58,
+            "sent": 5005,
+            "processed": 5035
+          },
+          {
+            "t": 59,
+            "sent": 4995,
+            "processed": 4621
+          },
+          {
+            "t": 60,
+            "sent": 0,
+            "processed": 787
+          }
+        ]
+      },
+      "latencyMs": {
+        "e2e": {
+          "p50": 77,
+          "p90": 1196,
+          "p99": 2335,
+          "max": 2670,
+          "mean": 310.55,
+          "count": 299985
+        },
+        "e2eSource": "ui-push",
+        "alertStream": {
+          "p50": 76,
+          "p90": 1193,
+          "p99": 2334,
+          "max": 2669,
+          "mean": 309.71,
+          "count": 299985
+        },
+        "notification": null
+      },
+      "e2eCoverage": 1,
+      "targets": {
+        "p50": 50,
+        "p99": 250,
+        "lost": 0,
+        "met": false
+      },
+      "measurement": "Each event has a unique seq and send timestamp (Date.now() in this process, same host clock assumed). e2e = time this process receives the pub/sub UI push {type:alert,alertId} on alerting:ui:push minus the send time of the event that produced the alert (alertId -> eventId from alerting:alerts, eventId -> seq from alerting:events). alertStream = alerting:alerts stream-entry time (Redis server clock) minus send time. notification = Notification.createdAt (enqueue time in the engine) minus send time, read from the ui-channel {type:notification} push; null when no delivery worker is running. Send time is taken just before the HTTP batch is written, so it includes HTTP, XADD, parse worker, Postgres insert, engine and pub/sub. Latency covers events whose alert was observed; lost = events accepted (HTTP 202) with no alert observed after the drain."
     }
-  ]
+  ],
+  "repeatKeys": {
+    "events": 500,
+    "probes": 1,
+    "accepted": 500,
+    "alerts": 1,
+    "count": 500,
+    "ok": true
+  }
 }

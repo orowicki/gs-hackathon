@@ -138,6 +138,6 @@ All variables have defaults, so the stack runs without any configuration. Overri
 
 ## Performance
 
-Load test at 5000 ev/s for 60 s (local mode, current code): both configurations are overloaded. Sustainable throughput is 519.3 ev/s with 1 worker and 930.4 ev/s with 2 workers (about 1.8x); backlog at end 237354 and 187821 events, 0 lost. Latency is dominated by queueing (e2e p50 63843 ms and 66533 ms), so the targets (p50 < 50 ms, p99 < 250 ms) are not met.
-Before the engine dedup merge (#61) 2 workers sustained 5000 ev/s with p50 9 ms and p99 531 ms (medians of 3 windows); the regression is in the engine, outside #31.
-Details, caveats and how to re-run (`just loadtest`): [docs/performance.md](docs/performance.md). Raw results: [1 worker](results/loadtest-2026-11-21.json), [2 workers](results/loadtest-2026-11-21-workers2.json).
+Load test (local mode, 3 x 60 s windows, commit 37330d5): at 1000 ev/s with 1 worker e2e p50 is 24 ms and p99 40 ms (targets met). At 5000 ev/s both 1 and 2 workers keep up (about 4995 ev/s processed), with no overload, backlog 0 and 0 lost; e2e p50 is 67 ms (1 worker) and 56 ms (2 workers), p99 1342 ms and 373 ms, so p50 < 50 ms and p99 < 250 ms are not met at that rate. Dedup counts repeats exactly (500 identical events give one alert with count 500).
+History: before the engine dedup merge (#61) 2 workers had p50 9 ms at 5000 ev/s; after it and before #137 the engine was overloaded (519 and 930 ev/s sustainable); #137 fixed that.
+Details, caveats and how to re-run (`just loadtest`): [docs/performance.md](docs/performance.md). Raw results: [1 worker, 1000 ev/s](results/loadtest-2026-11-21-rate1000.json), [1 worker, 5000 ev/s](results/loadtest-2026-11-21.json), [2 workers, 5000 ev/s](results/loadtest-2026-11-21-workers2.json).
