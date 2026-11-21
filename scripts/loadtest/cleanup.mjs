@@ -39,7 +39,7 @@ export async function purgeRedis(redis, patterns = REDIS_PATTERNS) {
 export const PG_STATEMENTS = [
   ["alert_audit", `DELETE FROM alert_audit WHERE alert_id IN (SELECT id FROM alerts WHERE rule_id LIKE $1)`],
   ["suggestions", `DELETE FROM suggestions WHERE rule_id LIKE $1 OR alert_id IN (SELECT id FROM alerts WHERE rule_id LIKE $1)`],
-  // also drops the engine's open-key mappings of those rules (alert_open_keys, migration 005)
+  // also drops the engine's open-key mappings of those rules (alert_open_keys, migration 006)
   ["alerts", `WITH k AS (DELETE FROM alert_open_keys WHERE rule_id LIKE $1) DELETE FROM alerts WHERE rule_id LIKE $1`],
   ["events", `DELETE FROM events WHERE source_id LIKE $1`],
 ];

@@ -51,7 +51,7 @@ export interface AlertRepo {
   ): Promise<Alert | null>;
 }
 
-// Same as migration 005 (minus the seed from existing open alerts).
+// Same as migration 006 (minus the seed from existing open alerts).
 const ENSURE_SQL = [
   "ALTER TABLE alerts ADD COLUMN IF NOT EXISTS severity_raised_by text",
   "CREATE TABLE IF NOT EXISTS alert_open_keys (rule_id text NOT NULL, dedup_key text NOT NULL, alert_id text NOT NULL, PRIMARY KEY (rule_id, dedup_key))",
@@ -163,7 +163,7 @@ export function createPgAlertRepo(
   const maxInFlight = Math.max(1, opts.maxInFlight ?? 4);
   const maxWaitMs = opts.maxWaitMs ?? 30_000;
   const log = opts.logger ?? console;
-  // Normally migration 005 has run; this only covers databases created from the bare table DDL.
+  // Normally migration 006 has run; this only covers databases created from the bare table DDL.
   let ready: Promise<void> | undefined;
   const ensure = () =>
     (ready ??= (async () => {
@@ -184,7 +184,7 @@ export function createPgAlertRepo(
       // fail fast with the same error for `retryMs`, then allow one new attempt (transient PG errors heal)
       setTimeout(() => (ready = undefined), retryMs).unref();
       log.error(
-        `dedup: alerts schema (migration 005) missing and could not be applied: ${(err as Error).message}`,
+        `dedup: alerts schema (migration 006) missing and could not be applied: ${(err as Error).message}`,
       );
       throw err;
     }));

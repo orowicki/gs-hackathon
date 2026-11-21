@@ -101,7 +101,7 @@ Notification push stats are missing for some windows because notifications are e
 ### What changed (#137)
 
 - Batched, concurrent engine runner: `XREADGROUP COUNT 200` with read-ahead, running events concurrently while keeping order per (rule, dedupKey).
-- Lock-free dedup: a Redis `SET NX` claim per event, then one multi-row Postgres statement that claims the key in `alert_open_keys` (`INSERT ... ON CONFLICT`) and inserts or bumps the alert (migration `005_alert_open_keys.sql`; no constraint on other writers of `alerts`).
+- Lock-free dedup: a Redis `SET NX` claim per event, then one multi-row Postgres statement that claims the key in `alert_open_keys` (`INSERT ... ON CONFLICT`) and inserts or bumps the alert (migration `006_alert_open_keys.sql`; no constraint on other writers of `alerts`).
 - Redis auto-pipelining, so concurrent commands share round trips.
 - One `XACK` per tick instead of one per entry.
 - `ENGINE_PG_POOL_MAX` env var for the engine Postgres pool (default 10; mind `max_connections` times the number of engines).
