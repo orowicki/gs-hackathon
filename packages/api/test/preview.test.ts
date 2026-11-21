@@ -115,7 +115,7 @@ describe.skipIf(!process.env.REDIS_URL)("createRedisPreview (real Redis)", () =>
     const redis = new Redis(process.env.REDIS_URL!);
     const stream = `test:preview:${Date.now()}:${Math.random().toString(36).slice(2)}`;
     const dups: Redis[] = [];
-    const spy = { duplicate: () => { const d = redis.duplicate(); dups.push(d); return d; } };
+    const spy = { duplicate: (o?: object) => { const d = redis.duplicate(o); dups.push(d); return d; } };
     const p = createRedisPreview({ redis: spy, config: { get: (async () => source) as never }, stream, blockMs: 500 });
     const got: RawMessage[] = [];
     const ac = new AbortController();
@@ -137,6 +137,36 @@ describe.skipIf(!process.env.REDIS_URL)("createRedisPreview (real Redis)", () =>
       expect(dups[0]!.status).toBe("end");
     } finally {
       ac.abort();
+      await redis.del(stream);
+      redis.disconnect();
+    }
+  });
+
+  it("works when the base connection uses the app's options (lazy, no offline queue)", async () => {
+    // Exactly the options packages/api/src/main.ts gives the main connection.
+    const redis = new Redis(process.env.REDIS_URL!, {
+      lazyConnect: true,
+      connectTimeout: 1500,
+      maxRetriesPerRequest: 1,
+      enableOfflineQueue: false,
+      retryStrategy: (times) => Math.min(times * 500, 5000),
+    });
+    redis.on("error", () => undefined);
+    await redis.connect();
+    const stream = `test:preview:app:${Date.now()}:${Math.random().toString(36).slice(2)}`;
+    const p = createRedisPreview({ redis, config: { get: (async () => source) as never }, stream, blockMs: 500 });
+    const got: RawMessage[] = [];
+    const ac = new AbortController();
+    const done = Promise.resolve(p.tail("s1", (m) => got.push(m), ac.signal));
+    try {
+      for (let i = 0; i < 100 && got.length === 0; i++) {
+        await redis.xadd(stream, "*", "data", JSON.stringify({ sourceId: "s1", receivedAt: new Date().toISOString(), raw: '{"a":1}' }));
+        await new Promise((r) => setTimeout(r, 50));
+      }
+      expect(got.length).toBeGreaterThan(0);
+    } finally {
+      ac.abort();
+      await done;
       await redis.del(stream);
       redis.disconnect();
     }

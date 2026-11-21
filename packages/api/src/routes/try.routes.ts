@@ -6,6 +6,9 @@ import { PARSER_TYPES, type JsonObject, type ParserConfig } from "@alerting/shar
 import type { RouteModule } from "../http.js";
 import { BodyError, readJsonBody, sendBodyError, sendJson } from "./common.js";
 
+/** Cap on the sample so a pathological regex cannot pin the API thread for long. */
+export const MAX_SAMPLE_BYTES = 8192;
+
 const isObject = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
 
 class BadRequest extends Error {
@@ -62,6 +65,7 @@ export default {
       if (path === "/api/sources/test") {
         const parser = validateParser(body.parser);
         if (typeof body.sample !== "string") throw new BadRequest("sample must be a string");
+        if (Buffer.byteLength(body.sample) > MAX_SAMPLE_BYTES) throw new BadRequest("sample too long");
         sendJson(res, 200, { parsed: parse(body.sample, parser) });
       } else {
         const schema = validateSchema(body.schema);

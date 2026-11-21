@@ -149,8 +149,9 @@ export function createPgEventList(pool: Pool): EventList {
     schema_id: string | null;
     common: unknown;
   }
-  // Compare at millisecond precision so it matches the ISO cursor.
-  const ts = "date_trunc('milliseconds', received_at)";
+  // Ingest writes received_at from JS ISO strings (millisecond precision), so the raw column
+  // matches the ISO cursor and the received_at index stays usable.
+  const ts = "received_at";
   return {
     async list({ before, limit }) {
       const where = before ? `WHERE (${ts}, id) < ($2::timestamptz, $3)` : "";

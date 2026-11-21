@@ -24,12 +24,16 @@ export function createRedisPreview(opts: RedisPreviewOptions): PreviewDeps {
     },
     async tail(sourceId: string, onMessage: (m: RawMessage) => void, signal: AbortSignal): Promise<void> {
       if (signal.aborted) return;
-      const conn = opts.redis.duplicate();
+      // Override the base connection's options: the app's main connection is lazy with no offline
+      // queue and a request retry cap, which would break a dedicated blocking reader.
+      const conn = opts.redis.duplicate({ lazyConnect: true, enableOfflineQueue: true, maxRetriesPerRequest: null });
       conn.on("error", () => undefined);
       // Closing the connection also ends a blocked XREAD at once (QUIT would queue behind it).
       const close = (): void => conn.disconnect();
       signal.addEventListener("abort", close, { once: true });
       try {
+        await conn.connect();
+        if (signal.aborted) return;
         // Resolve "$" to a concrete id once so nothing is missed between two reads.
         const last = (await conn.xrevrange(stream, "+", "-", "COUNT", 1)) as [string, string[]][];
         let lastId = last[0]?.[0] ?? "0-0";

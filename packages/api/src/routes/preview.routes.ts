@@ -18,7 +18,8 @@ declare module "../http.js" {
 }
 
 const PATH = /^\/api\/sources\/([^/]+)\/preview$/;
-let active = 0;
+const MIN_PING_MS = 1000;
+const activeByDeps = new WeakMap<object, { n: number }>();
 
 export default {
   name: "preview",
@@ -32,18 +33,21 @@ export default {
     if (id === undefined) return send(res, 400, { error: "bad id" }), true;
     const source = await preview.getSource(id);
     if (!source) return send(res, 404, { error: "source not found" }), true;
-    if (active >= (deps.previewMaxConnections ?? 20)) {
+    let counter = activeByDeps.get(deps);
+    if (!counter) activeByDeps.set(deps, (counter = { n: 0 }));
+    const slots = counter;
+    if (slots.n >= (deps.previewMaxConnections ?? 20)) {
       return send(res, 503, { error: "too many preview streams" }), true;
     }
-    active++;
+    slots.n++;
     const ac = new AbortController();
     let closed = false;
-    const ping = setInterval(() => safeWrite(": ping\n\n"), deps.previewPingMs ?? SSE_PING_MS);
+    const ping = setInterval(() => safeWrite(": ping\n\n"), Math.max(MIN_PING_MS, deps.previewPingMs ?? SSE_PING_MS));
     ping.unref();
     const cleanup = (): void => {
       if (closed) return;
       closed = true;
-      active--;
+      slots.n--;
       clearInterval(ping);
       ac.abort();
     };
@@ -59,15 +63,15 @@ export default {
         cleanup();
       }
     };
+    req.on("close", cleanup);
+    res.on("close", cleanup);
+    res.on("error", cleanup);
     res.writeHead(200, {
       "content-type": "text/event-stream",
       "cache-control": "no-cache",
       connection: "keep-alive",
       "x-accel-buffering": "no",
     });
-    req.on("close", cleanup);
-    res.on("close", cleanup);
-    res.on("error", cleanup);
     res.write("retry: 3000\n\n: connected\n\n");
     const onMessage = (msg: { receivedAt: string; raw: string }): void => {
       let parsed;
@@ -81,8 +85,9 @@ export default {
     void (async () => {
       try {
         await preview.tail(id, onMessage, ac.signal);
-      } catch {
+      } catch (err) {
         // tail failed (e.g. Redis down): end the stream; the client reconnects via EventSource retry.
+        console.error(`preview tail for source ${id} failed:`, (err as Error).message);
       } finally {
         cleanup();
         if (!res.writableEnded && !res.destroyed) res.end();

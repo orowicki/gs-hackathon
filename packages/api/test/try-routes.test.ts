@@ -35,6 +35,12 @@ const schema = {
 };
 
 describe("POST /api/sources/test", () => {
+  it("rejects an oversized sample", async () => {
+    const r = await post("/api/sources/test", { parser: { type: "json" }, sample: "x".repeat(8193) });
+    expect(r.status).toBe(400);
+    expect(r.json.error).toBe("sample too long");
+  });
+
   it("json", async () => {
     const r = await post("/api/sources/test", { parser: { type: "json" }, sample: JSON.stringify(event) });
     expect(r.status).toBe(200);

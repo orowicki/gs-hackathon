@@ -23,8 +23,7 @@ export default {
     }
     const recentEvents = deps.recentEvents;
     if (!recentEvents) return false;
-    if (path !== "/api/events/recent" && path !== "/api/events/test-filter")
-      return false;
+    if (path !== "/api/events/recent" && path !== "/api/events/test-filter") return false;
     return handleEventsRoutes(req, res, path, url, { recentEvents });
   },
 } satisfies RouteModule;

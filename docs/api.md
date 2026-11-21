@@ -3050,7 +3050,7 @@ Type: [SourceBase](#schema-sourcebase) & { type: "http", config: object } \| [So
 | name | type | required | description |
 | --- | --- | --- | --- |
 | `parser` | [ParserConfig](#schema-parserconfig) | yes |  |
-| `sample` | string | yes |  |
+| `sample` | string | yes | One raw message to parse; at most 8192 bytes (longer is rejected with 400) |
 
 <a id="schema-sourcetestresponse"></a>
 
