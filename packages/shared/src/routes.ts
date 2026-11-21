@@ -26,6 +26,11 @@ export const ROUTES: RouteDef[] = [
   { method: "GET", path: "/health", summary: "Liveness and dependency check", tag: "system" },
   { method: "GET", path: "/api/openapi.json", summary: "This OpenAPI document", tag: "system" },
 
+  { method: "POST", path: "/api/accounts", summary: "Create an account (a Person without rule-creation permission)", tag: "accounts", request: "AccountCreate", response: "Person" },
+  { method: "POST", path: "/api/session", summary: "Sign in as a person (no password); sets the session cookie", tag: "accounts", request: "SessionCreate", response: "Person" },
+  { method: "GET", path: "/api/session", summary: "The signed-in person (session cookie or X-Account header)", tag: "accounts", response: "Person" },
+  { method: "DELETE", path: "/api/session", summary: "Sign out (ends the session, clears the cookie)", tag: "accounts" },
+
   { method: "POST", path: "/ingest/{sourceId}", summary: "Ingest one JSON object, a JSON array or NDJSON into an http source", tag: "ingest", request: "JsonObject | JsonObject[] | NDJSON" },
   { method: "GET", path: "/api/sources/{id}/preview", summary: "Live preview of incoming raw and parsed messages (SSE)", tag: "sources", response: "Event (text/event-stream)" },
 

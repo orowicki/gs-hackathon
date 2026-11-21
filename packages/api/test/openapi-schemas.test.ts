@@ -185,7 +185,7 @@ describe("openapi document", () => {
     expect(failures).toEqual([]);
   });
 
-  it("the operations marked x-not-implemented are exactly the four without a handler (update when #108 lands)", () => {
+  it("no operation is marked x-not-implemented", () => {
     const marked = operations(doc)
       .filter(({ op }) => op["x-not-implemented"] === true)
       .map(({ method, path, op }) => {
@@ -193,9 +193,7 @@ describe("openapi document", () => {
         return `${method.toUpperCase()} ${path}`;
       })
       .sort();
-    expect(marked).toEqual(
-      ["GET /api/events", "GET /api/sources/{id}/preview", "POST /api/schemas/test", "POST /api/sources/test"].sort(),
-    );
+    expect(marked).toEqual([]);
   });
 
   it("docs/api.md is up to date", () => {
@@ -458,6 +456,12 @@ describe.skipIf(!hasInfra)("handler conformance", () => {
     await call("POST /api/filters/format", { body: { tree } });
   });
 
+  it("try routes: source and schema test", async () => {
+    for (const name of exampleNames("POST /api/sources/test"))
+      await call("POST /api/sources/test", { body: example("POST /api/sources/test", name) });
+    await call("POST /api/schemas/test", { body: example("POST /api/schemas/test") });
+  });
+
   it("alerts: list, get, ack, resolve, audit", async () => {
     const stores = createPgAlertStores(pool);
     const mk = (i: number): Alert => {
@@ -521,6 +525,8 @@ describe.skipIf(!hasInfra)("handler conformance", () => {
       "GET /api/rules/{id}/export",
       "POST /api/filters/parse",
       "POST /api/filters/format",
+      "POST /api/sources/test",
+      "POST /api/schemas/test",
       "GET /api/alerts",
       "GET /api/alerts/summary",
       "GET /api/alerts/{id}",

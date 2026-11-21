@@ -215,5 +215,13 @@ export function createMockSource(intervalMs = MOCK_PUSH_INTERVAL_MS): FeedSource
       alerts.set(id, next);
       return Promise.resolve(next);
     },
+    unack(id) {
+      const a = alerts.get(id);
+      if (!a) return Promise.reject(new Error("No such alert: " + id));
+      if (a.state !== "acknowledged") return Promise.reject(new Error("Only acknowledged alerts can be unacknowledged"));
+      const next = { ...a, state: "open", acknowledgedAt: undefined, acknowledgedBy: undefined } as Alert;
+      alerts.set(id, next);
+      return Promise.resolve(next);
+    },
   };
 }

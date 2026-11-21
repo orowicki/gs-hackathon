@@ -1,3 +1,4 @@
+import { useCurrentPerson } from "../../account";
 import { useEffect, useMemo, useState } from "react";
 import type { ChannelId, Severity } from "../../../../shared/src/types/common";
 import type { Person, PreferenceRule } from "../../../../shared/src/types/people";
@@ -36,7 +37,9 @@ export function MyNotificationsPage() {
   const tz = useMemo(browserTimezone, []);
   const [people, setPeople] = useState<Person[] | undefined>();
   const [peopleError, setPeopleError] = useState<string | undefined>();
-  const [personId, setPersonId] = useState<string | undefined>(() => parseStoredProfile(localStorage.getItem(PROFILE_KEY)));
+  const [storedId, setPersonId] = useState<string | undefined>(() => parseStoredProfile(localStorage.getItem(PROFILE_KEY)));
+  // The signed-in account's notifications; the stored profile is the fallback without accounts.
+  const personId = useCurrentPerson()?.id ?? storedId;
   const [grid, setGrid] = useState<Grid>(() => defaultGrid());
   const [quiet, setQuiet] = useState<QuietForm>(() => defaultQuiet(tz));
   const [lossy, setLossy] = useState(false);

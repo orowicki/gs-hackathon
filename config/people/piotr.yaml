@@ -1,0 +1,5 @@
+id: piotr
+name: Piotr Kowalczyk
+role: Counterparty support
+canCreateRules: false
+ntfyTopic: alerting-piotr

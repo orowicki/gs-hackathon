@@ -18,6 +18,8 @@ import { createUiPushHub } from "./stream/sse.js";
 import { createRunbookRuntime } from "./runbooks-runtime.js";
 import { createPgAlertStores, createPgEventLoader } from "./routes/alerts/store.js";
 import { createRedisRecentEvents } from "./routes/events/http.js";
+import { createPgEventList } from "./routes/events/list.js";
+import { createRedisPreview } from "./routes/preview.routes.js";
 
 const port = Number(process.env.PORT ?? 3000);
 
@@ -135,6 +137,7 @@ const server = createServer({
   runbooks: runbookRegistry ? createRunbookRoutes({ runner, registry: runbookRegistry, loadAlert: runtime.loadAlert, loadEvent: runtime.loadEvent }) : undefined,
   delivery,
   config,
+  pool,
   subscribeUiPush(onMessage) {
     return uiHub.subscribe(onMessage);
   },
@@ -150,6 +153,8 @@ const server = createServer({
     },
   },
   recentEvents: createRedisRecentEvents(redis),
+  eventList: createPgEventList(pool),
+  preview: config ? createRedisPreview({ redis, config }) : undefined,
   async checkPostgres() {
     await pool.query("SELECT 1");
     return true;

@@ -6,6 +6,81 @@ This page is generated from the OpenAPI document served at `/api/openapi.json`. 
 
 OpenAPI 3.1.0, API version 0.0.0.
 
+## accounts
+
+### POST `/api/accounts`
+
+Create an account (a Person without rule-creation permission)
+
+**Request body** (required)
+
+Media type `application/json`: [AccountCreate](#schema-accountcreate)
+
+Example `newcomer` (A new account):
+
+```json
+{
+  "name": "Piotr Lis",
+  "role": "Pricing engineer"
+}
+```
+
+**Responses**
+
+| status | media type | schema | description |
+| --- | --- | --- | --- |
+| 201 | `application/json` | [Person](#schema-person) | The created Person (canCreateRules false) |
+| 400 | `application/json` | [Error](#schema-error) | Bad request (invalid id, body, filter or parameter) |
+| 413 | `application/json` | [Error](#schema-error) | Payload too large |
+| 503 | `application/json` | [Error](#schema-error) | Dependency or component not configured |
+
+### GET `/api/session`
+
+The signed-in person (session cookie or X-Account header)
+
+**Responses**
+
+| status | media type | schema | description |
+| --- | --- | --- | --- |
+| 200 | `application/json` | [Person](#schema-person) | The signed-in person (cookie, or X-Account: <personId> header for API clients) |
+| 401 | `application/json` | [Error](#schema-error) | Not signed in |
+
+### POST `/api/session`
+
+Sign in as a person (no password); sets the session cookie
+
+**Request body** (required)
+
+Media type `application/json`: [SessionCreate](#schema-sessioncreate)
+
+Example `anna` (Sign in as Anna):
+
+```json
+{
+  "personId": "anna"
+}
+```
+
+**Responses**
+
+| status | media type | schema | description |
+| --- | --- | --- | --- |
+| 200 | `application/json` | [Person](#schema-person) | The person; the session cookie alerting_session is set (HttpOnly, SameSite=Lax, Path=/) |
+| 400 | `application/json` | [Error](#schema-error) | Bad request (invalid id, body, filter or parameter) |
+| 404 | `application/json` | [Error](#schema-error) | Not found |
+| 413 | `application/json` | [Error](#schema-error) | Payload too large |
+| 503 | `application/json` | [Error](#schema-error) | Dependency or component not configured |
+
+### DELETE `/api/session`
+
+Sign out (ends the session, clears the cookie)
+
+**Responses**
+
+| status | media type | schema | description |
+| --- | --- | --- | --- |
+| 204 |  |  | Signed out; the cookie is cleared |
+
 ## alerts
 
 ### GET `/api/alerts`
@@ -293,24 +368,24 @@ Retry a dead letter now
 
 ### GET `/api/events`
 
-**NOT IMPLEMENTED YET** (issue #108): the server currently answers 404.
-
 List stored events (filter, limit, before)
 
 **Parameters**
 
 | name | in | type | required | description |
 | --- | --- | --- | --- | --- |
-| `filter` | query | string | no | Filter expression text |
+| `filter` | query | string | no | Filter expression text (takes precedence over `tree`) |
+| `tree` | query | string | no | Filter tree as a JSON-encoded string |
 | `limit` | query | integer | no | Page size (default 50); clamped to 1..200, a non-numeric value falls back to the default |
-| `before` | query | string | no | Opaque cursor from the x-next-before response header of the previous page (events) |
+| `before` | query | string | no | Opaque cursor from the x-next-before response header of the previous page (events). Base64url JSON of the last row's receivedAt and id; an invalid cursor is a 400 |
 
 **Responses**
 
 | status | media type | schema | description |
 | --- | --- | --- | --- |
-| 200 | `application/json` | [Event](#schema-event)[] | Stored events, newest first |
+| 200 | `application/json` | [Event](#schema-event)[] | Stored events, newest first (receivedAt desc, id desc). With a filter, at most 5000 events are scanned per request; x-next-before is then sent whenever the scan stopped early |
 | 400 | `application/json` | [Error](#schema-error) | Bad request (invalid id, body, filter or parameter) |
+| 503 | `application/json` | [Error](#schema-error) | Dependency or component not configured |
 
 ### GET `/api/events/recent`
 
@@ -592,6 +667,7 @@ Example `pricingTeam` (Pricing team):
 | --- | --- | --- | --- |
 | 201 | `application/json` | [Group](#schema-group) | The created Group (echo of the request body) |
 | 400 | `application/json` | [Error](#schema-error) | Bad request (invalid id, body, filter or parameter) |
+| 403 | `application/json` | [Error](#schema-error) | The account is not allowed to do this |
 | 409 | `application/json` | [Error](#schema-error) | Conflict with the current state |
 | 413 | `application/json` | [Error](#schema-error) | Payload too large |
 | 503 | `application/json` | [Error](#schema-error) | Dependency or component not configured |
@@ -651,6 +727,7 @@ Example `ratesDesk` (Add a member (path id rates-desk)):
 | --- | --- | --- | --- |
 | 200 | `application/json` | [Group](#schema-group) | The replaced Group |
 | 400 | `application/json` | [Error](#schema-error) | Bad request (invalid id, body, filter or parameter) |
+| 403 | `application/json` | [Error](#schema-error) | The account is not allowed to do this |
 | 404 | `application/json` | [Error](#schema-error) | Not found |
 | 413 | `application/json` | [Error](#schema-error) | Payload too large |
 | 503 | `application/json` | [Error](#schema-error) | Dependency or component not configured |
@@ -671,6 +748,7 @@ Delete a Group
 | --- | --- | --- | --- |
 | 204 |  |  | Group deleted |
 | 400 | `application/json` | [Error](#schema-error) | Bad request (invalid id, body, filter or parameter) |
+| 403 | `application/json` | [Error](#schema-error) | The account is not allowed to do this |
 | 404 | `application/json` | [Error](#schema-error) | Not found |
 | 503 | `application/json` | [Error](#schema-error) | Dependency or component not configured |
 
@@ -802,6 +880,7 @@ Example `ewa` (Ewa):
 | --- | --- | --- | --- |
 | 201 | `application/json` | [Person](#schema-person) | The created Person (echo of the request body) |
 | 400 | `application/json` | [Error](#schema-error) | Bad request (invalid id, body, filter or parameter) |
+| 403 | `application/json` | [Error](#schema-error) | The account is not allowed to do this |
 | 409 | `application/json` | [Error](#schema-error) | Conflict with the current state |
 | 413 | `application/json` | [Error](#schema-error) | Payload too large |
 | 503 | `application/json` | [Error](#schema-error) | Dependency or component not configured |
@@ -859,6 +938,7 @@ Example `anna` (Change Anna's role (path id anna)):
 | --- | --- | --- | --- |
 | 200 | `application/json` | [Person](#schema-person) | The replaced Person |
 | 400 | `application/json` | [Error](#schema-error) | Bad request (invalid id, body, filter or parameter) |
+| 403 | `application/json` | [Error](#schema-error) | The account is not allowed to do this |
 | 404 | `application/json` | [Error](#schema-error) | Not found |
 | 413 | `application/json` | [Error](#schema-error) | Payload too large |
 | 503 | `application/json` | [Error](#schema-error) | Dependency or component not configured |
@@ -879,6 +959,7 @@ Delete a Person
 | --- | --- | --- | --- |
 | 204 |  |  | Person deleted |
 | 400 | `application/json` | [Error](#schema-error) | Bad request (invalid id, body, filter or parameter) |
+| 403 | `application/json` | [Error](#schema-error) | The account is not allowed to do this |
 | 404 | `application/json` | [Error](#schema-error) | Not found |
 | 503 | `application/json` | [Error](#schema-error) | Dependency or component not configured |
 
@@ -1171,6 +1252,7 @@ Example `annaCritical` (Anna personal rule (filter as JSON tree)):
 | --- | --- | --- | --- |
 | 201 | `application/json` | [Rule](#schema-rule) | The created Rule (echo of the request body) |
 | 400 | `application/json` | [Error](#schema-error) | Bad request (invalid id, body, filter or parameter) |
+| 403 | `application/json` | [Error](#schema-error) | The account is not allowed to do this |
 | 409 | `application/json` | [Error](#schema-error) | Conflict with the current state |
 | 413 | `application/json` | [Error](#schema-error) | Payload too large |
 | 503 | `application/json` | [Error](#schema-error) | Dependency or component not configured |
@@ -1251,6 +1333,7 @@ Example `rates` (Disable Team Rates (path id rates-trade-rejected)):
 | --- | --- | --- | --- |
 | 200 | `application/json` | [Rule](#schema-rule) | The replaced Rule |
 | 400 | `application/json` | [Error](#schema-error) | Bad request (invalid id, body, filter or parameter) |
+| 403 | `application/json` | [Error](#schema-error) | The account is not allowed to do this |
 | 404 | `application/json` | [Error](#schema-error) | Not found |
 | 413 | `application/json` | [Error](#schema-error) | Payload too large |
 | 503 | `application/json` | [Error](#schema-error) | Dependency or component not configured |
@@ -1271,6 +1354,7 @@ Delete a Rule
 | --- | --- | --- | --- |
 | 204 |  |  | Rule deleted |
 | 400 | `application/json` | [Error](#schema-error) | Bad request (invalid id, body, filter or parameter) |
+| 403 | `application/json` | [Error](#schema-error) | The account is not allowed to do this |
 | 404 | `application/json` | [Error](#schema-error) | Not found |
 | 503 | `application/json` | [Error](#schema-error) | Dependency or component not configured |
 
@@ -1794,8 +1878,6 @@ Example `metricBreach` (Prometheus style metric breach):
 
 ### POST `/api/schemas/test`
 
-**NOT IMPLEMENTED YET** (issue #108): the server currently answers 404.
-
 Try a schema/mapping against a pasted sample; returns the mapped common fields
 
 **Request body** (required)
@@ -1881,6 +1963,7 @@ Example `workflowFailed` (Try the workflow schema on the Appendix A sample):
 | --- | --- | --- | --- |
 | 200 | `application/json` | [SchemaTestResponse](#schema-schematestresponse) | Whether the sample matched and the mapped common fields |
 | 400 | `application/json` | [Error](#schema-error) | Bad request (invalid id, body, filter or parameter) |
+| 413 | `application/json` | [Error](#schema-error) | Payload too large |
 
 ### GET `/api/schemas/{id}`
 
@@ -2099,8 +2182,6 @@ Example `redisStream` (Redis stream source):
 
 ### POST `/api/sources/test`
 
-**NOT IMPLEMENTED YET** (issue #108): the server currently answers 404.
-
 Try a parser on a sample line; returns the parsed fields
 
 **Request body** (required)
@@ -2135,6 +2216,7 @@ Example `logfmt` (logfmt parser):
 | --- | --- | --- | --- |
 | 200 | `application/json` | [SourceTestResponse](#schema-sourcetestresponse) | The parsed fields |
 | 400 | `application/json` | [Error](#schema-error) | Bad request (invalid id, body, filter or parameter) |
+| 413 | `application/json` | [Error](#schema-error) | Payload too large |
 
 ### GET `/api/sources/{id}`
 
@@ -2217,8 +2299,6 @@ Delete a Source
 
 ### GET `/api/sources/{id}/preview`
 
-**NOT IMPLEMENTED YET** (issue #108): the server currently answers 404.
-
 Live preview of incoming raw and parsed messages (SSE)
 
 **Parameters**
@@ -2232,7 +2312,9 @@ Live preview of incoming raw and parsed messages (SSE)
 | status | media type | schema | description |
 | --- | --- | --- | --- |
 | 200 | `text/event-stream` | string | Server-sent events: each `data:` line is JSON with the raw and parsed message |
+| 400 | `application/json` | [Error](#schema-error) | Bad request (invalid id, body, filter or parameter) |
 | 404 | `application/json` | [Error](#schema-error) | Not found |
+| 503 | `application/json` | [Error](#schema-error) | Dependency or component not configured |
 
 ## stream
 
@@ -2552,6 +2634,15 @@ Export a source as YAML
 | 503 | `application/json` | [Error](#schema-error) | Dependency or component not configured |
 
 ## Schemas
+
+<a id="schema-accountcreate"></a>
+
+### AccountCreate
+
+| name | type | required | description |
+| --- | --- | --- | --- |
+| `name` | string | yes |  |
+| `role` | string \| null | no |  |
 
 <a id="schema-alert"></a>
 
@@ -3022,6 +3113,14 @@ Type: { action: "http", name?: string, method: string, url: string, headers?: ma
 | `matched` | boolean | yes |  |
 | `common` | [CommonFields](#schema-commonfields) | yes |  |
 
+<a id="schema-sessioncreate"></a>
+
+### SessionCreate
+
+| name | type | required | description |
+| --- | --- | --- | --- |
+| `personId` | string | yes |  |
+
 <a id="schema-severity"></a>
 
 ### Severity
@@ -3052,7 +3151,7 @@ Type: [SourceBase](#schema-sourcebase) & { type: "http", config: object } \| [So
 | name | type | required | description |
 | --- | --- | --- | --- |
 | `parser` | [ParserConfig](#schema-parserconfig) | yes |  |
-| `sample` | string | yes |  |
+| `sample` | string | yes | One raw message to parse; at most 8192 bytes (longer is rejected with 400) |
 
 <a id="schema-sourcetestresponse"></a>
 

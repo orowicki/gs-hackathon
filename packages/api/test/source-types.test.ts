@@ -23,7 +23,7 @@ describe("source-types route", () => {
       sourceTypes: { type: string; configSchema: unknown }[];
       parserConfigSchema: unknown;
     };
-    expect(body.sourceTypes.map((s) => s.type).sort()).toEqual(["file_tail", "http", "redis_stream"]);
+    expect(body.sourceTypes.map((s) => s.type).sort()).toEqual(["file_tail", "http", "kafka", "redis_stream"]);
     for (const s of body.sourceTypes) expect(typeof s.configSchema).toBe("object");
     expect(typeof body.parserConfigSchema).toBe("object");
     expect(body.parserConfigSchema).not.toBeNull();

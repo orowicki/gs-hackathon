@@ -24,9 +24,9 @@ just down
 ```
 
 - `just up`: the first build takes roughly 1-2 minutes (image build and dependency install); later starts reuse the cache. It waits up to 120 s for `/health`, checks the host Node version, runs `npm ci` if `node_modules/yaml` is missing, then seeds. Seeding only creates what is missing and never overwrites, so edits survive a restart and a second run changes nothing (it prints `seed: created N, kept M`).
-- Seeded: the people (anna, ewa, julia, marek, tomasz), groups (pricing-team, rates-desk, settlements-oncall), the three Appendix A schemas and four rules, the three Appendix B runbooks (all from `config/`), three demo sources (`demo-http`, `demo-logs` tailing `/tmp/demo-logs/*.log` in the app container, `demo-stream` on Redis stream `demo:events`) and Anna's preference (critical to ui + ntfy, quiet hours 20:00-08:00 Europe/Warsaw, ui only).
+- Seeded: the people (anna, ewa, julia, marek, tomasz), groups (pricing-team, rates-desk, settlements-oncall), the three Appendix A schemas and four rules, the three Appendix B runbooks (all from `config/`), four demo sources (`demo-http`, `demo-logs` tailing `/tmp/demo-logs/*.log` in the app container, `demo-stream` on Redis stream `demo:events`, `demo-kafka` on Kafka topic `demo.events`) and Anna's preference (critical to ui + ntfy, quiet hours 20:00-08:00 Europe/Warsaw, ui only).
 - Open <http://localhost:3000> and pick a profile.
-- `just demo` first sends a fixed showcase (about 19 events, a few seconds), then about 2 random events/s until the 60 s are up (the showcase counts towards them), round-robin over HTTP (`POST /ingest/demo-http`), file tail and Redis stream. The showcase alone gives a feed with all four severities (critical, error, warning, info, at least 2 open alerts each), sources `payments-api`, `pricing-engine-emea`, `pricing-engine-apac`, `pricing-engine-staging`, `order-settlement` and `trade-gateway`, environments `prod` and `staging`, alerts that repeat (dedup count 3 for the payments critical) and alerts that resolve (a pricing latency and a staging payments critical). Every seeded rule fires (info comes from large rejected rates trades, staging from Anna's and Team Pricing's rules, which do not check the environment). The random part adds settlement failures, latency, rejected trades, resolved metrics, repeats and the odd unparseable line.
+- `just demo` first sends a fixed showcase (about 19 events, a few seconds), then about 2 random events/s until the 60 s are up (the showcase counts towards them), round-robin over HTTP (`POST /ingest/demo-http`), file tail, Redis stream and Kafka (the demo prints a warning and skips Kafka if the broker is not reachable). The showcase alone gives a feed with all four severities (critical, error, warning, info, at least 2 open alerts each), sources `payments-api`, `pricing-engine-emea`, `pricing-engine-apac`, `pricing-engine-staging`, `order-settlement` and `trade-gateway`, environments `prod` and `staging`, alerts that repeat (dedup count 3 for the payments critical) and alerts that resolve (a pricing latency and a staging payments critical). Every seeded rule fires (info comes from large rejected rates trades, staging from Anna's and Team Pricing's rules, which do not check the environment). The random part adds settlement failures, latency, rejected trades, resolved metrics, repeats and the odd unparseable line.
 - Options: `just demo --once` (one of each type through each source), `just demo --burst` (about 30 fresh random events as fast as possible, a few seconds, no showcase, no resolves; events for the same service still count as repeats), `just demo --no-showcase` (random events only), `just demo --rate 5 --duration 30`, `just demo --count 20` (showcase, then 20 random events). Sends through file_tail and Redis use `docker compose exec` and cost roughly 0.3-1 s each, so the real rate may be lower than requested. It prints per-source counts at the end; run it from the repo root.
 - Filters to try in the alerts list (`alert.*` reads the alert itself; bare names such as `type` or `payload.desk` read the original event). The counts below are for the showcase alone: the random phase adds more alerts on top, so counts grow, but the showcase alerts keep their state (random events never reuse their dedup keys):
   1. `alert.severity = critical`: 4 showcase alerts (payments-api prod, pricing-engine-apac, an order-settlement workflow, and the resolved staging payments-api critical).
@@ -36,6 +36,24 @@ just down
   5. `alert.count > 1`: the repeated alerts (payments-api critical, pricing-engine-apac latency, the confirm-settlement failure).
   Combine them, e.g. `alert.severity >= warning AND alert.environment = prod AND alert.status != resolved`.
 - Notifications on ntfy: <http://localhost:8080>, topics `alerting-<person>` (e.g. `alerting-anna`; see `ntfyTopic` in `config/people/`).
+
+### Kafka source
+
+`just up` also starts a single-node Redpanda broker (Kafka API, no ZooKeeper): `redpanda:9092` inside the compose network, `localhost:19092` from the host. A source of type `kafka` consumes one topic as a consumer group (offsets are committed after an event is accepted, so delivery is at-least-once):
+
+```json
+{ "id": "my-kafka", "name": "My Kafka", "enabled": true, "parser": { "type": "json" },
+  "type": "kafka", "config": { "brokers": "redpanda:9092", "topic": "demo.events", "groupId": "alerting" } }
+```
+
+Send a test message to the seeded `demo-kafka` source:
+
+```sh
+echo '{"alertname":"HighErrorRate","labels":{"service":"payments-api","region":"eu-west","severity":"critical"},"annotations":{"summary":"Error rate 27%"},"startsAt":"2026-11-21T10:00:00Z","status":"firing"}' \
+  | docker compose exec -T redpanda rpk topic produce demo.events
+```
+
+More in [docs/config-formats.md](docs/config-formats.md).
 
 ## What is mocked
 
@@ -112,6 +130,9 @@ All variables have defaults, so the stack runs without any configuration. Overri
 | `POSTGRES_DB` | `alerting` | Postgres database name |
 | `API_URL` | `http://localhost:3000` | Base URL used by the seed and demo scripts (host side) |
 | `DEMO_LOG_FILE` | unset | `just demo`: append file_tail lines to this local file instead of `/tmp/demo-logs/demo.log` in the app container |
+| `DEMO_KAFKA_BROKERS` | `localhost:19092` | `just demo`: Kafka brokers to produce to |
+| `SEED_KAFKA_BROKERS` | `redpanda:9092` | `just up` seed: brokers stored in the `demo-kafka` source (as seen from the containers) |
+| `KAFKA_BROKERS` | `localhost:19092` | Kafka integration test only |
 | `DEMO_REDIS_URL` | unset | `just demo`: XADD to this Redis directly instead of `docker compose exec redis` (Redis is not exposed to the host by default) |
 | `DEMO_RATE` / `DEMO_DURATION` / `DEMO_COUNT` | `2` / `60` / unset | Events per second, duration in seconds, event count (same as `--rate`, `--duration`, `--count`) |
 

@@ -87,22 +87,24 @@ const limitParam = (def: number, max: number): ParamSpec =>
 /** Config store routes can answer 503 when the store is not wired. */
 const CFG = [503];
 
-function crud(type: string, plural: string, base: string): Record<string, OperationSpec> {
+/** guarded: writes answer 403 for an account without canCreateRules (rules, people, groups). */
+function crud(type: string, plural: string, base: string, guarded = false): Record<string, OperationSpec> {
   const cap = type;
+  const G = guarded ? [403] : [];
   return {
     [`GET ${base}`]: { success: json(200, `All ${plural}`, list(cap)), errors: CFG },
     [`POST ${base}`]: {
       request: body(cap, true, `The id must be unique; "import", "export" and "test" are reserved ids.`),
       success: json(201, `The created ${cap} (echo of the request body)`, ref(cap)),
-      errors: [400, 409, 413, ...CFG],
+      errors: [400, ...G, 409, 413, ...CFG],
     },
     [`GET ${base}/{id}`]: { success: json(200, `The ${cap}`, ref(cap)), errors: [400, 404, ...CFG] },
     [`PUT ${base}/{id}`]: {
       request: body(cap, true, "The id in the body must equal the id in the path."),
       success: json(200, `The replaced ${cap}`, ref(cap)),
-      errors: [400, 404, 413, ...CFG],
+      errors: [400, ...G, 404, 413, ...CFG],
     },
-    [`DELETE ${base}/{id}`]: { success: { status: 204, description: `${cap} deleted` }, errors: [400, 404, ...CFG] },
+    [`DELETE ${base}/{id}`]: { success: { status: 204, description: `${cap} deleted` }, errors: [400, ...G, 404, ...CFG] },
   };
 }
 
@@ -134,6 +136,25 @@ export const operationSpecs: Record<string, OperationSpec> = {
   },
   "GET /api/openapi.json": { success: json(200, "This OpenAPI document", { type: "object" }), errors: [] },
 
+  "POST /api/accounts": {
+    request: body("AccountCreate"),
+    success: json(201, "The created Person (canCreateRules false)", ref("Person")),
+    errors: [400, 413, ...CFG],
+  },
+  "POST /api/session": {
+    request: body("SessionCreate"),
+    success: {
+      ...json(200, "The person; the session cookie alerting_session is set (HttpOnly, SameSite=Lax, Path=/)", ref("Person")),
+      headers: { "set-cookie": "alerting_session=<token>" },
+    },
+    errors: [400, 404, 413, ...CFG],
+  },
+  "GET /api/session": {
+    success: json(200, "The signed-in person (cookie, or X-Account: <personId> header for API clients)", ref("Person")),
+    errors: [401],
+  },
+  "DELETE /api/session": { success: { status: 204, description: "Signed out; the cookie is cleared" }, errors: [] },
+
   "POST /ingest/{sourceId}": {
     request: {
       required: true,
@@ -147,36 +168,33 @@ export const operationSpecs: Record<string, OperationSpec> = {
     errors: [400, 404, 413, 500],
   },
   "GET /api/sources/{id}/preview": {
-    notImplemented: true,
     success: {
       status: 200,
       description: "Server-sent events: each `data:` line is JSON with the raw and parsed message",
       mediaType: SSE_T,
       schema: { type: "string" },
     },
-    errors: [404],
+    errors: [400, 404, ...CFG],
   },
 
   ...crud("Source", "sources", "/api/sources"),
   ...crud("Schema", "schemas", "/api/schemas"),
-  ...crud("Rule", "rules", "/api/rules"),
-  ...crud("Person", "people", "/api/people"),
-  ...crud("Group", "groups", "/api/groups"),
+  ...crud("Rule", "rules", "/api/rules", true),
+  ...crud("Person", "people", "/api/people", true),
+  ...crud("Group", "groups", "/api/groups", true),
   ...crud("Runbook", "runbooks", "/api/runbooks"),
   ...prefs("person", "/api/people"),
   ...prefs("group", "/api/groups"),
 
   "POST /api/schemas/test": {
-    notImplemented: true,
     request: body("SchemaTestRequest"),
     success: json(200, "Whether the sample matched and the mapped common fields", ref("SchemaTestResponse")),
-    errors: [400],
+    errors: [400, 413],
   },
   "POST /api/sources/test": {
-    notImplemented: true,
     request: body("SourceTestRequest"),
     success: json(200, "The parsed fields", ref("SourceTestResponse")),
-    errors: [400],
+    errors: [400, 413],
   },
   "GET /api/people/{id}/starred-filters": {
     success: json(200, "The person's starred filters (empty list when none)", list("StarredFilter")),
@@ -192,14 +210,14 @@ export const operationSpecs: Record<string, OperationSpec> = {
     errors: [400, 404, 413, ...CFG],
   },
   "GET /api/events": {
-    notImplemented: true,
     query: [
-      q("filter", { type: "string" }, "Filter expression text"),
+      q("filter", { type: "string" }, "Filter expression text (takes precedence over `tree`)"),
+      q("tree", { type: "string" }, "Filter tree as a JSON-encoded string"),
       limitParam(50, 200),
-      q("before", { type: "string" }, cursor("events")),
+      q("before", { type: "string" }, cursor("events") + ". Base64url JSON of the last row's receivedAt and id; an invalid cursor is a 400"),
     ],
-    success: json(200, "Stored events, newest first", list("Event"), NEXT),
-    errors: [400],
+    success: json(200, "Stored events, newest first (receivedAt desc, id desc). With a filter, at most 5000 events are scanned per request; x-next-before is then sent whenever the scan stopped early", list("Event"), NEXT),
+    errors: [400, ...CFG],
   },
   "GET /api/events/recent": {
     query: [limitParam(50, 1000)],

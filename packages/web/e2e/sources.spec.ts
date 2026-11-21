@@ -120,49 +120,54 @@ for (const scheme of ["light", "dark"] as const) {
     test.use({ colorScheme: scheme, viewport: { width: 1280, height: 800 } });
 
     test("sources list, add, edit, export, import", async ({ page }) => {
-      const { sources, imported } = await mockApi(page);
+      const { sources } = await mockApi(page);
       await page.goto("/config/sources");
       await expect(page.getByRole("heading", { name: "Sources" })).toBeVisible();
       await expect(page.getByRole("link", { name: "Edge HTTP" })).toBeVisible();
       await expect(page.getByRole("link", { name: "App logs" })).toBeVisible();
-      await page.screenshot({ path: path.join(shots, `sources-list-${scheme}.png`) });
+      await page.screenshot({ path: path.join(shots, `sources-list-${scheme}.png`), fullPage: true });
 
-      await page.getByRole("link", { name: "Add source" }).click();
+      // New source: choose a way, then the step-by-step editor.
+      await page.getByRole("link", { name: "New source" }).click();
+      await page.getByRole("radio", { name: /Build step by step/ }).click();
       await page.getByLabel("Id", { exact: true }).fill("test");
       await page.getByLabel("Name", { exact: true }).fill("Nope");
-      await page.getByRole("button", { name: "Save" }).click();
-      await expect(page.getByText('"test" is reserved')).toBeVisible();
+      await page.getByRole("button", { name: "Save source" }).click();
+      await expect(page.getByText('"test" is reserved').first()).toBeVisible();
 
       await page.getByLabel("Id", { exact: true }).fill("new-file");
       await page.getByLabel("Name", { exact: true }).fill("New file");
-      await page.getByLabel("Source type").selectOption("file_tail");
+      await page.getByRole("radio", { name: /File tail/ }).click();
       await expect(page.getByLabel("Path or glob")).toBeVisible();
-      await page.getByRole("button", { name: "Save" }).click();
+      await page.getByRole("button", { name: "Save source" }).click();
       await expect(page.getByText("This field is required.")).toBeVisible();
       await page.getByLabel("Path or glob").fill("/tmp/x.log");
-      await page.locator("#parser-type").selectOption("logfmt");
+      await page.getByRole("radio", { name: "logfmt" }).click();
       await page.getByLabel("Sample line").fill("level=warn msg=hi");
-      await expect(page.getByLabel("Parsed result")).toContainText('"level": "warn"');
-      await page.getByRole("button", { name: "Save" }).click();
+      await expect(page.getByLabel("Parsed result")).toContainText("warn");
+      await page.getByRole("button", { name: "Save source" }).click();
       await expect(page.getByRole("link", { name: "New file" })).toBeVisible();
-      expect(sources.find((s) => s.id === "new-file")?.parser.type).toBe("logfmt");
+      expect(sources.at(-1)).toMatchObject({ id: "new-file", type: "file_tail", config: { path: "/tmp/x.log" }, parser: { type: "logfmt" } });
 
+      // Edit: same editor, live messages, export.
       await page.getByRole("link", { name: "App logs" }).click();
-      await expect(page.getByRole("heading", { name: "Edit source" })).toBeVisible();
+      await expect(page.getByRole("heading", { name: "App logs" })).toBeVisible();
       await expect(page.getByLabel("Path or glob")).toHaveValue("/var/log/app.log");
       await expect(page.getByText("level=error msg=boom")).toBeVisible();
       await expect(page.getByText("level=info msg=ok")).toBeVisible();
       await page.screenshot({ path: path.join(shots, `sources-edit-${scheme}.png`), fullPage: true });
-
       await page.getByRole("button", { name: "Export YAML" }).click();
       await expect(page.getByLabel("Exported YAML")).toContainText("name: Web logs");
 
-      await page.getByRole("link", { name: "Cancel" }).click();
-      await page.getByRole("button", { name: "Import YAML" }).click();
+      // Import: paste YAML, review in the editor, then save.
+      await page.getByRole("link", { name: "Back to sources" }).click();
+      await page.getByRole("link", { name: "Import YAML" }).click();
       await page.getByLabel("Source YAML").fill(YAML);
-      await page.getByRole("button", { name: "Import", exact: true }).click();
-      await expect.poll(() => imported.length).toBe(1);
-      expect(imported[0]).toBe(YAML);
+      await page.getByRole("button", { name: "Review source" }).click();
+      await expect(page.getByLabel("Name", { exact: true })).toHaveValue("Web logs");
+      await expect(page.getByText("Imported. Check the source below, then save it.")).toBeVisible();
+      await page.getByRole("button", { name: "Save source" }).click();
+      await expect(page.getByRole("link", { name: "Web logs" })).toBeVisible();
     });
   });
 }

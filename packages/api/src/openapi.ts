@@ -8,6 +8,8 @@ type Json = Record<string, unknown>;
 const ERROR_REF = { $ref: "#/components/schemas/Error" };
 const ERROR_TEXT: Record<number, string> = {
   400: "Bad request (invalid id, body, filter or parameter)",
+  401: "Not signed in",
+  403: "The account is not allowed to do this",
   404: "Not found",
   409: "Conflict with the current state",
   413: "Payload too large",

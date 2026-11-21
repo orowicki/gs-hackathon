@@ -4,8 +4,9 @@ import { Plus } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { Icon } from "../../components/Icon";
-import { SettingsMenu } from "../../components/SettingsPanel";
 import { withFilter } from "../../filterUrl";
+import { rangeNode, rangeOf, setRange, withoutRange, type TimeRange } from "../../timeRange";
+import { TimeRangePicker } from "../../components/time-range/TimeRangePicker";
 import { AlertList, SkeletonRows } from "./AlertList";
 import { createSource, isDemoSource } from "./data";
 import type { FeedSource } from "./data";
@@ -19,13 +20,15 @@ import {
   newStarred,
   parseFilter,
   parseTab,
+  STATE_TOGGLES,
   starredTexts,
   tabAlerts,
+  toggleTab,
   upsertAlert,
   valuesFor,
   type FeedTab,
 } from "./helpers";
-import { ProfilePicker, StarredList } from "./ProfilePicker";
+import { useCurrentPerson } from "../../account";
 import { StatPanels } from "./StatPanels";
 
 const PROFILE_KEY = "alerting.profile";
@@ -63,7 +66,7 @@ export function FeedPage() {
   const [live, setLive] = useState(true);
   const [applied, setApplied] = useState(q);
   const [people, setPeople] = useState<Person[]>([]);
-  const [profileId, setProfileId] = useState<string | null>(() => readLocal<string | null>(PROFILE_KEY, null));
+  const [profileId] = useState<string | null>(() => readLocal<string | null>(PROFILE_KEY, null));
   const [starred, setStarred] = useState<StarredFilter[]>([]);
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
   const [flash, setFlash] = useState<ReadonlyMap<string, number>>(new Map());
@@ -78,13 +81,17 @@ export function FeedPage() {
   // Keep showing the last valid result when the applied text is invalid.
   const [lastTree, setLastTree] = useState<FilterNode | null>(tree);
   const activeTree = parseFilter(applied).ok ? tree : lastTree;
+  // The time range lives in the filter text (`alert.occurredAt >= now-24h`); the picker reads it from there.
+  const range = rangeOf(applied);
   const applyText = useCallback((text: string) => {
     setApplied(text);
     const r = parseFilter(text);
     if (r.ok) setLastTree(r.tree);
   }, []);
 
-  const matching = useMemo(() => filterAlerts(alerts ?? [], activeTree), [alerts, activeTree]);
+  // `now` ticks, so alerts drop out of a relative range as time passes.
+  const matching = useMemo(() => filterAlerts(alerts ?? [], activeTree), [alerts, activeTree, now]);
+  const inRange = useMemo(() => filterAlerts(alerts ?? [], rangeNode(range)), [alerts, range, now]);
   const statusInFilter = mentionsStatus(activeTree);
   const visible = useMemo(() => tabAlerts(matching, tab, activeTree), [matching, tab, activeTree]);
   const tabCounts = useMemo(
@@ -162,7 +169,9 @@ export function FeedPage() {
   }, []);
 
   // Profile and starred filters.
-  const person = people.find((p) => p.id === profileId) ?? people[0] ?? null;
+  // The signed-in account; the stored profile is only a fallback for pages without a provider.
+  const account = useCurrentPerson();
+  const person = account ?? people.find((p) => p.id === profileId) ?? people[0] ?? null;
   const personId = person?.id ?? null;
   useEffect(() => {
     if (!source || !personId) return;
@@ -192,13 +201,6 @@ export function FeedPage() {
     saveStarred(hit ? starred.filter((s) => s !== hit) : [...starred, newStarred(personId, text)]);
   };
 
-  const selectProfile = (id: string) => {
-    setProfileId(id);
-    // readLocal() parses JSON, so store JSON (a raw id made every reload fall back
-    // to the first person, and that person's starred filters).
-    writeLocal(PROFILE_KEY, id);
-  };
-
   const setQ = useCallback(
     (text: string) => setParams((p) => withFilter(p, text), { replace: true }),
     [setParams],
@@ -222,6 +224,15 @@ export function FeedPage() {
     async (id: string) => {
       if (!source?.ack) return;
       const updated = await source.ack(id);
+      setAlerts((prev) => upsertAlert(prev ?? [], updated));
+    },
+    [source],
+  );
+
+  const unack = useCallback(
+    async (id: string) => {
+      if (!source?.unack) return;
+      const updated = await source.unack(id);
       setAlerts((prev) => upsertAlert(prev ?? [], updated));
     },
     [source],
@@ -262,19 +273,6 @@ export function FeedPage() {
   const starredList = starredTexts(starred);
   const canCreate = person?.canCreateRules ?? false;
 
-  const settings = {
-    Profile: <ProfilePicker people={people} currentId={person?.id ?? null} onSelect={selectProfile} />,
-    "Starred filters": (
-      <StarredList
-        starred={starred}
-        onApply={(t) => {
-          setQ(t);
-          applyText(t);
-        }}
-        onRemove={(id) => saveStarred(starred.filter((s) => s.id !== id))}
-      />
-    ),
-  };
 
   function body() {
     if (error) {
@@ -300,7 +298,13 @@ export function FeedPage() {
     if (visible.length === 0 && !q && !statusInFilter) {
       return (
         <div className="empty">
-          <p className="muted">{tab === "active" ? "Nothing needs attention. All alerts are acknowledged or resolved." : "No acknowledged alerts."}</p>
+          <p className="muted">
+            {tab === "active"
+              ? "Nothing needs attention. All alerts are acknowledged or resolved."
+              : tab === "acknowledged"
+                ? "No acknowledged alerts."
+                : "No resolved alerts."}
+          </p>
         </div>
       );
     }
@@ -322,14 +326,15 @@ export function FeedPage() {
       );
     }
     return (
-      <AlertList alerts={visible} now={now} expanded={expanded} onToggle={toggle} flash={flash} onAck={source?.ack ? ack : undefined} />
+      <AlertList alerts={visible} now={now} expanded={expanded} onToggle={toggle} flash={flash} onAck={source?.ack ? ack : undefined}
+        onUnack={source?.unack ? unack : undefined}
+      />
     );
   }
 
   return (
     <div className="feed-page">
       <header className="topbar">
-        <SettingsMenu sections={settings} />
         <FilterBar
           value={q}
           onChange={setQ}
@@ -340,6 +345,14 @@ export function FeedPage() {
           onToggleStar={toggleStar}
           inputRef={input}
         />
+        <TimeRangePicker
+          value={range}
+          onChange={(r: TimeRange) => {
+            const text = setRange(q, r);
+            setQ(text);
+            applyText(text);
+          }}
+        />
         {canCreate && (
           <button type="button" className="icon-btn square" title="New rule" aria-label="New rule" onClick={() => navigate("/rules/new")}>
             <Icon as={Plus} />
@@ -348,9 +361,11 @@ export function FeedPage() {
       </header>
       {alerts && alerts.length > 0 && (
         <StatPanels
-          alerts={alerts}
-          filter={q}
-          onFilter={(text) => {
+          alerts={inRange}
+          filter={withoutRange(q)}
+          onFilter={(picked) => {
+            // Panels set the whole filter; keep the chosen time range on it.
+            const text = setRange(picked, range);
             setParams((p) => {
               const n = withFilter(p, text);
               n.delete("tab");
@@ -362,39 +377,37 @@ export function FeedPage() {
       )}
       {alerts && alerts.length > 0 && (
         <nav className="feed-tabs" aria-label="Alert state">
-          <div role="tablist">
-            {FEED_TABS.map((t) => (
-              <button
-                key={t.id}
-                type="button"
-                role="tab"
-                aria-selected={!statusInFilter && tab === t.id}
-                className={!statusInFilter && tab === t.id ? "feed-tab active" : "feed-tab"}
-                onClick={() => {
-                  // A status filter overrides tabs; picking a tab drops it.
-                  setTab(t.id, statusInFilter);
-                  if (statusInFilter) applyText("");
-                }}
-              >
-                {t.label}
-                <span className="feed-tab-count">{tabCounts[t.id]}</span>
-              </button>
-            ))}
-          </div>
           {statusInFilter ? (
             <span className="feed-tabs-note muted">Your filter picks the status, so all states are shown.</span>
           ) : (
-            <button
-              type="button"
-              className="link-btn feed-tabs-note"
-              onClick={() => {
-                setQ("alert.status = resolved");
-                applyText("alert.status = resolved");
-              }}
-            >
-              Show resolved
-            </button>
+            <span className={"feed-showing state-" + FEED_TABS.find((t) => t.id === tab)!.state}>
+              {FEED_TABS.find((t) => t.id === tab)!.label} alerts
+              <span className="feed-tab-count">{tabCounts[tab]}</span>
+            </span>
           )}
+          <div className="state-toggles" role="group" aria-label="Show only">
+            {STATE_TOGGLES.map((t) => {
+              const on = !statusInFilter && tab === t.id;
+              return (
+                <button
+                  key={t.id}
+                  type="button"
+                  aria-pressed={on}
+                  title={on ? "Back to active alerts" : `Show only ${t.label.toLowerCase()} alerts`}
+                  className={"state-toggle state-" + t.state + (on ? " on" : "")}
+                  onClick={() => {
+                    // A status filter overrides the buttons; pressing one drops it.
+                    setTab(statusInFilter ? t.id : toggleTab(tab, t.id), statusInFilter);
+                    if (statusInFilter) applyText("");
+                  }}
+                >
+                  <span className="state-dot" aria-hidden="true" />
+                  {t.label}
+                  <span className="feed-tab-count">{tabCounts[t.id]}</span>
+                </button>
+              );
+            })}
+          </div>
         </nav>
       )}
       {isDemoSource(source) && (

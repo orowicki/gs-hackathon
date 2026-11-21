@@ -399,7 +399,7 @@ describe("validateTree", () => {
 describe("autocomplete support", () => {
   it("exports lists", () => {
     expect(COMMON_FIELDS).toContain("alert.severity");
-    expect(COMMON_FIELDS).toHaveLength(8);
+    expect(COMMON_FIELDS).toHaveLength(10);
     expect([...KEYWORDS]).toEqual(["AND", "OR", "NOT"]);
     expect(OPERATORS.map((o) => o.symbol)).toEqual(["=", "!=", ">", ">=", "<", "<=", "contains", "in", "matches"]);
     for (const o of OPERATORS) expect(o.description.length).toBeGreaterThan(3);
@@ -437,5 +437,34 @@ describe("autocomplete support", () => {
     for (const s of ['"', "((((", "))]]", "!", "a !", "\u0000\ud800", "a in [[[", "= = ="]) {
       for (let i = -1; i <= s.length + 1; i++) expect(() => suggestContext(s, i)).not.toThrow();
     }
+  });
+});
+
+describe("dates", () => {
+  const now = Date.parse("2026-11-21T12:00:00Z");
+  const at = (lastSeen: unknown) => ({ alert: { lastSeen }, event: { ts: 1795262400000, sec: 1795262400 }, now });
+  it("relative values: now, now-24h, now-7d", () => {
+    expect(ev("alert.lastSeen >= now-24h", at("2026-11-21T09:00:00Z"))).toBe(true);
+    expect(ev("alert.lastSeen >= now-24h", at("2026-11-19T09:00:00Z"))).toBe(false);
+    expect(ev("alert.lastSeen > now-7d", at("2026-11-19T09:00:00Z"))).toBe(true);
+    expect(ev("alert.lastSeen < now-1h", at("2026-11-21T11:30:00Z"))).toBe(false);
+    expect(ev("alert.lastSeen <= now", at("2026-11-21T11:30:00Z"))).toBe(true);
+    expect(ev("alert.lastSeen >= NOW-30m", at("2026-11-21T11:45:00Z"))).toBe(true);
+  });
+  it("ISO dates on both sides, epoch s and ms on the field side", () => {
+    expect(ev("alert.lastSeen >= 2026-11-21", at("2026-11-21T09:00:00Z"))).toBe(true);
+    expect(ev('alert.lastSeen < "2026-11-21T08:00:00Z"', at("2026-11-21T09:00:00Z"))).toBe(false);
+    expect(ev("ts >= 2026-11-21", at(null))).toBe(true);
+    expect(ev("sec >= 2026-11-21", at(null))).toBe(true);
+  });
+  it("non-dates never match a date comparison", () => {
+    expect(ev("alert.lastSeen >= now-24h", at("yesterday"))).toBe(false);
+    expect(ev("alert.lastSeen >= now-24h", at(undefined))).toBe(false);
+    expect(ev("alert.lastSeen >= now-24x", at("2026-11-21T09:00:00Z"))).toBe(false);
+  });
+  it("round-trips through print", () => {
+    expect(print(parse("alert.lastSeen >= now-24h"))).toBe("alert.lastSeen >= now-24h");
+    expect(COMMON_FIELDS).toContain("alert.lastSeen");
+    expect(COMMON_FIELDS).toContain("alert.firstSeen");
   });
 });

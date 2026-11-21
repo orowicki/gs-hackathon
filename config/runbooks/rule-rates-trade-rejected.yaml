@@ -1,0 +1,15 @@
+# Team Rates' own runbook: a text checklist. Text runbooks never run anything;
+# the placeholders are filled in with the alert's values on the alert page.
+id: rule-rates-trade-rejected
+ruleId: rates-trade-rejected
+matches: alert.ruleId = "rates-trade-rejected"
+name: Rejected rates trade checklist
+type: text
+content: |
+  Trade {{payload.tradeId}} on the {{payload.desk}} desk was rejected: {{payload.currency}} {{payload.notional}}, reason {{payload.reason}}.
+
+  1. Open {{payload.tradeId}} in the booking system and confirm it was not booked twice.
+  2. LIMIT_BREACH or CREDIT_LIMIT: ask risk for a one-off limit increase before re-submitting.
+  3. Any other reason: fix the trade details and re-submit once.
+  4. Rejected twice: call the rates desk lead and post in #rates-desk with the trade id.
+  5. Write what you did under How to resolve so the next person sees it.

@@ -119,7 +119,7 @@ export const componentSchemas: Record<string, object> = {
     { sourceTypes: arr(ref("SourceTypeInfo")), parserConfigSchema: ref("JsonObject") },
     ["sourceTypes", "parserConfigSchema"],
   ),
-  SourceTestRequest: obj({ parser: ref("ParserConfig"), sample: str() }, ["parser", "sample"]),
+  SourceTestRequest: obj({ parser: ref("ParserConfig"), sample: { ...str("One raw message to parse; at most 8192 bytes (longer is rejected with 400)"), maxLength: 8192 } }, ["parser", "sample"]),
   SourceTestResponse: obj({ parsed: ref("JsonObject") }, ["parsed"]),
   IngestResult: obj({ accepted: { type: "integer", minimum: 0 } }, ["accepted"]),
 
@@ -188,6 +188,8 @@ export const componentSchemas: Record<string, object> = {
     },
     ["id", "name", "role", "canCreateRules"],
   ),
+  AccountCreate: obj({ name: str(), role: optStr() }, ["name"]),
+  SessionCreate: obj({ personId: str() }, ["personId"]),
   Group: obj({ id: str(), name: str(), memberIds: arr(str()) }, ["id", "name", "memberIds"]),
   RecipientRef: obj({ type: strEnum(["person", "group"]), id: str() }, ["type", "id"]),
   PreferenceRule: obj({ when: ref("FilterNode"), channels: channels() }, ["when", "channels"]),

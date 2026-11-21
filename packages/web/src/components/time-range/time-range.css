@@ -1,0 +1,79 @@
+.time-range {
+  position: relative;
+  flex: none;
+}
+
+.time-range-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  height: 32px;
+  padding: 0 var(--space-2);
+  background: var(--surface);
+  color: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font: inherit;
+  font-size: var(--text-sm);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.time-range-trigger:hover,
+.time-range-trigger[aria-expanded="true"] {
+  border-color: var(--border-strong);
+  color: var(--text);
+}
+
+.time-range.active .time-range-trigger {
+  color: var(--accent);
+}
+
+.time-range-chevron {
+  transition: transform var(--motion-duration) var(--motion-ease);
+}
+
+.time-range-chevron.open {
+  transform: rotate(180deg);
+}
+
+/* Always below the trigger, right-aligned with it. */
+.time-range-panel {
+  position: absolute;
+  top: calc(100% + var(--space-1));
+  right: 0;
+  z-index: 20;
+  min-width: 100%;
+  margin: 0;
+  padding: var(--space-1) 0;
+  list-style: none;
+  background: var(--surface-2);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+
+.time-range-opt {
+  display: block;
+  width: 100%;
+  padding: 6px var(--space-3);
+  background: transparent;
+  color: var(--text);
+  border: 0;
+  font: inherit;
+  font-size: var(--text-sm);
+  text-align: left;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.time-range-opt:hover,
+.time-range-opt:focus-visible {
+  background: var(--surface);
+  outline: none;
+}
+
+.time-range-opt.selected {
+  color: var(--accent);
+  font-weight: var(--weight-strong);
+}

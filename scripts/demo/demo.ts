@@ -1,4 +1,4 @@
-// Demo event generator: sends a mix of Appendix A events through http, file_tail and redis_stream.
+// Demo event generator: sends a mix of Appendix A events through http, file_tail, redis_stream and kafka.
 // node --experimental-strip-types scripts/demo/demo.ts [--once] [--burst] [--no-showcase] [--rate 2] [--duration 60] [--count N]
 import { spawn } from "node:child_process";
 import { appendFileSync, mkdirSync } from "node:fs";
@@ -9,8 +9,9 @@ import { nextEvent, oneOfEach, showcase, type DemoEvent } from "./events.ts";
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const API_URL = (process.env.API_URL ?? "http://localhost:3000").replace(/\/$/, "");
 const STREAM = "demo:events";
+const KAFKA_TOPIC = "demo.events";
 
-type Sink = "http" | "file_tail" | "redis_stream";
+type Sink = "http" | "file_tail" | "redis_stream" | "kafka";
 
 function run(cmd: string, args: string[], input?: string): Promise<void> {
   return new Promise((resolve, reject) => {
@@ -63,6 +64,36 @@ async function makeRedisSender(): Promise<{ send: (line: string) => Promise<void
   };
 }
 
+/** Kafka producer on the host-visible listener. Returns undefined (after a warning) when the broker is unreachable. */
+async function makeKafkaSender(): Promise<{ send: (line: string) => Promise<void>; close: () => Promise<void> } | undefined> {
+  const brokers = (process.env.DEMO_KAFKA_BROKERS ?? "localhost:19092").split(",");
+  let producer: { connect(): Promise<void>; disconnect(): Promise<void>; send(r: unknown): Promise<unknown> } | undefined;
+  try {
+    const { Kafka, logLevel } = await import("kafkajs");
+    producer = new Kafka({
+      brokers,
+      clientId: "alerting-demo",
+      connectionTimeout: 2000,
+      requestTimeout: 5000,
+      retry: { retries: 1, initialRetryTime: 200 },
+      logLevel: logLevel.NOTHING,
+    }).producer({ allowAutoTopicCreation: true });
+    await Promise.race([
+      producer.connect(),
+      new Promise<never>((_, rej) => setTimeout(() => rej(new Error("connect timed out")), 5000)),
+    ]);
+  } catch (e) {
+    console.warn(`demo: warning: Kafka not reachable at ${brokers.join(",")} (${e instanceof Error ? e.message : String(e)}); skipping the kafka source (set DEMO_KAFKA_BROKERS to change)`);
+    void producer?.disconnect().catch(() => undefined);
+    return undefined;
+  }
+  const p = producer;
+  return {
+    send: async (line) => void (await p.send({ topic: KAFKA_TOPIC, messages: [{ value: line }] })),
+    close: () => p.disconnect().catch(() => undefined),
+  };
+}
+
 function arg(name: string): string | undefined {
   const i = process.argv.indexOf(`--${name}`);
   return i >= 0 ? process.argv[i + 1] : undefined;
@@ -81,15 +112,17 @@ async function main(): Promise<void> {
   const duration = num("duration", "DEMO_DURATION", 60);
   const count = arg("count") !== undefined ? num("count", "DEMO_COUNT", 1) : Infinity;
   const redis = await makeRedisSender();
-  const counts: Record<Sink, number> = { http: 0, file_tail: 0, redis_stream: 0 };
-  const senders: Record<Sink, (l: string) => Promise<void>> = {
+  const kafka = await makeKafkaSender();
+  const counts: Record<Sink, number> = { http: 0, file_tail: 0, redis_stream: 0, kafka: 0 };
+  const senders: Partial<Record<Sink, (l: string) => Promise<void>>> = {
     http: sendHttp,
     file_tail: sendFile,
     redis_stream: redis.send,
+    ...(kafka ? { kafka: kafka.send } : {}),
   };
   const sinks = Object.keys(senders) as Sink[];
   const emit = async (sink: Sink, e: DemoEvent) => {
-    await senders[sink](e.line);
+    await (senders[sink] as (l: string) => Promise<void>)(e.line);
     counts[sink]++;
   };
   try {
@@ -137,9 +170,10 @@ async function main(): Promise<void> {
     }
   } finally {
     redis.close();
+    await kafka?.close();
   }
   console.log(
-    `demo: sent ${counts.http} via http, ${counts.file_tail} via file_tail, ${counts.redis_stream} via redis_stream`,
+    `demo: sent ${counts.http} via http, ${counts.file_tail} via file_tail, ${counts.redis_stream} via redis_stream, ${counts.kafka} via kafka`,
   );
 }
 
