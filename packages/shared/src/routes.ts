@@ -57,6 +57,8 @@ export const ROUTES: RouteDef[] = [
   { method: "GET", path: "/api/alerts/summary", summary: "Alert counts for stat panels (optional filter/tree, same as the list). open = open alerts; bySeverity counts open alerts; byStatus counts all. Not pushed on SSE: refetch when an `alert` event arrives on /api/stream", tag: "alerts", response: "{ open: number, bySeverity: { critical, error, warning, info }, byStatus: { open, acknowledged, resolved } }" },
   { method: "GET", path: "/api/alerts/{id}", summary: "Get an alert with its event, runbooks and suggestions", tag: "alerts", response: "Alert" },
   { method: "GET", path: "/api/alerts/{id}/runbook-runs", summary: "Runbook run state per step of an alert", tag: "runbooks", response: "RunbookRun[]" },
+  { method: "GET", path: "/api/alerts/{id}/runbooks", summary: "Runbooks that apply to this alert: text ones filled in with the alert's values, automation ones with their step names", tag: "runbooks", response: "MatchedRunbook[]" },
+  { method: "POST", path: "/api/alerts/{id}/runbook-runs", summary: "Start an automation runbook on this alert now (one run per alert and runbook; an existing run is returned). 202 while it is still running", tag: "runbooks", request: "{ runbookId: string }", response: "RunbookRun" },
   { method: "GET", path: "/api/approvals", summary: "Pending runbook step approvals", tag: "runbooks", response: "PendingApproval[]" },
   { method: "GET", path: "/api/audit", summary: "Global audit log (filter by query: alertId, actor, action, before, limit)", tag: "alerts", response: "AuditEntry[]" },
   { method: "POST", path: "/api/alerts/{id}/ack", summary: "Acknowledge an alert", tag: "alerts", response: "Alert" },

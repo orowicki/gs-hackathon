@@ -489,3 +489,56 @@
 @media (prefers-reduced-motion: reduce) {
   .copy-btn { transition: none; }
 }
+
+/* ---- Runbook runs ----------------------------------------------------------- */
+
+.runs { gap: var(--space-3); }
+.run-head { display: flex; align-items: center; gap: var(--space-2); }
+.run-status {
+  display: inline-flex;
+  align-items: center;
+  height: 18px;
+  padding: 0 6px;
+  font-size: 11px;
+  font-weight: var(--weight-strong);
+  border: 1px solid currentColor;
+  border-radius: var(--radius);
+  color: var(--muted);
+}
+.run-status.rs-running { color: var(--accent); }
+.run-status.rs-awaiting_approval { color: var(--warning); }
+.run-status.rs-done { color: var(--valid); }
+.run-status.rs-failed { color: var(--critical); }
+
+.alert-detail .steps { gap: var(--space-1); }
+.alert-detail .step { display: grid; grid-template-columns: 104px 1fr; align-items: baseline; gap: var(--space-2); }
+.alert-detail .step-state { min-width: 0; }
+.step-body { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.step-name { color: var(--text-strong); }
+.step-result { font-size: 12px; overflow-wrap: anywhere; }
+.step-actions { margin-top: var(--space-1); }
+.alert-detail .step-actions .btn { height: 26px; }
+.step-running .step-state { color: var(--accent); }
+.step-awaiting_approval .step-state { color: var(--warning); }
+.step-skipped .step-state { color: var(--muted); }
+
+.run { padding-bottom: var(--space-3); border-bottom: 1px solid var(--border); }
+.run:last-child { padding-bottom: 0; border-bottom: 0; }
+.run-head { flex-wrap: wrap; margin-bottom: var(--space-2); }
+.alert-detail .run-head .run-now { margin-left: auto; height: 26px; display: inline-flex; align-items: center; gap: 6px; }
+.rb-text { font-size: var(--text-md); }
+.step-not_run .step-state { color: var(--faint); }
+.step-name { display: inline-flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+
+.alert-detail .panel-toggle {
+  width: 100%;
+  font: inherit;
+  text-align: left;
+  color: inherit;
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+.alert-detail .panel-toggle[aria-expanded="false"] { border-bottom: 0; }
+.alert-detail .panel-toggle:hover h2 { color: var(--accent); }
+.audit-latest { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

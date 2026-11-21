@@ -51,7 +51,10 @@ export interface ResolveInput {
 export interface RunbookRun {
   alertId?: string;
   runbookId: string;
-  steps: Array<{ index: number; state: string; result?: string; at?: string }>;
+  runbookName?: string;
+  /** running | waiting | done | failed (as the runner reports it). */
+  status?: string;
+  steps: Array<{ index: number; state: string; result?: string; at?: string; name?: string }>;
 }
 
 export interface AuditEntry {
@@ -98,6 +101,23 @@ export const getAlert = (id: string) => request<Alert>("GET", base(id));
 export const ackAlert = (id: string) => request<Alert>("POST", `${base(id)}/ack`);
 export const unackAlert = (id: string) => request<Alert>("POST", `${base(id)}/unack`);
 export const resolveAlert = (id: string, input: ResolveInput = {}) => request<Alert>("POST", `${base(id)}/resolve`, input);
+/** A runbook that applies to this alert (text filled in, step names rendered). */
+export interface MatchedRunbook {
+  id: string;
+  name: string;
+  type: "text" | "automation";
+  origin: "rule" | "config";
+  content?: string;
+  steps?: Array<{ index: number; name: string; action: string; approval: string }>;
+}
+export const getMatchedRunbooks = (id: string) => listOrEmpty<MatchedRunbook>(`${base(id)}/runbooks`);
+
+/** Start an automation runbook on this alert now. */
+export const startRunbook = (id: string, runbookId: string) =>
+  request<RunbookRun>("POST", `${base(id)}/runbook-runs`, { runbookId });
+export const decideStep = (id: string, runbookId: string, stepIndex: number, decision: "approve" | "skip") =>
+  request<RunbookRun>("POST", `${base(id)}/runbook-steps/${stepIndex}/approve`, { runbookId, decision });
+
 export const addRulebookComment = (id: string, text: string) =>
   request<RulebookEntry>("POST", `${base(id)}/rulebook`, { text });
 

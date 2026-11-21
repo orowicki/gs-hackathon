@@ -348,17 +348,51 @@ export const componentSchemas: Record<string, object> = {
     description: "An Alert with its opening event (null when unavailable) and its suggestions.",
     allOf: [
       ref("Alert"),
-      obj({ event: { oneOf: [ref("Event"), { type: "null" }] }, suggestions: arr(ref("Suggestion")) }, ["event", "suggestions"]),
+      obj(
+        {
+          event: { oneOf: [ref("Event"), { type: "null" }] },
+          suggestions: arr(ref("Suggestion")),
+          rulebook: { ...arr(ref("RulebookEntry")), description: "The rule's how-to-resolve comments, oldest first" },
+        },
+        ["event", "suggestions"],
+      ),
     ],
   },
-  AlertTransitionRequest: obj({ actor: str("Defaults to the x-actor header, else anonymous") }),
+  AlertTransitionRequest: obj({
+    actor: str("Defaults to the x-actor header, else anonymous"),
+    resolution: str("Resolve only: how it was fixed (max 4000 characters)"),
+    contribute: { type: "boolean", description: "Resolve only: also add the resolution as a how-to-resolve comment on the rule" },
+  }),
+  RulebookEntry: obj(
+    { id: str(), ruleId: str(), text: str(), updatedBy: str("Author"), updatedAt: str("When it was written"), alertId: str("Alert it was written on") },
+    ["id", "ruleId", "text", "updatedBy", "updatedAt"],
+  ),
+  RulebookCommentRequest: obj({ text: str("1 to 4000 characters"), actor: str("Defaults to the x-actor header, else anonymous") }, ["text"]),
+  RuleRunbook: obj(
+    { runbook: ref("Runbook"), yaml: str("The runbook as YAML, without the id and matches the server sets") },
+    ["runbook", "yaml"],
+  ),
+  MatchedRunbook: obj(
+    {
+      id: str(),
+      name: str(),
+      type: strEnum(["text", "automation"]),
+      origin: strEnum(["rule", "config"]),
+      content: str("Text runbooks: the instructions with the alert's values filled in"),
+      steps: arr(
+        obj({ index: { type: "integer" }, name: str(), action: str(), approval: strEnum(["none", "required"]) }, ["index", "name", "action", "approval"]),
+      ),
+    },
+    ["id", "name", "type", "origin"],
+  ),
+  StartRunbookRequest: obj({ runbookId: str("An automation runbook") }, ["runbookId"]),
   AuditEntry: obj(
     {
       id: str(),
       alertId: str(),
       at: str(),
       actor: str("Person id or system"),
-      action: strEnum(["created", "acknowledged", "resolved", "step_executed", "step_approved", "step_skipped", "escalated", "suggestion"]),
+      action: strEnum(["created", "acknowledged", "unacknowledged", "resolved", "step_executed", "step_approved", "step_skipped", "escalated", "suggestion"]),
       runbookId: optStr(),
       stepIndex: { type: ["integer", "null"] },
       result: optStr(),

@@ -1,4 +1,4 @@
-import { BookOpen, Check, CheckCircle2, FileCode2, Lock, MessageSquare, Undo2 } from "lucide-react";
+import { BookOpen, Check, CheckCircle2, ChevronDown, ChevronRight, FileCode2, Lock, MessageSquare, Play, Undo2 } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Icon } from "../../components/Icon";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
@@ -7,6 +7,10 @@ import {
   ackAlert,
   addRulebookComment,
   getRuleRunbook,
+  getMatchedRunbooks,
+  type MatchedRunbook,
+  decideStep,
+  startRunbook,
   putRuleRunbook,
   type RuleRunbook,
   ApiError,
@@ -124,40 +128,182 @@ function Suggest({ id }: { id: string }) {
   );
 }
 
-function Runbooks({ runs }: { runs: RunbookRun[] | null }) {
+const STEP_LABEL: Record<string, string> = {
+  not_run: "not run",
+  pending: "pending",
+  running: "running",
+  awaiting_approval: "needs approval",
+  done: "done",
+  failed: "failed",
+  skipped: "skipped",
+};
+
+/** Steps of one automation runbook: live state from its run, or "not run" with the planned step names. */
+function StepList({
+  steps,
+  run,
+  busy,
+  onDecide,
+}: {
+  steps: Array<{ index: number; name?: string; approval?: string }>;
+  run?: RunbookRun;
+  busy: boolean;
+  onDecide(index: number, decision: "approve" | "skip"): void;
+}) {
+  return (
+    <ol className="steps">
+      {steps.map((planned) => {
+        const st = run?.steps.find((x) => x.index === planned.index);
+        const state = st?.state ?? "not_run";
+        return (
+          <li key={planned.index} className={`step step-${state}`}>
+            <span className="step-state">{STEP_LABEL[state] ?? state}</span>
+            <span className="step-body">
+              <span className="step-name">
+                {st?.name ?? planned.name ?? `Step ${planned.index + 1}`}
+                {planned.approval === "required" && !st ? <span className="tag warn">needs approval</span> : null}
+              </span>
+              {st?.result ? <span className="muted step-result">{st.result}</span> : null}
+              {state === "awaiting_approval" ? (
+                <span className="actions step-actions">
+                  <button type="button" className="btn primary solid" disabled={busy} onClick={() => onDecide(planned.index, "approve")}>
+                    Approve
+                  </button>
+                  <button type="button" className="btn" disabled={busy} onClick={() => onDecide(planned.index, "skip")}>
+                    Skip
+                  </button>
+                </span>
+              ) : null}
+            </span>
+          </li>
+        );
+      })}
+    </ol>
+  );
+}
+
+/**
+ * Every runbook that applies to this alert. Text runbooks show their instructions; automation
+ * runbooks show their steps with live state (they start by themselves on new alerts), Approve /
+ * Skip on a waiting step, and Run now when they have not run on this alert.
+ */
+function Runbooks({
+  alertId,
+  matched,
+  runs,
+  onRun,
+}: {
+  alertId: string;
+  matched: MatchedRunbook[] | null;
+  runs: RunbookRun[] | null;
+  onRun(run: RunbookRun): void;
+}) {
+  const [busy, setBusy] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const isCurrent = useIsCurrent(alertId);
+  const call = async (key: string, fn: () => Promise<RunbookRun>) => {
+    setBusy(key);
+    setError(null);
+    try {
+      const run = await fn();
+      if (isCurrent(alertId)) onRun(run);
+    } catch (e) {
+      if (isCurrent(alertId)) setError(e instanceof Error ? e.message : "Could not update the runbook.");
+    } finally {
+      if (isCurrent(alertId)) setBusy(null);
+    }
+  };
+  const list = matched ?? [];
+  // Runs of runbooks that no longer match (e.g. edited since) still belong to this alert.
+  const orphanRuns = (runs ?? []).filter((r) => !list.some((m) => m.id === r.runbookId));
+  const empty = matched !== null && runs !== null && list.length === 0 && orphanRuns.length === 0;
   return (
     <section aria-label="Runbooks" className="ad-panel">
-      <div className="panel-head"><h2>Runbooks</h2></div>
+      <div className="panel-head">
+        <h2>
+          Runbooks
+          {list.length + orphanRuns.length > 0 ? <span className="count-chip">{list.length + orphanRuns.length}</span> : null}
+        </h2>
+        <span className="muted small-text">Automation runbooks start by themselves on new alerts</span>
+      </div>
       <div className="panel-body">
-      {runs === null ? null : runs.length === 0 ? (
-        <p className="muted">No runbook runs yet.</p>
-      ) : (
-        <ul className="plain">
-          {runs.map((r, i) => (
-            <li key={`${r.runbookId}-${i}`}>
-              <span className="mono strong">{r.runbookId}</span>
-              <ol className="steps">
-                {(r.steps ?? []).map((s) => (
-                  <li key={s.index} className={`step step-${s.state}`}>
-                    <span className="step-state">{s.state}</span>
-                    <span>Step {s.index + 1}</span>
-                    {s.result ? <span className="muted"> — {s.result}</span> : null}
-                  </li>
-                ))}
-              </ol>
+        {matched === null && runs === null ? <p className="muted">Loading…</p> : null}
+        {empty ? <p className="muted">No runbook applies to this alert. Write one for its rule below.</p> : null}
+        <ul className="plain runs">
+          {list.map((m) => {
+            const run = (runs ?? []).find((r) => r.runbookId === m.id);
+            return (
+              <li key={m.id} className="run">
+                <div className="run-head">
+                  <span className="strong">{m.name}</span>
+                  <span className={`type-chip type-${m.type}`}>{m.type}</span>
+                  <span className="tag">{m.origin === "rule" ? "this rule" : "shared"}</span>
+                  {run?.status ? <span className={`run-status rs-${run.status}`}>{STEP_LABEL[run.status] ?? run.status}</span> : null}
+                  {m.type === "automation" && !run ? (
+                    <button
+                      type="button"
+                      className="btn primary solid run-now"
+                      disabled={busy !== null}
+                      onClick={() => call(`run:${m.id}`, () => startRunbook(alertId, m.id))}
+                    >
+                      <Icon as={Play} /> {busy === `run:${m.id}` ? "Starting…" : "Run now"}
+                    </button>
+                  ) : null}
+                </div>
+                {m.type === "text" ? (
+                  <p className="prose rb-text">{m.content}</p>
+                ) : (
+                  <StepList
+                    steps={m.steps ?? []}
+                    run={run}
+                    busy={busy !== null}
+                    onDecide={(i, d) => call(`${m.id}:${i}`, () => decideStep(alertId, m.id, i, d))}
+                  />
+                )}
+              </li>
+            );
+          })}
+          {orphanRuns.map((r) => (
+            <li key={r.runbookId} className="run">
+              <div className="run-head">
+                <span className="strong">{r.runbookName ?? r.runbookId}</span>
+                {r.status ? <span className={`run-status rs-${r.status}`}>{STEP_LABEL[r.status] ?? r.status}</span> : null}
+              </div>
+              <StepList
+                steps={r.steps.map((st) => ({ index: st.index, name: st.name }))}
+                run={r}
+                busy={busy !== null}
+                onDecide={(i, d) => call(`${r.runbookId}:${i}`, () => decideStep(alertId, r.runbookId, i, d))}
+              />
             </li>
           ))}
         </ul>
-      )}
+        {error ? <p className="error-text" role="alert">{error}</p> : null}
       </div>
     </section>
   );
 }
 
+/** Audit log, folded away by default; the header shows how many entries and the latest one. */
 function Audit({ entries }: { entries: AuditEntry[] | null }) {
+  const [open, setOpen] = useState(false);
+  const last = entries && entries.length > 0 ? entries[entries.length - 1] : undefined;
+  const lastAt = last ? parseTimestamp("at", last.at) : null;
   return (
     <section aria-label="Audit log" className="ad-panel">
-      <div className="panel-head"><h2>Audit log</h2></div>
+      <button type="button" className="panel-head panel-toggle" aria-expanded={open} onClick={() => setOpen(!open)}>
+        <h2>
+          <Icon as={open ? ChevronDown : ChevronRight} /> Audit log
+          {entries ? <span className="count-chip">{entries.length}</span> : null}
+        </h2>
+        {!open && last ? (
+          <span className="muted small-text audit-latest">
+            Latest: {last.actor} {(last.action ?? "").replace(/_/g, " ")}
+            {lastAt ? `, ${formatDate(lastAt)}` : ""}
+          </span>
+        ) : null}
+      </button>
+      {open ? (
       <div className="panel-body">
       {entries === null ? null : entries.length === 0 ? (
         <p className="muted">No audit entries yet.</p>
@@ -178,6 +324,7 @@ function Audit({ entries }: { entries: AuditEntry[] | null }) {
         </ol>
       )}
       </div>
+      ) : null}
     </section>
   );
 }
@@ -296,7 +443,7 @@ content: |
 `;
 
 /** The rule's own runbook, written as YAML. One per rule; saving overwrites it. */
-function RuleRunbookPanel({ ruleId }: { ruleId: string }) {
+function RuleRunbookPanel({ ruleId, onSaved }: { ruleId: string; onSaved(): void }) {
   const [current, setCurrent] = useState<RuleRunbook | null | undefined>(undefined);
   const [draft, setDraft] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -326,6 +473,7 @@ function RuleRunbookPanel({ ruleId }: { ruleId: string }) {
       if (!isCurrent(ruleId)) return;
       setCurrent(r);
       setDraft(null);
+      onSaved();
     } catch (e) {
       if (isCurrent(ruleId)) setError(e instanceof Error ? e.message : "Could not save the runbook.");
     } finally {
@@ -342,9 +490,11 @@ function RuleRunbookPanel({ ruleId }: { ruleId: string }) {
           {rb ? <span className={`type-chip type-${rb.type}`}>{rb.type}</span> : null}
         </h2>
         {draft === null && current !== undefined ? (
-          <button type="button" className="btn" onClick={() => setDraft(current?.yaml ?? RUNBOOK_TEMPLATE)}>
-            {rb ? "Edit YAML" : "Write runbook"}
-          </button>
+          <span className="actions">
+            <button type="button" className="btn" onClick={() => setDraft(current?.yaml ?? RUNBOOK_TEMPLATE)}>
+              {rb ? "Edit YAML" : "Write runbook"}
+            </button>
+          </span>
         ) : null}
       </div>
       <div className="panel-body stack">
@@ -398,6 +548,7 @@ function RuleRunbookPanel({ ruleId }: { ruleId: string }) {
               {showYaml ? "Hide YAML" : "View YAML"}
             </button>
             {showYaml ? <pre className="mono raw-json">{current?.yaml}</pre> : null}
+            <p className="muted small-text">It shows under Runbooks above on every alert of this rule.</p>
           </>
         )}
       </div>
@@ -566,6 +717,7 @@ export function AlertDetailPage() {
   const [resolving, setResolving] = useState(false);
   const [runs, setRuns] = useState<RunbookRun[] | null>(null);
   const [audit, setAudit] = useState<AuditEntry[] | null>(null);
+  const [matched, setMatched] = useState<MatchedRunbook[] | null>(null);
   const isCurrent = useIsCurrent(id);
 
   useEffect(() => {
@@ -585,12 +737,30 @@ export function AlertDetailPage() {
           e instanceof ApiError ? { status: e.status, message: e.message } : { status: 0, message: "Could not load alert." },
         );
       });
+    setMatched(null);
     void getRunbookRuns(id).then((r) => live && setRuns(r));
+    void getMatchedRunbooks(id).then((m) => live && setMatched(m));
     void getAudit(id).then((r) => live && setAudit(r));
     return () => {
       live = false;
     };
   }, [id]);
+
+  const upsertRun = (run: RunbookRun) => {
+    setRuns((prev) => [...(prev ?? []).filter((r) => r.runbookId !== run.runbookId), run]);
+    void getAudit(id).then((a) => isCurrent(id) && setAudit(a));
+  };
+
+  // Live progress: while a run is still going, refresh runs (and the audit log) every 1.5 s.
+  const active = (runs ?? []).some((r) => r.status === "running");
+  useEffect(() => {
+    if (!active) return;
+    const t = setInterval(() => {
+      void getRunbookRuns(id).then((r) => isCurrent(id) && setRuns(r));
+      void getAudit(id).then((a) => isCurrent(id) && setAudit(a));
+    }, 1500);
+    return () => clearInterval(t);
+  }, [active, id]);
 
   const act = async (fn: (id: string) => Promise<Alert>) => {
     setBusy(true);
@@ -750,12 +920,17 @@ export function AlertDetailPage() {
         </section>
       )}
 
-      <div className="two-col">
-        <Runbooks runs={runs} />
-        <Audit entries={audit} />
-      </div>
+      <Runbooks alertId={id} matched={matched} runs={runs} onRun={upsertRun} />
 
-      {alert.ruleId ? <RuleRunbookPanel ruleId={alert.ruleId} /> : null}
+      {alert.ruleId ? (
+        <RuleRunbookPanel
+          ruleId={alert.ruleId}
+          onSaved={() => {
+            // The registry picks the change up from the config store a moment later.
+            setTimeout(() => void getMatchedRunbooks(id).then((m) => isCurrent(id) && setMatched(m)), 700);
+          }}
+        />
+      ) : null}
 
       <RulebookThread
         alertId={id}
@@ -763,6 +938,8 @@ export function AlertDetailPage() {
         entries={alert.rulebook ?? []}
         onAdded={(e) => setAlert((prev) => (prev ? { ...prev, rulebook: [...(prev.rulebook ?? []), e] } : prev))}
       />
+
+      <Audit entries={audit} />
       <Suggest key={id} id={id} />
     </main>
   );
