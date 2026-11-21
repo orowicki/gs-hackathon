@@ -355,7 +355,7 @@ export const operationSpecs: Record<string, OperationSpec> = {
     request: body("ApproveStepRequest", false),
     success: json(200, "The run after the step was approved or skipped", ref("RunbookRun")),
     alsoSuccess: [json(202, "Approved; the continuation is still running", ref("RunbookRun"))],
-    errors: [400, 404, 409, 413],
+    errors: [400, 403, 404, 409, 413],
   },
 
   "POST /api/alerts/{id}/suggestions": {

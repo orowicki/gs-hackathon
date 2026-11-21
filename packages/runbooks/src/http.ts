@@ -244,7 +244,7 @@ export function createRunbookRoutes(deps: RunbookRoutesDeps): {
         return await route(req, res, url, actor);
       } catch (e) {
         if (e instanceof HttpError) send(res, e.status, { error: e.message, code: e.code });
-        else if (e instanceof RunnerError) send(res, e.code === "not_found" ? 404 : 409, { error: e.message, code: e.code });
+        else if (e instanceof RunnerError) send(res, e.code === "not_found" ? 404 : e.code === "forbidden" ? 403 : 409, { error: e.message, code: e.code });
         else send(res, 500, { error: "internal error", code: "internal" });
         return true;
       }

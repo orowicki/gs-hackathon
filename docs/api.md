@@ -1475,6 +1475,7 @@ Example `skip` (Skip the step):
 | 200 | `application/json` | [RunbookRun](#schema-runbookrun) | The run after the step was approved or skipped |
 | 202 | `application/json` | [RunbookRun](#schema-runbookrun) | Approved; the continuation is still running |
 | 400 | `application/json` | [Error](#schema-error) | Bad request (invalid id, body, filter or parameter) |
+| 403 | `application/json` | [Error](#schema-error) | The account is not allowed to do this |
 | 404 | `application/json` | [Error](#schema-error) | Not found |
 | 409 | `application/json` | [Error](#schema-error) | Conflict with the current state |
 | 413 | `application/json` | [Error](#schema-error) | Payload too large |

@@ -5,7 +5,7 @@ import type { ListAuditOptions, RunStore, StoredRun } from "./store.js";
 import { renderTemplate, type TemplateContext } from "./template.js";
 import { conditionContext, evaluateCondition } from "./conditions.js";
 
-export type RunnerErrorCode = "not_found" | "not_awaiting" | "ambiguous";
+export type RunnerErrorCode = "not_found" | "not_awaiting" | "ambiguous" | "forbidden";
 export class RunnerError extends Error {
   constructor(
     public readonly code: RunnerErrorCode,
@@ -28,6 +28,11 @@ export interface RunnerOptions {
   /** Pause between attempts of a step with `retries` (default 1000 ms). */
   retryDelayMs?: number;
   sleep?: (ms: number) => Promise<void>;
+  /**
+   * May `actor` decide (approve or skip) a step whose `approvers` is this group id?
+   * Omitted: anyone may (tests, embedding). The app checks group membership.
+   */
+  mayApprove?: (actor: string, approversGroupId: string) => boolean | Promise<boolean>;
 }
 export interface ApproveOptions {
   actor: string;
@@ -269,7 +274,11 @@ export function createRunner(opts: RunnerOptions): Runner {
       if (run.steps[stepIndex]?.state !== "awaiting_approval") {
         throw new RunnerError("not_awaiting", `step ${stepIndex} of ${run.runbookId} is not awaiting approval`);
       }
-      const name = stepDisplayName(run.runbook.steps[stepIndex]!, run.template);
+      const step = run.runbook.steps[stepIndex]!;
+      if (step.approvers && opts.mayApprove && !(await opts.mayApprove(o.actor, step.approvers))) {
+        throw new RunnerError("forbidden", `${o.actor} is not in the approvers group ${step.approvers} for this step`);
+      }
+      const name = stepDisplayName(step, run.template);
       if (decision === "skip") {
         setStep(run, stepIndex, "skipped", `skipped by ${o.actor}`);
         run.status = "running";

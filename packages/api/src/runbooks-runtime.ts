@@ -125,6 +125,14 @@ export function createRunbookRuntime(o: RunbookRuntimeOptions): RunbookRuntime {
     actions: createDefaultActions({ notifyGroup }),
     onAwaitingApproval: createApprovalNotifier({ recipients: approvalRecipients, enqueue: (n) => o.enqueue(n) }),
     onError: (err) => console.error("runbook approval notification:", err.message),
+    // Only members of a step's approvers group may approve or skip it. An unknown group
+    // (config typo) doesn't lock everyone out of a running incident.
+    mayApprove: async (actor, groupId) => {
+      if (!directory) return true;
+      await directory.ready;
+      const g = directory.group(groupId);
+      return !g || g.memberIds.includes(actor);
+    },
     onUpdate: (run) => {
       const push: UiPush = { type: "alert", alertId: run.alertId, kind: "updated" };
       o.redis.publish(CHANNEL_UI_PUSH, JSON.stringify(push)).catch(() => {
