@@ -69,6 +69,7 @@ it("approvals and runbook-runs routes still reach runbooks", async () => {
   expect(runs.status).toBe(200);
   expect(await runs.json()).toEqual([]);
   const approve = await fetch(`${url}/api/alerts/a1/runbook-steps/0/approve`, { method: "POST", body: "{}" });
-  expect(approve.status).toBe(404);
-  expect((await approve.json() as { code: string }).code).toBe("not_found");
+  // Reaches the runbooks handler, which refuses a caller that is not signed in.
+  expect(approve.status).toBe(403);
+  expect((await approve.json() as { code: string }).code).toBe("forbidden");
 });

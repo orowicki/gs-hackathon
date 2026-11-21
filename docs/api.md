@@ -1442,7 +1442,7 @@ Approve a runbook step awaiting approval
 | `id` | path | string | yes |  |
 | `stepIndex` | path | integer | yes | Zero-based index of the step |
 | `runbookId` | query | string | no | Runbook id (alternative to the body field) |
-| `actor` | query | string | no | Approver (alternative to the body field) |
+| `actor` | query | string | no | Ignored: the approver is always the signed-in account |
 
 **Request body**
 
@@ -1475,6 +1475,7 @@ Example `skip` (Skip the step):
 | 200 | `application/json` | [RunbookRun](#schema-runbookrun) | The run after the step was approved or skipped |
 | 202 | `application/json` | [RunbookRun](#schema-runbookrun) | Approved; the continuation is still running |
 | 400 | `application/json` | [Error](#schema-error) | Bad request (invalid id, body, filter or parameter) |
+| 403 | `application/json` | [Error](#schema-error) | The account is not allowed to do this |
 | 404 | `application/json` | [Error](#schema-error) | Not found |
 | 409 | `application/json` | [Error](#schema-error) | Conflict with the current state |
 | 413 | `application/json` | [Error](#schema-error) | Payload too large |
@@ -1545,7 +1546,7 @@ Pending runbook step approvals
 
 | status | media type | schema | description |
 | --- | --- | --- | --- |
-| 200 | `application/json` | [PendingApproval](#schema-pendingapproval)[] | Steps awaiting approval |
+| 200 | `application/json` | [PendingApproval](#schema-pendingapproval)[] | Steps awaiting approval on alerts that are not resolved |
 
 ### GET `/api/rules/{id}/runbook`
 
@@ -2791,7 +2792,7 @@ Type: "open" \| "acknowledged" \| "resolved"
 
 | name | type | required | description |
 | --- | --- | --- | --- |
-| `actor` | string | no |  |
+| `actor` | string | no | Ignored: the approver is always the signed-in account (session cookie or X-Account) |
 | `runbookId` | string | no | Needed when several runbooks await approval at that step |
 | `decision` | "approve" \| "skip" | no |  |
 
@@ -3060,6 +3061,7 @@ Type: object
 | `runbookId` | string | yes |  |
 | `stepIndex` | integer | yes |  |
 | `stepName` | string | no |  |
+| `approvers` | string | no | Group id whose members may approve or skip; absent = any signed-in account |
 | `requestedAt` | string | yes |  |
 
 <a id="schema-person"></a>

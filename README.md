@@ -1,144 +1,95 @@
 # Alerting service
 
-TypeScript monorepo: `packages/api` (HTTP API with `/health`) and `packages/shared`, run with Postgres, Redis and ntfy via Docker Compose.
+Gets the right alert to the right people, on the channel they prefer, and helps them fix it with the team's runbooks. Events come in from many sources in any shape; teams decide what matters with rules; people get notified without being flooded.
 
-## Docs
+## Install
 
-- [Architecture](docs/architecture.md)
-- [Config formats](docs/config-formats.md)
-- [Extending](docs/extending.md)
-- [Performance](docs/performance.md)
-
-## Requirements
-
-- Docker (with Compose)
-- Node 22.6+ (the seed and demo scripts run on the host with `--experimental-strip-types`)
-- [just](https://github.com/casey/just)
-
-## Quick start
+You need **Docker** (with Compose), **Node.js 22.6+** and **[just](https://github.com/casey/just)**.
 
 ```sh
-just up      # build, start the stack, wait for /health, seed demo data
-just demo    # send a realistic mix of events for 60 s
-just down
+git clone https://github.com/orowicki/gs-hackathon.git
+cd gs-hackathon
+just up      # build, start, seed demo data (first build takes 1-2 min)
+just demo    # send 60 s of realistic events
 ```
 
-- `just up`: the first build takes roughly 1-2 minutes (image build and dependency install); later starts reuse the cache. It waits up to 120 s for `/health`, checks the host Node version, runs `npm ci` if `node_modules/yaml` is missing, then seeds. Seeding only creates what is missing and never overwrites, so edits survive a restart and a second run changes nothing (it prints `seed: created N, kept M`).
-- Seeded: the people (anna, ewa, julia, marek, tomasz), groups (pricing-team, rates-desk, settlements-oncall), the three Appendix A schemas and four rules, the three Appendix B runbooks (all from `config/`), four demo sources (`demo-http`, `demo-logs` tailing `/tmp/demo-logs/*.log` in the app container, `demo-stream` on Redis stream `demo:events`, `demo-kafka` on Kafka topic `demo.events`) and Anna's preference (critical to ui + ntfy, quiet hours 20:00-08:00 Europe/Warsaw, ui only).
-- Open <http://localhost:3000> and pick a profile.
-- `just demo` first sends a fixed showcase (about 19 events, a few seconds), then about 2 random events/s until the 60 s are up (the showcase counts towards them), round-robin over HTTP (`POST /ingest/demo-http`), file tail, Redis stream and Kafka (the demo prints a warning and skips Kafka if the broker is not reachable). The showcase alone gives a feed with all four severities (critical, error, warning, info, at least 2 open alerts each), sources `payments-api`, `pricing-engine-emea`, `pricing-engine-apac`, `pricing-engine-staging`, `order-settlement` and `trade-gateway`, environments `prod` and `staging`, alerts that repeat (dedup count 3 for the payments critical) and alerts that resolve (a pricing latency and a staging payments critical). Every seeded rule fires (info comes from large rejected rates trades, staging from Anna's and Team Pricing's rules, which do not check the environment). The random part adds settlement failures, latency, rejected trades, resolved metrics, repeats and the odd unparseable line.
-- Options: `just demo --once` (one of each type through each source), `just demo --burst` (about 30 fresh random events as fast as possible, a few seconds, no showcase, no resolves; events for the same service still count as repeats), `just demo --no-showcase` (random events only), `just demo --rate 5 --duration 30`, `just demo --count 20` (showcase, then 20 random events). Sends through file_tail and Redis use `docker compose exec` and cost roughly 0.3-1 s each, so the real rate may be lower than requested. It prints per-source counts at the end; run it from the repo root.
-- `just longtest`: 15 minutes of the same traffic (showcase, then random events), and from 10 s on about 30% of the random events are in a schema no seeded schema recognises: a stale market-data feed, `{"eventName": "md.feed.stale", "feed": "fx-spot-eu", "instrument": "EURUSD", "staleForSec": 45, "level": "SEV2", "venue": "LDN", "env": "prod", "detectedAt": <epoch s>}`. Those events are stored but match no schema, so they are the ones to map live: add a schema with `match: eventName = md.feed.stale` (severity from `level` with a value map SEV1 → critical, SEV2 → error, SEV3 → warning; `occurredAt` from `detectedAt`), and the next ones are recognised. Flags as for `just demo`, e.g. `just longtest --unknown-share 0.5` or `just longtest --unknown-after 30`; `--duration` overrides the 15 minutes.
-- Filters to try in the alerts list (`alert.*` reads the alert itself; bare names such as `type` or `payload.desk` read the original event). The counts below are for the showcase alone: the random phase adds more alerts on top, so counts grow, but the showcase alerts keep their state (random events never reuse their dedup keys):
-  1. `alert.severity = critical`: 4 showcase alerts (payments-api prod, pricing-engine-apac, an order-settlement workflow, and the resolved staging payments-api critical).
-  2. `alert.source = payments-api`: the prod critical (repeated, count 3) and the staging critical (resolved).
-  3. `alert.environment = staging`: the open pricing-engine-staging warning and the resolved staging payments critical.
-  4. `alert.status != resolved`: everything still open; hides the resolved pricing-engine-emea latency and the resolved staging payments critical.
-  5. `alert.count > 1`: the repeated alerts (payments-api critical, pricing-engine-apac latency, the confirm-settlement failure).
-  Combine them, e.g. `alert.severity >= warning AND alert.environment = prod AND alert.status != resolved`.
-- Notifications on ntfy: <http://localhost:8080>, topics `alerting-<person>` (e.g. `alerting-anna`; see `ntfyTopic` in `config/people/`).
+Open **<http://localhost:3000>** and pick a person (no passwords). Stop with `just down`; wipe all data with `docker compose down -v`.
 
-### Kafka source
+| Address | What |
+| --- | --- |
+| <http://localhost:3000> | The app: web UI and API |
+| <http://localhost:8080> | ntfy push notifications: subscribe to `alerting-<person>`, e.g. `alerting-anna` |
+| <http://localhost:8025> | Mailpit: every email the app sends |
+| <http://localhost:4100> | Demo service that runbook actions call |
 
-`just up` also starts a single-node Redpanda broker (Kafka API, no ZooKeeper): `redpanda:9092` inside the compose network, `localhost:19092` from the host. A source of type `kafka` consumes one topic as a consumer group (offsets are committed after an event is accepted, so delivery is at-least-once):
+**Quick tour:** sign in as Anna and watch alerts arrive live in the feed. Open one to see its event, runbook and history, then acknowledge and resolve it. To approve a runbook step, sign in as Julia or Marek (Settlements on-call) and open **Approvals**.
 
-```json
-{ "id": "my-kafka", "name": "My Kafka", "enabled": true, "parser": { "type": "json" },
-  "type": "kafka", "config": { "brokers": "redpanda:9092", "topic": "demo.events", "groupId": "alerting" } }
+## How it works
+
+```mermaid
+flowchart LR
+  S[Sources] --> E[Events] -->|schemas normalise| R{Rules} --> A[Alerts]
+  A --> N[Notifications: Dashboard · Phone · Email]
+  A --> B[Runbooks] -->|risky step| P[Approvals]
 ```
 
-Send a test message to the seeded `demo-kafka` source:
+A **source** receives events, a **schema** recognises and normalises each kind of event, a **rule** decides who gets alerted and how the alert looks, and **runbooks** tell people (or automation) what to do next.
 
-```sh
-echo '{"alertname":"HighErrorRate","labels":{"service":"payments-api","region":"eu-west","severity":"critical"},"annotations":{"summary":"Error rate 27%"},"startsAt":"2026-11-21T10:00:00Z","status":"firing"}' \
-  | docker compose exec -T redpanda rpk topic produce demo.events
-```
+## Features
 
-More in [docs/config-formats.md](docs/config-formats.md).
+### Ingest from many sources
+- **Four source types:** HTTP webhook, tailed log file, Redis stream and Kafka. Add one in the UI, in YAML or through the API, with no code.
+- **Any schema:** events are stored as they arrive, and schemas map their fields. An event no schema recognises shows up under **Events**, where one click turns it into a new schema.
+
+### Rules teams control
+- **Filters on any field** with `=`, `>`, `in`, `contains`, `matches`, AND/OR and parentheses, e.g. `payload.notional > 10000000 AND error.code in [TIMEOUT, REJECTED]`.
+- **Per-rule routing and presentation:** each rule picks recipients and channels, plus the alert's title template, fields and colour.
+- **Changed at runtime** through the UI, the API, or YAML files in `config/` that reload live. No restart needed.
+
+### Delivery on the preferred channel
+- **Channels:** Dashboard (in-app), Phone (ntfy push) and Email (SMTP to Mailpit). Each one is a small plugin, so adding a real SMS or phone provider is one isolated file.
+- **Personal preferences:** each person picks channels per severity and sets quiet hours in their own time zone.
+- **No lost alerts:** failed deliveries retry with backoff, survive worker crashes, and land in dead letters you can resend from **Channels**.
+
+### Live UI
+- **Real-time feed** pushed over server-sent events, with filters, sorting and starring.
+- **Acknowledge and resolve** from the alert page; acknowledge (or approve a runbook step) straight from the ntfy notification.
+- **Manage** rules, runbooks, sources, schemas, people, groups and your notification preferences.
+- **Suggest improvements** to a rule from any alert; suggestions can then be accepted or dismissed.
+
+### No flooding
+- **Deduplication:** the same problem repeated becomes one alert with a counter.
+- **Grouping and throttling:** rules can bundle alerts by field over a time window, and each person gets at most a few messages per window, with the rest sent as a digest.
+
+### Runbooks that help resolve
+- **Any format:** Markdown, links, checklists or free text, filled in with values from the event (workflow ID, service name), in full in the UI and as a link in push and email.
+- **Automated steps:** call an HTTP endpoint (retry a workflow, restart a service, open a ticket), escalate to a group, or wait. Steps support conditions (`if`) and retries.
+- **Human approval:** risky steps wait for someone in the step's approvers group, who approves from the UI or the ntfy Approve button. The server enforces this.
+- **Audit and auto-close:** every action records who did it. An alert closes on its own when the source reports the problem is gone.
+- **Self-updating knowledge:** when resolving, a person can save how they fixed it to the rule, so the next person sees it.
+
+### Scalability and performance
+- **Horizontal scaling:** the ingest, rule engine and runbook workers share Redis stream consumer groups, so you scale with `WORKERS=N`. Rules, alerts and delivery state live in Postgres and Redis, not in process memory.
+- **Measured, not estimated:** `just loadtest` measures throughput and p50/p99 latency. At 5000 events/s, 1 and 2 workers both keep up (about 4995 events/s processed, backlog 0, no events lost), with end-to-end p50 67 ms (1 worker) and 56 ms (2 workers). At 1000 events/s on 1 worker, p50 is 24 ms and p99 40 ms. Before #137 the engine managed only about 520 events/s with 1 worker and 930 with 2 (details in [docs/performance.md](docs/performance.md)).
+
+### Configure with Claude
+- The whole service is described by an OpenAPI document at `/api/openapi.json`, and `packages/mcp` is an MCP server, so Claude can add sources, schemas and rules from plain-language requests. See **Connect Claude** in the app.
 
 ## What is mocked
 
-- `demo-service` stands in for the real systems that runbook HTTP actions call.
-- ntfy is a local container, not a hosted service.
-- No authentication: the UI has a profile picker instead of a login.
-- Events are generated by `just demo`; there are no real upstream systems.
+- **Sign-in** is a profile picker with no passwords. The API trusts the session cookie or `X-Account` header, so don't expose it to an untrusted network.
+- **Phone and SMS** are delivered as ntfy push notifications, and **email** goes to Mailpit, not real inboxes.
+- **Upstream systems:** `demo-service` stands in for the APIs that runbooks call, and `just demo` generates the events.
 
-## Extending
+## How we used AI
 
-Step-by-step guides for a new source type, parser, delivery channel, runbook action and API route are in [docs/extending.md](docs/extending.md). New schemas, rules and sources can also be added as YAML.
+We built this with Claude Code, using an "autopilot" setup that plans tasks, writes code and tests, and opens draft pull requests (see [docs/autopilot](docs/autopilot)). Guard hooks stop the agent from merging, force-pushing or deleting branches, so a human reviews and merges every change.
 
-YAML files in `config/` are loaded by the seed on `just up` (only if missing) and then watched live; formats are in [docs/config-formats.md](docs/config-formats.md). To change seeded demo sources or Anna's preference, edit `scripts/seed/seed.ts`.
+## More docs
 
-## Let Claude configure it
-
-The service is fully configurable through its HTTP API, described by an OpenAPI document at <http://localhost:3000/api/openapi.json>. Give that URL to Claude (or any LLM agent that can make HTTP calls) with a prompt such as:
-
-> Using the API described at http://localhost:3000/api/openapi.json, add an http source `billing`, a schema for events shaped like `{"invoice": {"id": "INV-1", "status": "failed", "amount": 120}}`, and a rule that notifies the pricing-team group on severity >= error. Then send a sample event to `/ingest/billing` and check that an alert appears.
-
-Existing entities can be inspected with `GET /api/{sources,schemas,rules,people,groups,runbooks}`.
-
-### MCP server
-
-`packages/mcp` is a stdio MCP server that wraps the HTTP API. Run it with `just mcp`. It reads the API address from `ALERTING_API_URL` (default `http://localhost:3000`).
-
-Claude Code:
-
-```sh
-claude mcp add alerting -e ALERTING_API_URL=http://localhost:3000 -- node /path/to/repo/packages/mcp/dist/main.js
-```
-
-Claude Desktop (`claude_desktop_config.json`):
-
-```json
-{
-  "mcpServers": {
-    "alerting": {
-      "command": "node",
-      "args": ["/path/to/repo/packages/mcp/dist/main.js"],
-      "env": { "ALERTING_API_URL": "http://localhost:3000" }
-    }
-  }
-}
-```
-
-Run `npm run build -w @alerting/mcp` once first, so `dist/main.js` exists.
-
-Tools:
-
-- `list_sources`, `get_source`, `create_source`, `update_source`, `delete_source`
-- `list_schemas`, `get_schema`, `create_schema`, `update_schema`, `delete_schema`
-- `list_rules`, `get_rule`, `create_rule`, `update_rule`, `delete_rule`
-- `validate_filter`: check a filter expression
-- `list_recent_events`: newest events first
-- `list_alerts`: with `filter`, `state`, `limit`, `before`, `sort`, `order`, `offset`
-- `acknowledge_alert`, `resolve_alert`
-
-API errors come back as tool errors with the API's message.
-
-## Configuration
-
-All variables have defaults, so the stack runs without any configuration. Override them with a `.env` file in the repo root (gitignored); compose reads it automatically.
-
-| Variable | Default | Meaning |
-| --- | --- | --- |
-| `PORT` | `3000` | Port the API listens on (api defaults to 3000 outside compose) |
-| `DATABASE_URL` | `postgres://alerting:alerting@postgres:5432/alerting` | Postgres connection string |
-| `REDIS_URL` | `redis://redis:6379` | Redis connection string |
-| `NTFY_URL` | `http://ntfy:80` | Base URL of the ntfy server (host access: `http://localhost:8080`) |
-| `CONFIG_DIR` | `./config` (`/app/config` in compose) | Directory of YAML config (sources, schemas, rules, people, groups, runbooks), watched live. Files are loaded on start only if the entity is missing, later file edits overwrite, deleting a file deletes the entity |
-| `POSTGRES_USER` | `alerting` | Postgres user created on first start |
-| `POSTGRES_PASSWORD` | `alerting` | Postgres password |
-| `POSTGRES_DB` | `alerting` | Postgres database name |
-| `API_URL` | `http://localhost:3000` | Base URL used by the seed and demo scripts (host side) |
-| `DEMO_LOG_FILE` | unset | `just demo`: append file_tail lines to this local file instead of `/tmp/demo-logs/demo.log` in the app container |
-| `DEMO_KAFKA_BROKERS` | `localhost:19092` | `just demo`: Kafka brokers to produce to |
-| `SEED_KAFKA_BROKERS` | `redpanda:9092` | `just up` seed: brokers stored in the `demo-kafka` source (as seen from the containers) |
-| `KAFKA_BROKERS` | `localhost:19092` | Kafka integration test only |
-| `DEMO_REDIS_URL` | unset | `just demo`: XADD to this Redis directly instead of `docker compose exec redis` (Redis is not exposed to the host by default) |
-| `DEMO_RATE` / `DEMO_DURATION` / `DEMO_COUNT` | `2` / `60` / unset | Events per second, duration in seconds, event count (same as `--rate`, `--duration`, `--count`) |
-
-## Performance
-
-Load test (local mode, 3 x 60 s windows, commit 37330d5): at 1000 ev/s with 1 worker e2e p50 is 24 ms and p99 40 ms (targets met). At 5000 ev/s both 1 and 2 workers keep up (about 4995 ev/s processed), with no overload, backlog 0 and 0 lost; e2e p50 is 67 ms (1 worker) and 56 ms (2 workers), p99 1342 ms and 373 ms, so p50 < 50 ms and p99 < 250 ms are not met at that rate. Dedup counts repeats exactly (500 identical events give one alert with count 500). Notification latency is only partly measured because the single-concurrency delivery queue falls behind at 5000 ev/s (a follow-up outside #137, see docs/performance.md).
-History: before the engine dedup merge (#61) 2 workers had p50 9 ms at 5000 ev/s; after it and before #137 the engine was overloaded (519 and 930 ev/s sustainable); #137 fixed that.
-Details, caveats and how to re-run (`just loadtest`): [docs/performance.md](docs/performance.md). Raw results: [1 worker, 1000 ev/s](results/loadtest-2026-11-21-rate1000.json), [1 worker, 5000 ev/s](results/loadtest-2026-11-21.json), [2 workers, 5000 ev/s](results/loadtest-2026-11-21-workers2.json).
+- [Architecture](docs/architecture.md): processes, streams and storage
+- [Config formats](docs/config-formats.md): YAML for sources, schemas, rules, people, runbooks
+- [API reference](docs/api.md)
+- [Extending](docs/extending.md): new source types, parsers, channels and runbook actions
+- [Reference](docs/reference.md): demo options, Kafka, MCP setup, environment variables
+- [Performance](docs/performance.md): load-test method and results
