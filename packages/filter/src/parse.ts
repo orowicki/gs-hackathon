@@ -149,7 +149,13 @@ class Parser {
     const ok = t && (t.kind === "string" || t.kind === "word");
     if (!ok) throw new FilterSyntaxError(`Expected a value ${context} at position ${this.pos(t)}`, this.pos(t));
     this.i++;
-    if (t.kind === "word" && NUMBER_RE.test(t.raw)) return Number(t.raw);
+    if (t.kind === "word" && NUMBER_RE.test(t.raw)) {
+      const n = Number(t.raw);
+      if (!Number.isFinite(n)) {
+        throw new FilterSyntaxError(`Number is too large at position ${this.pos(t)}`, this.pos(t));
+      }
+      return n;
+    }
     return t.text;
   }
 

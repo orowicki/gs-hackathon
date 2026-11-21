@@ -70,8 +70,12 @@ function cmp(actual: unknown, op: string, lit: FilterValue, field: string): bool
       return globToRegExp(String(lit)).test(String(actual));
     default: {
       if (field === SEVERITY_FIELD) {
-        const a = typeof actual === "string" && Object.hasOwn(SEVERITY_ORDER, actual) ? SEVERITY_ORDER[actual] : undefined;
-        const b = typeof lit === "string" && Object.hasOwn(SEVERITY_ORDER, lit) ? SEVERITY_ORDER[lit] : undefined;
+        const rank = (v: unknown): number | undefined => {
+          const k = typeof v === "string" ? v.toLowerCase() : "";
+          return Object.hasOwn(SEVERITY_ORDER, k) ? SEVERITY_ORDER[k] : undefined;
+        };
+        const a = rank(actual);
+        const b = rank(lit);
         return a !== undefined && b !== undefined && order(op, a, b);
       }
       const a = toNum(actual);

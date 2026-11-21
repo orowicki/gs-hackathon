@@ -94,6 +94,12 @@ describe("severity ordering", () => {
     expect(["critical", "error", "warning", "info"].map((s) => r(s, "alert.severity <= warning"))).toEqual([false, false, true, true]);
     expect(["critical", "error", "warning", "info"].map((s) => r(s, "alert.severity < warning"))).toEqual([false, false, false, true]);
   });
+  it("compares case-insensitively", () => {
+    expect(ev("alert.severity >= WARNING", sev("error"))).toBe(true);
+    expect(ev("alert.severity >= error", sev("CRITICAL"))).toBe(true);
+    expect(ev("alert.severity < Error", sev("Warning"))).toBe(true);
+    expect(ev("alert.severity = WARNING", sev("warning"))).toBe(false);
+  });
   it("unknown values are false", () => {
     expect(ev("alert.severity >= error", sev("fatal"))).toBe(false);
     expect(ev("alert.severity >= bogus", sev("critical"))).toBe(false);
@@ -235,6 +241,16 @@ describe("syntax errors", () => {
       expect((e as FilterSyntaxError).position).toBe(position);
       expect((e as FilterSyntaxError).message).toBe(message);
     }
+  });
+  it("rejects non-finite numbers", () => {
+    expect(tryParse("x = 1e400")).toEqual({ ok: false, error: { message: "Number is too large at position 5", position: 5 } });
+    expect(tryParse("x in [1, -1e999]")).toMatchObject({ ok: false, error: { position: 10 } });
+  });
+  it("exact UI example", () => {
+    expect(tryParse("alert.severity =")).toEqual({
+      ok: false,
+      error: { message: 'Expected a value after "=" at position 17', position: 17 },
+    });
   });
   it("UI example format", () => {
     expect(tryParse("alert.severity = critical AND title =")).toMatchObject({

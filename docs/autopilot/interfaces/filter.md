@@ -38,7 +38,7 @@ Example: `alert.severity >= error AND NOT payload.region in [eu, "us east"]` bec
 - Operators: `= != > >= < <= contains in matches`. Word operators and `AND`/`OR`/`NOT` are case-insensitive. Precedence NOT > AND > OR; parentheses group.
 - Values: bare word (`timeout`, `pricing-engine-*`), `"quoted"` with `\"` and `\\`, number (`-3`, `1.5`), list `[a, "b c", 3]` (only for `in`). A quoted `"5"` is a string; bare `5` is a number.
 - `=`/`!=`: numeric compare if the literal is a number and the actual value is a number or numeric string; otherwise compare `String(actual)` with the literal text.
-- `> >= < <=`: numeric only (both numeric), else false. For `alert.severity` they use `SEVERITY_ORDER` (critical 4 > error 3 > warning 2 > info 1); unknown values give false.
+- `> >= < <=`: numeric only (both numeric), else false. For `alert.severity` they use `SEVERITY_ORDER` (critical 4 > error 3 > warning 2 > info 1); severity values are compared case-insensitively on both sides (`>= WARNING` matches `error`); unknown values give false. `=`/`!=` stay plain string equality (case-sensitive).
 - Missing field (undefined/null): `!=` is true, every other operator is false.
 - `contains`: substring (case-sensitive) on strings/numbers, element membership if the actual value is an array.
 - `matches`: glob over the whole string, `*` any chars, `?` one char, case-sensitive, everything else literal.
@@ -49,7 +49,7 @@ Example: `alert.severity >= error AND NOT payload.region in [eu, "us east"]` bec
 `{ message, position }`, `position` is a 1-based column. Messages are plain English, e.g.
 `Expected a value after "=" at position 17`, `Unknown operator "foo" at position 3. Expected =, !=, ...`,
 `Missing closing quote for the text starting at position 5`, `Missing ")" to close the "(" at position 1`,
-`Unexpected ")" at position 6`, `Missing "]" to close the list opened at position 6`,
+`Number is too large at position 5` (non-finite numbers like `1e400`), `Unexpected ")" at position 6`, `Missing "]" to close the list opened at position 6`,
 `Expected a list like [a, b] after "in" at position 6`, `Expected a field name at position 1`,
 `Unexpected "b" at position 7. Expected AND, OR or the end of the filter`. For unclosed quote/paren/bracket the position is where it was opened.
 
