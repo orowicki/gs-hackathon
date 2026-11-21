@@ -40,6 +40,17 @@ describe("stats", () => {
   });
 });
 
+describe("large inputs", () => {
+  it("stats handle 400k samples without spreading", () => {
+    const v = Array.from({ length: 400_000 }, (_, i) => i);
+    expect(summarize(v)).toMatchObject({ count: 400_000, max: 399_999 });
+    expect(percentile(v, 99)).toBe(395_999);
+    expect(histogram(v, [10]).reduce((n, b) => n + b.count, 0)).toBe(400_000);
+    const series = perSecondSeries(v.map((i) => i * 0.25), v, 0);
+    expect(series.length).toBe(400);
+  });
+});
+
 describe("run helpers", () => {
   it("parseArgs defaults and smoke", () => {
     const o = parseArgs([], {}, new Date("2026-11-21T10:00:00Z"));

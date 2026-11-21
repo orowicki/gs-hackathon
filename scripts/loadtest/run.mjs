@@ -278,6 +278,7 @@ async function main() {
   const collector = createCollector(opts.redis, runId);
   const post = makePoster(opts.baseUrl, 16);
   let result;
+  let phase = "setup";
   try {
     store = createConfigStore({ databaseUrl: opts.databaseUrl, redisUrl: opts.redis });
     cleanup = await installConfig(store, runId);
@@ -294,9 +295,10 @@ async function main() {
     }
     await sleep(500); // let probe leftovers settle
 
+    phase = "measurement";
     result = await measure(opts, runId, post, collector);
   } catch (e) {
-    console.error(`loadtest setup failed: ${e.message}`);
+    console.error(`loadtest ${phase} failed: ${e.stack ?? e.message}`);
     await collector.stop();
     await cleanExit(1);
     return;
@@ -408,7 +410,8 @@ async function measure(opts, runId, post, collector) {
     if (n !== undefined) notif.push(n - ts);
   }
   if (processedTimes.length === 0) for (const s of okSeqs) if (streamMs.has(s)) processedTimes.push(streamMs.get(s));
-  const lastProcessed = processedTimes.length ? Math.max(...processedTimes) : sendEnd;
+  let lastProcessed = processedTimes.length ? 0 : sendEnd;
+  for (const t of processedTimes) if (t > lastProcessed) lastProcessed = t;
   const sendSecs = Math.max(0.001, (sendEnd - startMs) / 1000);
   const procSecs = Math.max(0.001, (lastProcessed - startMs) / 1000);
   const e2eSummary = summarize(e2e.length ? e2e : stream);
