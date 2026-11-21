@@ -245,6 +245,7 @@ export function MyNotificationsPage() {
                         type="checkbox"
                         aria-label={`allow ${c} during quiet hours`}
                         checked={quiet.allowChannels.includes(c)}
+                        disabled={c === "ntfy" && !person.ntfyTopic}
                         onChange={(e) => patchQuiet({ allowChannels: toggle(quiet.allowChannels, c, e.target.checked) })}
                       />
                       <span>{c}</span>

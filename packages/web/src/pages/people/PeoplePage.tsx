@@ -73,10 +73,10 @@ export function PeoplePage() {
 
   const removePerson = async (id: string) => {
     const affected = groups.filter((g) => g.memberIds.includes(id));
-    await api.deletePerson(id);
     for (const g of affected) {
       await api.updateGroup(g.id, { name: g.name, memberIds: g.memberIds.filter((m) => m !== id) });
     }
+    await api.deletePerson(id);
   };
 
   const names = new Map(people.map((p) => [p.id, p.name]));
@@ -158,7 +158,8 @@ export function PeoplePage() {
                       <button
                         type="button"
                         aria-label={`Delete ${p.name}`}
-                        disabled={busy}
+                        disabled={busy || Boolean(groupsErr)}
+                        title={groupsErr ? "Groups failed to load; reload before deleting" : undefined}
                         onClick={() => {
                           if (window.confirm(`Delete ${p.name}?`)) void run("delete", () => removePerson(p.id));
                         }}
