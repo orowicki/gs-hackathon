@@ -1,6 +1,6 @@
 ---
 # Set to true when this file is complete. The launcher refuses to start otherwise.
-ready: false
+ready: true
 profile: hackathon        # core | research | hackathon
 budget_usd: 100       # per autopilot run; each of the 3 team members runs their own autopilot
 ---
