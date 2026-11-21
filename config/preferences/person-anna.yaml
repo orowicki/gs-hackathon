@@ -1,0 +1,11 @@
+# Anna: critical alerts also to ntfy; quiet hours 20:00-08:00 leave only the UI.
+ownerType: person
+ownerId: anna
+rules:
+  - when: { type: cmp, field: alert.severity, op: "=", value: critical }
+    channels: [ui, ntfy]
+quietHours:
+  from: "20:00"
+  to: "08:00"
+  timezone: Europe/Warsaw
+  allowChannels: [ui]

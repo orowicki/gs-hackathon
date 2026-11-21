@@ -6,13 +6,14 @@ import type { ConfigStore, Kind, KindMap } from "./store.js";
 import { fromYaml } from "./yaml.js";
 
 /** Directory name under the config dir -> entity kind. */
-export const KIND_DIRS: Record<string, Exclude<Kind, "preference">> = {
+export const KIND_DIRS: Record<string, Kind> = {
   sources: "source",
   schemas: "schema",
   rules: "rule",
   people: "person",
   groups: "group",
   runbooks: "runbook",
+  preferences: "preference",
 };
 
 export interface WatchOptions {
@@ -31,9 +32,9 @@ const isYaml = (f: string) =>
   [".yaml", ".yml"].includes(extname(f).toLowerCase());
 
 /**
- * Watch `dir/{sources,schemas,rules,people,groups,runbooks}/*.{yaml,yml}` and mirror files into the
+ * Watch `dir/{sources,schemas,rules,people,groups,runbooks,preferences}/*.{yaml,yml}` and mirror files into the
  * store (DB only; never writes files). Entity id = `id` in the YAML, falling back to the file
- * basename without extension (not for preferences, which derive it from the owner).
+ * basename without extension (preferences ignore both: their id is `${ownerType}:${ownerId}` from the file content).
  *
  * Kind directories may appear later (or be deleted and recreated); the root is watched too. Several
  * files may define the same id: the entity is deleted only when no file defines it any more, and

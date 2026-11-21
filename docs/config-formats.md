@@ -4,9 +4,9 @@ Reference for the YAML files in `config/` (and for the same entities when create
 
 ## How files are loaded
 
-- Layout: one entity per file; the directory is the kind (`config/sources/`, `schemas/`, `rules/`, `people/`, `groups/`, `runbooks/`). Preferences have no directory (see [Preferences](#preferences)).
+- Layout: one entity per file; the directory is the kind (`config/sources/`, `schemas/`, `rules/`, `people/`, `groups/`, `runbooks/`, `preferences/`).
 - Extensions: `.yaml` and `.yml` (case-insensitive). Other files, such as `.gitkeep` or `README.md`, are ignored.
-- File name: free. The entity id is the `id` field in the file; if it is missing, the file name without extension is used (not for preferences). The id must be a non-empty string. Two files with the same id: the duplicate is reported and the entity is overwritten by whichever file is read later (directory scan order), so avoid duplicate ids.
+- File name: free. The entity id is the `id` field in the file; if it is missing, the file name without extension is used (not for preferences: their id is `ownerType:ownerId`). The id must be a non-empty string. Two files with the same id: the duplicate is reported and the entity is overwritten by whichever file is read later (directory scan order), so avoid duplicate ids.
 - The app reads the directory from the `CONFIG_DIR` environment variable (default `./config`; compose mounts `./config` at `/app/config`). If the directory does not exist, live reload is disabled and an error is logged.
 - Seed vs live reload (`packages/api/src/config-watch.ts`, `watchConfigDir` in `@alerting/config`): on start, a file is loaded only if no entity with that id exists in the database yet, so edits made through the API survive restarts. After start, adding or editing a file upserts the entity (writes are debounced by about 100 ms), and deleting a file deletes the entity. Other processes are told through the config change channel.
 - An invalid YAML file or an invalid entity is logged with the file path and the reason, then skipped. It never stops the watcher. The watcher never writes to the files.
@@ -260,7 +260,7 @@ memberIds: [tomasz, anna]
 
 ## Preferences
 
-Kind `preference`. There is no `config/preferences/` directory: the watcher does not load preferences. They are stored through the API (`PUT /api/people/{id}/preferences` or `PUT /api/groups/{id}/preferences`, JSON body) and the YAML below is the same entity (it is the seeded preference of Anna from `scripts/seed/seed.ts`). One preference per person or group; its storage id is `person:<ownerId>` or `group:<ownerId>`.
+Kind `preference`. Files go in `config/preferences/` (for example `person-anna.yaml`; the file name is free). The same entity can be stored through the API (`PUT /api/people/{id}/preferences` or `PUT /api/groups/{id}/preferences`, JSON body). The file has no `id`: the id comes from `ownerType` and `ownerId`, so a file with a missing or invalid owner is reported and skipped. The YAML below is Anna's demo preference (`config/preferences/person-anna.yaml`, used by the seed). One preference per person or group; its storage id is `person:<ownerId>` or `group:<ownerId>`.
 
 | Field | Type | Required | Notes |
 |---|---|---|---|

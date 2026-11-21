@@ -62,19 +62,6 @@ export const DEMO_SOURCES: Entity[] = [
   },
 ];
 
-/** Anna: critical alerts also to ntfy; quiet hours 20:00-08:00 leave only the UI. */
-export const ANNA_PREFERENCE: Entity = {
-  ownerType: "person",
-  ownerId: "anna",
-  rules: [
-    {
-      when: { type: "cmp", field: "alert.severity", op: "=", value: "critical" },
-      channels: ["ui", "ntfy"],
-    },
-  ],
-  quietHours: { from: "20:00", to: "08:00", timezone: "Europe/Warsaw", allowChannels: ["ui"] },
-};
-
 export function loadConfigDir(dir: string): SeedData {
   const data = Object.fromEntries(KIND_ORDER.map((k) => [k, []])) as unknown as SeedData;
   for (const [kind, sub] of Object.entries(CONFIG_DIRS) as [SeedKind, string][]) {
@@ -91,7 +78,18 @@ export function loadConfigDir(dir: string): SeedData {
     }
   }
   data.source = DEMO_SOURCES.map((e) => ({ id: e.id as string, entity: e }));
-  data.preference = [{ id: "person:anna", entity: ANNA_PREFERENCE }];
+  // Preferences have no id of their own: the store id is `${ownerType}:${ownerId}`.
+  const pd = join(dir, "preferences");
+  if (existsSync(pd)) {
+    for (const f of readdirSync(pd).sort()) {
+      if (![".yaml", ".yml"].includes(extname(f))) continue;
+      const value = parse(readFileSync(join(pd, f), "utf8")) as Entity | null;
+      if (value === null || typeof value !== "object" || Array.isArray(value)) {
+        throw new Error(`${join(pd, f)}: expected a YAML mapping`);
+      }
+      data.preference.push({ id: `${String(value.ownerType)}:${String(value.ownerId)}`, entity: value });
+    }
+  }
   return data;
 }
 
