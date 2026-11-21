@@ -3,6 +3,11 @@ import type { ChannelStatus, DeadLetter, Notification } from "@alerting/shared";
 import { HttpIngestRegistry, handleHttpIngest } from "@alerting/ingest";
 import { buildOpenApi } from "./openapi.js";
 import { serveStatic } from "./static.js";
+import { handleAlertsRoutes } from "./routes/alerts/http.js";
+import { handleSuggestionsRoutes } from "./routes/suggestions/http.js";
+import type { AlertsApiDeps } from "./routes/common.js";
+
+export type { AlertsApiDeps };
 
 export interface DeliveryDeps {
   listDeadLetters(): Promise<DeadLetter[]>;
@@ -14,6 +19,8 @@ export interface Deps {
   checkPostgres(): Promise<boolean>;
   checkRedis(): Promise<boolean>;
   delivery?: DeliveryDeps;
+  /** Alerts, audit and suggestions routes; omitted = those paths 404. */
+  alerts?: AlertsApiDeps;
   /** Subscribe to CHANNEL_UI_PUSH messages; returns an unsubscribe function. */
   subscribeUiPush?(onMessage: (json: string) => void): () => void;
   /** Directory with the built web app; defaults to env WEB_DIST. */
@@ -215,6 +222,27 @@ export function createServer(deps: Deps): http.Server {
       !path.startsWith("/api/") &&
       serveStatic(req, res, webDist)
     ) {
+      return;
+    }
+    if (
+      deps.alerts &&
+      (path.startsWith("/api/alerts") ||
+        path === "/api/audit" ||
+        (path.startsWith("/api/rules/") && path.endsWith("/suggestions")) ||
+        path.startsWith("/api/suggestions/"))
+    ) {
+      const alertsDeps = deps.alerts;
+      void (async () => {
+        try {
+          const url = new URL(req.url ?? "/", "http://localhost");
+          if (await handleAlertsRoutes(req, res, path, url, alertsDeps)) return;
+          if (await handleSuggestionsRoutes(req, res, path, url, alertsDeps)) return;
+          send(res, 404, { error: "not found" });
+        } catch (err) {
+          console.error("alerts route failed:", err);
+          if (!res.headersSent) send(res, 500, { error: "internal error" });
+        }
+      })();
       return;
     }
     send(res, 404, { error: "not found" });
