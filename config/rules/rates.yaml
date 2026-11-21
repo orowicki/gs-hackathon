@@ -1,0 +1,14 @@
+# Team Rates: large rejected rates trades go to the rates desk on ntfy and ui.
+id: rates-trade-rejected
+name: Team Rates
+enabled: true
+when: 'alert.schema matches trade.rejected.* AND payload.desk = rates AND payload.notional > 10000000'
+who:
+  - recipients:
+      - { type: group, id: rates-desk }
+    force: [ntfy, ui]
+looks:
+  titleTemplate: 'Rejected {{payload.currency}} {{payload.notional}} — {{payload.reason}}'
+  fields: [payload.tradeId, payload.desk, payload.notional]
+createdAt: '2026-11-01T00:00:00Z'
+updatedAt: '2026-11-01T00:00:00Z'
