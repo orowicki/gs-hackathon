@@ -1,6 +1,6 @@
 import pg from "pg";
 import { Redis } from "ioredis";
-import { CHANNEL_UI_PUSH, type UiPush } from "@alerting/shared";
+import { CHANNEL_UI_PUSH } from "@alerting/shared";
 import {
   createDeliveryQueue,
   createEmailChannel,
@@ -9,20 +9,13 @@ import {
   emailConfigFromEnv,
   registerChannel,
 } from "@alerting/delivery";
-import {
-  createDefaultActions,
-  createGroupNotifier,
-  createPgRunStore,
-  createRunbookRegistry,
-  createRunbookRoutes,
-  createRunner,
-  migrateRunbooks,
-} from "@alerting/runbooks";
+import { createRunbookRoutes } from "@alerting/runbooks";
 import { startIngestService, startSchemaMapping, type IngestService, type SchemaMapping } from "@alerting/ingest";
 import { createConfigStore, migrate, type ConfigStore } from "@alerting/config";
 import { startConfigWatch } from "./config-watch.js";
 import { createServer } from "./server.js";
 import { createUiPushHub } from "./stream/sse.js";
+import { createRunbookRuntime } from "./runbooks-runtime.js";
 import { createPgAlertStores, createPgEventLoader } from "./routes/alerts/store.js";
 import { createRedisRecentEvents } from "./routes/events/http.js";
 
@@ -120,44 +113,22 @@ const configWatcher = config
   : undefined;
 
 // Runbooks: runs, approvals (audit goes to the alerts audit store). Lazy connections, so the API still starts when Postgres/Redis are down.
-const runbooksReady = migrateRunbooks(pool);
-runbooksReady.catch((err: unknown) => console.error("runbooks migration failed:", (err as Error).message));
-// The registry shares the config store (and its change events), so runbooks created via /api/runbooks are picked up.
-const runbookRegistry = config
-  ? createRunbookRegistry(config, { onError: (err) => console.error("runbook registry:", err.message) })
-  : undefined;
-const notifyGroup = createGroupNotifier({
-  getGroup: async (id) => (config ? config.get("group", id) : undefined),
+const runtime = createRunbookRuntime({
+  pool,
+  redis,
+  config,
   enqueue: (n) => delivery.enqueue(n),
+  onError: (err) => console.error("runbook registry:", err.message),
 });
+const { runner, ready: runbooksReady } = runtime;
+const runbookRegistry = runtime.registry;
 const stores = createPgAlertStores(pool);
-// One audit log: runbook audit entries are written to (and read from) the alerts audit store.
-const runStore = createPgRunStore(pool, { ready: runbooksReady });
-const runner = createRunner({
-  store: {
-    ...runStore,
-    appendAudit: (entry) => stores.audit.append(entry),
-    listAudit: async ({ alertId, limit } = {}) => {
-      const rows = alertId
-        ? await stores.audit.listByAlert(alertId)
-        : (await stores.audit.list({ limit: limit ?? 100 })).reverse();
-      return limit === undefined ? rows : rows.slice(-limit);
-    },
-  },
-  actions: createDefaultActions({ notifyGroup }),
-  onUpdate: (run) => {
-    const push: UiPush = { type: "alert", alertId: run.alertId, kind: "updated" };
-    redis.publish(CHANNEL_UI_PUSH, JSON.stringify(push)).catch(() => {
-      /* UI push is best effort */
-    });
-  },
-});
-// Best effort: fail runs left "running" by a previous process.
+// Best effort: fail runs left "running" by a previous process (API process only, never in the runbook worker).
 runbooksReady
   .then(() => runner.recoverStale())
   .then((n) => n > 0 && console.log(`runbooks: recovered ${n} interrupted run(s)`))
   .catch((err: unknown) => console.error("runbooks stale-run recovery failed:", (err as Error).message));
-// The alert worker (startRunbookWorker) is wired here once alerts are persisted (needs loadAlert/loadEvent).
+// Alerts start runbooks in the separate runbook worker (runbook-worker.ts), not in this process.
 let publishWarned = false;
 
 const server = createServer({
