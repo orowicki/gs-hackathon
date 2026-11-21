@@ -32,3 +32,10 @@
   your route needs on Deps from that file with `declare module "../http.js" { interface
   Deps { ... } }`, not in http.ts. Helpers go in routes/<name>/. When rebasing onto this
   change, move your server.ts routes into such a file.
+> UI is hand-built by the people now. Do not change anything under packages/web/ or
+  docs/design/UI.md, and don't claim or propose UI tasks. If backend work needs a UI change
+  (a new field to show, a new page), finish the backend part and file an issue describing
+  the UI change, without the ap:task label. Keep the API the UI uses backwards compatible;
+  if you must change a response shape, say so under "Contract change" in the PR.
+  Your focus: backend correctness, the demo data path (seed, `just demo`, engine worker),
+  end-to-end tests, performance numbers and docs.
