@@ -23,10 +23,15 @@ import { validateRunbook } from "@alerting/runbooks";
 import type { Preference, Runbook, StarredFilter } from "@alerting/shared";
 import { send } from "../../http.js";
 import { accountOf, lookupFailed, ruleWriteForbidden } from "../accounts/actor.js";
+import { recordChange, type ChangeAction, type ChangeKind, type ConfigChangeStore } from "./changes.js";
 
 export interface ConfigDeps {
   config?: ConfigStore;
+  changes?: ConfigChangeStore;
 }
+
+/** Records one successful write (called only after the store write succeeded). */
+type RecordFn = (kind: Kind, id: string, action: ChangeAction) => Promise<void>;
 
 export const MAX_CONFIG_BYTES = 1024 * 1024;
 
@@ -176,6 +181,7 @@ async function handleCrud(
   id: string | undefined,
   req: http.IncomingMessage,
   res: http.ServerResponse,
+  rec: RecordFn,
 ): Promise<boolean> {
   if (id === undefined) {
     if (method === "GET") return send(res, 200, await store.list(kind)), true;
@@ -190,6 +196,7 @@ async function handleCrud(
         throw new HttpError(409, `${kind} already exists: ${bodyId}`);
       }
       await store.upsert(kind, body as never);
+      await rec(kind, bodyId, "create");
       return send(res, 201, body), true;
     }
     return false;
@@ -215,11 +222,13 @@ async function handleCrud(
       if (old?.starredFilters !== undefined) entity = { ...entity, starredFilters: old.starredFilters };
     }
     await store.upsert(kind, entity as never);
+    await rec(kind, id, "update");
     return send(res, 200, entity), true;
   }
   if (method === "DELETE") {
     checkRuleWrite(kind, req, { method, id });
     if (!(await store.delete(kind, id))) throw new HttpError(404, `${kind} not found: ${id}`);
+    await rec(kind, id, "delete");
     res.writeHead(204);
     res.end();
     return true;
@@ -234,6 +243,7 @@ async function handlePreferences(
   method: string,
   req: http.IncomingMessage,
   res: http.ServerResponse,
+  rec: RecordFn,
 ): Promise<boolean> {
   if (method !== "GET" && method !== "PUT") return false;
   if ((await store.get(owner, id)) === undefined) throw new HttpError(404, `${owner} not found: ${id}`);
@@ -257,6 +267,7 @@ async function handlePreferences(
   if (body.quietHours !== undefined && !isObj(body.quietHours)) throw bad('"quietHours" must be an object');
   const pref = { ...body, ownerType: owner, ownerId: id } as unknown as Preference;
   await store.upsert("preference", pref);
+  await rec(owner, id, "update");
   return send(res, 200, pref), true;
 }
 
@@ -266,6 +277,7 @@ async function handleStarred(
   method: string,
   req: http.IncomingMessage,
   res: http.ServerResponse,
+  rec: RecordFn,
 ): Promise<boolean> {
   if (method !== "GET" && method !== "PUT") return false;
   const person = (await store.get("person", id)) as (Record<string, unknown> & { id: string }) | undefined;
@@ -283,6 +295,7 @@ async function handleStarred(
     return { ...f, personId: id } as unknown as StarredFilter;
   });
   await store.upsert("person", { ...person, starredFilters: list } as never);
+  await rec("person", id, "update");
   return send(res, 200, list), true;
 }
 
@@ -292,6 +305,7 @@ async function handleYaml(
   id: string | undefined,
   req: http.IncomingMessage,
   res: http.ServerResponse,
+  rec: RecordFn,
 ): Promise<boolean> {
   if (id !== undefined) {
     if (req.method !== "GET") return false;
@@ -308,8 +322,10 @@ async function handleYaml(
   } catch (e) {
     throw bad(e instanceof Error ? e.message : String(e));
   }
-  validateEntity(kind, value);
-  return send(res, 200, await importYaml(store, kind, text)), true;
+  const itemId = validateEntity(kind, value);
+  const imported = await importYaml(store, kind, text);
+  await rec(kind, itemId, "import");
+  return send(res, 200, imported), true;
 }
 
 /** Step actions the worker can run (createDefaultActions in @alerting/runbooks). */
@@ -328,6 +344,7 @@ async function handleRuleRunbook(
   method: string,
   req: http.IncomingMessage,
   res: http.ServerResponse,
+  rec: RecordFn,
 ): Promise<boolean> {
   checkId(ruleId);
   if ((await store.get("rule", ruleId)) === undefined) throw new HttpError(404, `rule not found: ${ruleId}`);
@@ -338,7 +355,7 @@ async function handleRuleRunbook(
     return send(res, 200, { runbook: rb, yaml: editableYaml(rb as unknown as Record<string, unknown>) }), true;
   }
   if (method === "DELETE") {
-    await store.delete("runbook", rbId);
+    if (await store.delete("runbook", rbId)) await rec("runbook", rbId, "delete");
     res.writeHead(204).end();
     return true;
   }
@@ -364,7 +381,9 @@ async function handleRuleRunbook(
   const unknown = steps.findIndex((st) => !STEP_ACTIONS.has(st.action));
   if (unknown !== -1) throw bad(`steps[${unknown}].action must be one of: ${[...STEP_ACTIONS].join(", ")}`);
   if (r.runbook.type === "automation" && steps.length === 0) throw bad("automation runbook needs at least one step");
+  const existed = (await store.get("runbook", rbId)) !== undefined;
   await store.upsert("runbook", r.runbook as Runbook);
+  await rec("runbook", rbId, existed ? "update" : "create");
   return send(res, 200, { runbook: r.runbook, yaml: editableYaml(r.runbook as unknown as Record<string, unknown>) }), true;
 }
 
@@ -467,18 +486,20 @@ export async function handleConfigRoute(
     if (coll === "filters") return await handleFilters(a!, req, res);
     if (!deps.config) throw new HttpError(503, "config store not configured");
     const store = deps.config;
+    const rec: RecordFn = (k, itemId, action) =>
+      recordChange(deps.changes, { kind: k as ChangeKind, id: itemId, action, actor: accountOf(req)?.id });
     const kind = COLLECTIONS.get(coll)!;
     const id = a === undefined ? undefined : decode(a);
     if (b === undefined) {
-      if (id === "import" && YAML_COLLECTIONS.has(coll)) return await handleYaml(store, kind, undefined, req, res);
-      return await handleCrud(store, kind, method, id, req, res);
+      if (id === "import" && YAML_COLLECTIONS.has(coll)) return await handleYaml(store, kind, undefined, req, res, rec);
+      return await handleCrud(store, kind, method, id, req, res, rec);
     }
-    if (b === "export") return await handleYaml(store, kind, id, req, res);
-    if (b === "runbook") return await handleRuleRunbook(store, id!, method, req, res);
+    if (b === "export") return await handleYaml(store, kind, id, req, res, rec);
+    if (b === "runbook") return await handleRuleRunbook(store, id!, method, req, res, rec);
     if (b === "preferences") {
-      return await handlePreferences(store, coll === "people" ? "person" : "group", id!, method, req, res);
+      return await handlePreferences(store, coll === "people" ? "person" : "group", id!, method, req, res, rec);
     }
-    return await handleStarred(store, id!, method, req, res);
+    return await handleStarred(store, id!, method, req, res, rec);
   } catch (err) {
     if (res.headersSent) return true;
     if (err instanceof HttpError) {

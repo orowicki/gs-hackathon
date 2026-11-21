@@ -364,6 +364,27 @@ Retry a dead letter now
 | 404 | `application/json` | [Error](#schema-error) | Not found |
 | 503 | `application/json` | [Error](#schema-error) | Dependency or component not configured |
 
+## config
+
+### GET `/api/config/changes`
+
+Who changed what in the config (newest first; filter by kind and id)
+
+**Parameters**
+
+| name | in | type | required | description |
+| --- | --- | --- | --- | --- |
+| `kind` | query | "source" \| "schema" \| "rule" \| "person" \| "group" \| "runbook" | no | Only changes of this kind; any other value is a 400 |
+| `id` | query | string | no | Only changes of the item with this id |
+| `limit` | query | integer | no | Page size (default 50, values above 500 are clamped); a non-integer or value below 1 is a 400 |
+
+**Responses**
+
+| status | media type | schema | description |
+| --- | --- | --- | --- |
+| 200 | `application/json` | [ConfigChangeList](#schema-configchangelist) | Recorded config writes, newest first. actor is null when the request had no signed-in account |
+| 400 | `application/json` | [Error](#schema-error) | Bad request (invalid id, body, filter or parameter) |
+
 ## events
 
 ### GET `/api/events`
@@ -607,7 +628,7 @@ Example `anna` (Two starred filters (path id anna)):
 
 | status | media type | schema | description |
 | --- | --- | --- | --- |
-| 200 | `application/json` | [StarredFilter](#schema-starredfilter)[] | The stored starred filters |
+| 200 | `application/json` | [StarredFilter](#schema-starredfilter)[] | The stored starred filters (also recorded as an update of the person in GET /api/config/changes) |
 | 400 | `application/json` | [Error](#schema-error) | Bad request (invalid id, body, filter or parameter) |
 | 404 | `application/json` | [Error](#schema-error) | Not found |
 | 413 | `application/json` | [Error](#schema-error) | Payload too large |
@@ -2816,6 +2837,27 @@ Type: "open" \| "acknowledged" \| "resolved"
 | `status` | "firing" \| "resolved" | no |  |
 | `occurredAt` | string \| number \| null | no | ISO timestamp (or epoch value as mapped) |
 
+<a id="schema-configchange"></a>
+
+### ConfigChange
+
+| name | type | required | description |
+| --- | --- | --- | --- |
+| `id` | integer | yes |  |
+| `kind` | "source" \| "schema" \| "rule" \| "person" \| "group" \| "runbook" | yes |  |
+| `itemId` | string | yes | Id of the changed item |
+| `action` | "create" \| "update" \| "delete" \| "import" | yes |  |
+| `actor` | { id: string, name: string } \| null | yes | The signed-in person who made the change; null without an account |
+| `occurredAt` | string | yes | ISO timestamp |
+
+<a id="schema-configchangelist"></a>
+
+### ConfigChangeList
+
+| name | type | required | description |
+| --- | --- | --- | --- |
+| `changes` | [ConfigChange](#schema-configchange)[] | yes |  |
+
 <a id="schema-deadletter"></a>
 
 ### DeadLetter
@@ -3155,7 +3197,7 @@ Type: { id: string, name: string, type: "text", matches: [Filter](#schema-filter
 
 ### RunbookStep
 
-Type: { action: "http", name?: string, method: string, url: string, headers?: map<string, string>, body?: string, approval: "none" \| "required", approvers?: string, id?: string, if?: string, retries?: integer } \| { action: "escalate", name?: string, group: string, approval: "none" \| "required", approvers?: string, id?: string, if?: string, retries?: integer } \| { action: "wait", name?: string, duration: string, approval: "none" \| "required", approvers?: string, id?: string, if?: string, retries?: integer }
+Type: { action: "http", name?: string, method: string, url: string, headers?: map<string, string>, body?: string, approval?: "none" \| "required", approvers?: string, id?: string, if?: string, retries?: integer } \| { action: "escalate", name?: string, group: string, approval?: "none" \| "required", approvers?: string, id?: string, if?: string, retries?: integer } \| { action: "wait", name?: string, duration: string, approval?: "none" \| "required", approvers?: string, id?: string, if?: string, retries?: integer }
 
 <a id="schema-schema"></a>
 

@@ -206,8 +206,17 @@ export const operationSpecs: Record<string, OperationSpec> = {
       description: "personId is optional but must match the path when present; each filter must be a JSON filter tree.",
       content: { [JSON_T]: list("StarredFilter") },
     },
-    success: json(200, "The stored starred filters", list("StarredFilter")),
+    success: json(200, "The stored starred filters (also recorded as an update of the person in GET /api/config/changes)", list("StarredFilter")),
     errors: [400, 404, 413, ...CFG],
+  },
+  "GET /api/config/changes": {
+    query: [
+      q("kind", { type: "string", enum: ["source", "schema", "rule", "person", "group", "runbook"] }, "Only changes of this kind; any other value is a 400"),
+      q("id", { type: "string" }, "Only changes of the item with this id"),
+      q("limit", { type: "integer", minimum: 1, maximum: 500, default: 50 }, "Page size (default 50, values above 500 are clamped); a non-integer or value below 1 is a 400"),
+    ],
+    success: json(200, "Recorded config writes, newest first. actor is null when the request had no signed-in account", ref("ConfigChangeList")),
+    errors: [400],
   },
   "GET /api/events": {
     query: [
