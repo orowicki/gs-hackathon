@@ -84,7 +84,7 @@ subRedis.on("message", (_ch: string, json: string) => {
   uiHub.publish(json);
 });
 
-// Runbooks: runs, approvals, audit. Lazy connections, so the API still starts when Postgres/Redis are down.
+// Runbooks: runs, approvals (audit goes to the alerts audit store). Lazy connections, so the API still starts when Postgres/Redis are down.
 const runbooksReady = migrateRunbooks(pool);
 runbooksReady.catch((err: unknown) => console.error("runbooks migration failed:", (err as Error).message));
 const configStore = createConfigStore({ pool, redis: deliveryRedis });
@@ -95,8 +95,20 @@ const notifyGroup = createGroupNotifier({
   getGroup: (id) => configStore.get("group", id),
   enqueue: (n) => delivery.enqueue(n),
 });
+const stores = createPgAlertStores(pool);
+// One audit log: runbook audit entries are written to (and read from) the alerts audit store.
+const runStore = createPgRunStore(pool, { ready: runbooksReady });
 const runner = createRunner({
-  store: createPgRunStore(pool, { ready: runbooksReady }),
+  store: {
+    ...runStore,
+    appendAudit: (entry) => stores.audit.append(entry),
+    listAudit: async ({ alertId, limit } = {}) => {
+      const rows = alertId
+        ? await stores.audit.listByAlert(alertId)
+        : (await stores.audit.list({ limit: limit ?? 100 })).reverse();
+      return limit === undefined ? rows : rows.slice(-limit);
+    },
+  },
   actions: createDefaultActions({ notifyGroup }),
   onUpdate: (run) => {
     const push: UiPush = { type: "alert", alertId: run.alertId, kind: "updated" };
@@ -112,7 +124,6 @@ runbooksReady
   .catch((err: unknown) => console.error("runbooks stale-run recovery failed:", (err as Error).message));
 // The alert worker (startRunbookWorker) is wired here once alerts are persisted (needs loadAlert/loadEvent).
 let publishWarned = false;
-const stores = createPgAlertStores(pool);
 
 const server = createServer({
   runbooks: createRunbookRoutes({ runner, registry: runbookRegistry }),

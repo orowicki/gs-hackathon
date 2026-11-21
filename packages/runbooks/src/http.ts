@@ -19,8 +19,6 @@ export type PublicRun = RunbookRun & {
 };
 
 const MAX_BODY = 64 * 1024;
-const DEFAULT_LIMIT = 100;
-const MAX_LIMIT = 1000;
 
 /** Public view of a run: no template or runbook snapshot. */
 export function toPublicRun(run: StoredRun): PublicRun {
@@ -92,23 +90,8 @@ export function createRunbookRoutes(deps: RunbookRoutesDeps): {
       send(res, 200, await runner.listPendingApprovals());
       return true;
     }
-    if (method === "GET" && path === "/api/audit") {
-      const raw = url.searchParams.get("limit");
-      let limit = DEFAULT_LIMIT;
-      if (raw !== null) {
-        const n = Number(raw);
-        if (!Number.isInteger(n) || n < 0) throw new HttpError(400, "limit must be a non-negative integer", "bad_request");
-        limit = Math.min(n, MAX_LIMIT);
-      }
-      send(res, 200, await runner.listAudit({ alertId: url.searchParams.get("alertId") || undefined, limit }));
-      return true;
-    }
     if (method === "GET" && (m = /^\/api\/alerts\/([^/]+)\/runbook-runs$/.exec(path))) {
       send(res, 200, (await runner.listRuns(dec(m[1]!))).map(toPublicRun));
-      return true;
-    }
-    if (method === "GET" && (m = /^\/api\/alerts\/([^/]+)\/audit$/.exec(path))) {
-      send(res, 200, await runner.listAudit({ alertId: dec(m[1]!) }));
       return true;
     }
     if (method === "POST" && (m = /^\/api\/alerts\/([^/]+)\/runbook-steps\/([^/]+)\/approve$/.exec(path))) {

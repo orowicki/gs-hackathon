@@ -78,7 +78,7 @@ describe("runbook http routes", () => {
     const ok = await post("/api/alerts/a-1/runbook-steps/2/approve");
     expect(ok.status).toBe(200);
     expect(ok.json.status).toBe("done");
-    const audit = await get("/api/alerts/a-1/audit");
+    const audit = { json: (await store.listAudit({ alertId: "a-1" })) as any[] };
     expect(audit.json.find((e: any) => e.action === "step_approved").actor).toBe("anonymous");
 
     const again = await post("/api/alerts/a-1/runbook-steps/2/approve");
@@ -90,13 +90,15 @@ describe("runbook http routes", () => {
     await startRun("a-2");
     const ok = await post("/api/alerts/a-2/runbook-steps/2/approve", JSON.stringify({ actor: "p-alice" }));
     expect(ok.status).toBe(200);
-    const audit = await get("/api/alerts/a-2/audit");
+    const audit = { json: (await store.listAudit({ alertId: "a-2" })) as any[] };
     expect(audit.json.filter((e: any) => e.action === "step_executed")).toHaveLength(3);
     const approved = audit.json.find((e: any) => e.action === "step_approved");
     expect(approved.actor).toBe("p-alice");
     expect(new Date(approved.at).toISOString()).toBe(approved.at);
-    const all = await get("/api/audit?alertId=a-2&limit=2");
-    expect(all.json).toHaveLength(2);
+    expect(await store.listAudit({ alertId: "a-2", limit: 2 })).toHaveLength(2);
+    // audit is served by the alerts routes, not the runbooks handler
+    expect((await fetch(base + "/api/audit")).status).toBe(404);
+    expect((await fetch(base + "/api/alerts/a-2/audit")).status).toBe(404);
   });
 
   it("supports skip, query params and error codes", async () => {
@@ -104,7 +106,7 @@ describe("runbook http routes", () => {
     const skipped = await post("/api/alerts/a-3/runbook-steps/2/approve?actor=bob", JSON.stringify({ decision: "skip" }));
     expect(skipped.status).toBe(200);
     expect(skipped.json.steps[2].state).toBe("skipped");
-    const audit = await get("/api/alerts/a-3/audit");
+    const audit = { json: (await store.listAudit({ alertId: "a-3" })) as any[] };
     expect(audit.json.find((e: any) => e.action === "step_skipped").actor).toBe("bob");
 
     expect((await post("/api/alerts/a-3/runbook-steps/x/approve")).status).toBe(400);

@@ -3,7 +3,7 @@ import type { createRunbookRoutes } from "@alerting/runbooks";
 
 declare module "../http.js" {
   interface Deps {
-    /** Runbook runs, approvals and audit routes (from @alerting/runbooks). */
+    /** Runbook runs, runs and approvals routes (audit is served by the alerts routes) (from @alerting/runbooks). */
     runbooks?: ReturnType<typeof createRunbookRoutes>;
   }
 }
@@ -17,7 +17,11 @@ export default {
   order: 40,
   async handle({ req, res, path, url, deps }) {
     if (!deps.runbooks) return false;
-    if (!(path.startsWith("/api/alerts/") || path === "/api/approvals" || path === "/api/audit")) return false;
+    const owned =
+      path === "/api/approvals" ||
+      /^\/api\/alerts\/[^/]+\/runbook-runs$/.test(path) ||
+      /^\/api\/alerts\/[^/]+\/runbook-steps\/[^/]+\/approve$/.test(path);
+    if (!owned) return false;
     return deps.runbooks.handle(req, res, url);
   },
 } satisfies RouteModule;
