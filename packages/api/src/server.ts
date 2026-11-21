@@ -5,6 +5,8 @@ import { buildOpenApi } from "./openapi.js";
 import { serveStatic } from "./static.js";
 import { handleAlertsRoutes } from "./routes/alerts/http.js";
 import { handleSuggestionsRoutes } from "./routes/suggestions/http.js";
+import { handleStream } from "./stream/sse.js";
+import { handleEventsRoutes, type EventsApiDeps } from "./routes/events/http.js";
 import type { AlertsApiDeps } from "./routes/common.js";
 
 export type { AlertsApiDeps };
@@ -23,11 +25,13 @@ export interface Deps {
   alerts?: AlertsApiDeps;
   /** Subscribe to CHANNEL_UI_PUSH messages; returns an unsubscribe function. */
   subscribeUiPush?(onMessage: (json: string) => void): () => void;
+  /** Recent events source; omitted = /api/events/recent and /test-filter 404. */
+  recentEvents?: EventsApiDeps["recentEvents"];
+  /** SSE heartbeat interval (ms), default 15000. */
+  ssePingMs?: number;
   /** Directory with the built web app; defaults to env WEB_DIST. */
   webDist?: string;
 }
-
-const SSE_PING_MS = 15_000;
 
 const CHECK_TIMEOUT_MS = 2000;
 
@@ -173,34 +177,7 @@ export function createServer(deps: Deps): http.Server {
       return;
     }
     if (req.method === "GET" && path === "/api/stream") {
-      if (!deps.subscribeUiPush) return notConfigured();
-      res.writeHead(200, {
-        "content-type": "text/event-stream",
-        "cache-control": "no-cache",
-        connection: "keep-alive",
-        "x-accel-buffering": "no",
-      });
-      const safeWrite = (chunk: string): void => {
-        if (res.destroyed || res.writableEnded) return;
-        try {
-          res.write(chunk);
-        } catch {
-          cleanup();
-        }
-      };
-      res.write(": connected\n\n");
-      const unsubscribe = deps.subscribeUiPush((json) => safeWrite(`data: ${json}\n\n`));
-      const ping = setInterval(() => safeWrite(": ping\n\n"), SSE_PING_MS);
-      let closed = false;
-      const cleanup = (): void => {
-        if (closed) return;
-        closed = true;
-        clearInterval(ping);
-        unsubscribe();
-      };
-      req.on("close", cleanup);
-      res.on("close", cleanup);
-      res.on("error", cleanup);
+      handleStream(req, res, deps.subscribeUiPush, deps.ssePingMs);
       return;
     }
     const m = req.method === "POST" ? /^\/ingest\/([^/]+)$/.exec(path) : null;
@@ -222,6 +199,23 @@ export function createServer(deps: Deps): http.Server {
       !path.startsWith("/api/") &&
       serveStatic(req, res, webDist)
     ) {
+      return;
+    }
+    if (
+      deps.recentEvents &&
+      (path === "/api/events/recent" || path === "/api/events/test-filter")
+    ) {
+      const recentEvents = deps.recentEvents;
+      void (async () => {
+        try {
+          const url = new URL(req.url ?? "/", "http://localhost");
+          if (await handleEventsRoutes(req, res, path, url, { recentEvents })) return;
+          send(res, 404, { error: "not found" });
+        } catch (err) {
+          console.error("events route failed:", err);
+          if (!res.headersSent) send(res, 500, { error: "internal error" });
+        }
+      })();
       return;
     }
     if (
