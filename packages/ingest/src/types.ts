@@ -13,6 +13,8 @@ export interface SourceContext {
     error(msg: string, ...args: unknown[]): void;
   };
   signal?: AbortSignal;
+  /** Redis connection URL for plugins that need one (defaults to process.env.REDIS_URL). */
+  redisUrl?: string;
 }
 
 export interface SourceHandle {

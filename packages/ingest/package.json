@@ -9,6 +9,11 @@
     "build": "tsc -b"
   },
   "dependencies": {
-    "@alerting/shared": "*"
+    "@alerting/shared": "*",
+    "ioredis": "^5.11.1",
+    "picomatch": "^4.0.7"
+  },
+  "devDependencies": {
+    "@types/picomatch": "^4.0.3"
   }
 }
