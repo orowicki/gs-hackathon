@@ -10,6 +10,7 @@
     "typecheck": "tsc -b && tsc -p tsconfig.test.json"
   },
   "dependencies": {
+    "@alerting/delivery": "*",
     "@alerting/shared": "*",
     "ioredis": "^5.4.1",
     "pg": "^8.12.0",

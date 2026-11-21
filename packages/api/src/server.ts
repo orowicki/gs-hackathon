@@ -1,14 +1,26 @@
 import http from "node:http";
+import type { ChannelStatus, DeadLetter, Notification } from "@alerting/shared";
 import { HttpIngestRegistry, handleHttpIngest } from "@alerting/ingest";
 import { buildOpenApi } from "./openapi.js";
 import { serveStatic } from "./static.js";
 
+export interface DeliveryDeps {
+  listDeadLetters(): Promise<DeadLetter[]>;
+  retryDeadLetter(id: string): Promise<Notification | null>;
+  channelStatus(): Promise<ChannelStatus[]>;
+}
+
 export interface Deps {
   checkPostgres(): Promise<boolean>;
   checkRedis(): Promise<boolean>;
+  delivery?: DeliveryDeps;
+  /** Subscribe to CHANNEL_UI_PUSH messages; returns an unsubscribe function. */
+  subscribeUiPush?(onMessage: (json: string) => void): () => void;
   /** Directory with the built web app; defaults to env WEB_DIST. */
   webDist?: string;
 }
+
+const SSE_PING_MS = 15_000;
 
 const CHECK_TIMEOUT_MS = 2000;
 
@@ -124,6 +136,64 @@ export function createServer(deps: Deps): http.Server {
     }
     if (req.method === "GET" && path === "/api/openapi.json") {
       send(res, 200, buildOpenApi());
+      return;
+    }
+    const retryMatch = /^\/api\/dead-letters\/([^/]+)\/retry$/.exec(path);
+    const notConfigured = (): void => send(res, 503, { error: "delivery not configured" });
+    const fail = (): void => send(res, 500, { error: "internal error" });
+    if (req.method === "GET" && path === "/api/dead-letters") {
+      if (!deps.delivery) return notConfigured();
+      deps.delivery.listDeadLetters().then((v) => send(res, 200, v), fail);
+      return;
+    }
+    if (req.method === "POST" && retryMatch) {
+      if (!deps.delivery) return notConfigured();
+      let id: string;
+      try {
+        id = decodeURIComponent(retryMatch[1]);
+      } catch {
+        return send(res, 400, { error: "bad id" });
+      }
+      deps.delivery.retryDeadLetter(id).then(
+        (n) => (n ? send(res, 200, n) : send(res, 404, { error: "dead letter not found" })),
+        fail,
+      );
+      return;
+    }
+    if (req.method === "GET" && path === "/api/channels") {
+      if (!deps.delivery) return notConfigured();
+      deps.delivery.channelStatus().then((v) => send(res, 200, v), fail);
+      return;
+    }
+    if (req.method === "GET" && path === "/api/stream") {
+      if (!deps.subscribeUiPush) return notConfigured();
+      res.writeHead(200, {
+        "content-type": "text/event-stream",
+        "cache-control": "no-cache",
+        connection: "keep-alive",
+        "x-accel-buffering": "no",
+      });
+      const safeWrite = (chunk: string): void => {
+        if (res.destroyed || res.writableEnded) return;
+        try {
+          res.write(chunk);
+        } catch {
+          cleanup();
+        }
+      };
+      res.write(": connected\n\n");
+      const unsubscribe = deps.subscribeUiPush((json) => safeWrite(`data: ${json}\n\n`));
+      const ping = setInterval(() => safeWrite(": ping\n\n"), SSE_PING_MS);
+      let closed = false;
+      const cleanup = (): void => {
+        if (closed) return;
+        closed = true;
+        clearInterval(ping);
+        unsubscribe();
+      };
+      req.on("close", cleanup);
+      res.on("close", cleanup);
+      res.on("error", cleanup);
       return;
     }
     const m = req.method === "POST" ? /^\/ingest\/([^/]+)$/.exec(path) : null;

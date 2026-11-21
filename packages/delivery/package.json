@@ -1,0 +1,19 @@
+{
+  "name": "@alerting/delivery",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -b",
+    "typecheck": "tsc -b && tsc -p tsconfig.test.json"
+  },
+  "dependencies": {
+    "@alerting/shared": "*",
+    "ioredis": "^5.4.1"
+  },
+  "devDependencies": {
+    "ioredis-mock": "^8.13.1"
+  }
+}

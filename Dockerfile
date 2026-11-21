@@ -2,6 +2,7 @@ FROM node:20-alpine AS build
 WORKDIR /app
 COPY package.json package-lock.json tsconfig.base.json ./
 COPY packages/shared/package.json packages/shared/
+COPY packages/delivery/package.json packages/delivery/
 COPY packages/api/package.json packages/api/
 COPY packages/web/package.json packages/web/
 COPY packages/config/package.json packages/config/
@@ -16,12 +17,14 @@ WORKDIR /app
 ENV NODE_ENV=production
 COPY package.json package-lock.json ./
 COPY packages/shared/package.json packages/shared/
+COPY packages/delivery/package.json packages/delivery/
 COPY packages/api/package.json packages/api/
 COPY packages/web/package.json packages/web/
 COPY packages/config/package.json packages/config/
 COPY packages/ingest/package.json packages/ingest/
 RUN npm ci --omit=dev
 COPY --from=build /app/packages/shared/dist packages/shared/dist
+COPY --from=build /app/packages/delivery/dist packages/delivery/dist
 COPY --from=build /app/packages/api/dist packages/api/dist
 COPY --from=build /app/packages/web/dist packages/web/dist
 COPY --from=build /app/packages/config/dist packages/config/dist
