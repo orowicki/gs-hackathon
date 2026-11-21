@@ -1,6 +1,8 @@
-# Demo runbook for rule "settlements-workflow-failed".
-# Paste it into Rule runbook > Write runbook on any settlements alert and save.
-# id and matches are set by the server: it applies to every alert of that rule.
+# Team Settlements' own runbook (shown as "this rule" on every settlements alert).
+# Automation: starts by itself on each new alert; step 2 waits for a person to approve.
+id: rule-settlements-workflow-failed
+ruleId: settlements-workflow-failed
+matches: alert.ruleId = "settlements-workflow-failed"
 name: Settlement workflow recovery
 type: automation
 steps:
@@ -9,15 +11,12 @@ steps:
     action: http
     method: GET
     url: http://demo-service:4100/health
-    approval: none
 
   # 2. Stops here until someone clicks Approve (or Skip) on the alert page.
   - name: "Retry workflow {{workflowId}} (failed at {{step}})"
     action: http
     method: POST
     url: "http://demo-service:4100/workflows/{{workflowId}}/retry"
-    headers:
-      content-type: application/json
     body: '{"workflowId":"{{workflowId}}","reason":"{{error.code}}"}'
     approval: required
 
@@ -25,10 +24,8 @@ steps:
   - name: Wait for the retry to settle
     action: wait
     duration: 5s
-    approval: none
 
   # 4. Notify the on-call group (ntfy / email per their preferences).
   - name: Tell settlements on-call
     action: escalate
     group: settlements-oncall
-    approval: none

@@ -1,0 +1,28 @@
+# Team Pricing's own runbook. The shared text runbook "Pricing latency" also matches these
+# alerts, so the Runbooks window shows both: the instructions and this automation.
+id: rule-pricing-engine-warnings
+ruleId: pricing-engine-warnings
+matches: alert.ruleId = "pricing-engine-warnings"
+name: Restart a slow pricing engine
+type: automation
+steps:
+  - name: "Check {{labels.service}} health ({{labels.region}})"
+    action: http
+    method: GET
+    url: http://demo-service:4100/health
+
+  # Restarting drops in-flight quotes, so a person decides.
+  - name: "Restart {{labels.service}}"
+    action: http
+    method: POST
+    url: "http://demo-service:4100/restart/{{labels.service}}"
+    body: '{"reason":"{{alertname}}: {{annotations.summary}}"}'
+    approval: required
+
+  - name: Let the cache warm up
+    action: wait
+    duration: 10s
+
+  - name: Tell the pricing team
+    action: escalate
+    group: pricing-team
