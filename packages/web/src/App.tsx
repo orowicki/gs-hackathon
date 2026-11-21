@@ -4,6 +4,9 @@ import { FeedPage } from "./pages/feed/FeedPage";
 import { NewRulePage } from "./pages/NewRulePage";
 import { SchemaEditPage, SchemasListPage } from "./pages/schemas/SchemasPage";
 import { SourceEditPage, SourcesListPage } from "./pages/sources/SourcesPage";
+import { ChannelsPage } from "./pages/channels/ChannelsPage";
+import { MyNotificationsPage } from "./pages/my-notifications/MyNotificationsPage";
+import { PeoplePage } from "./pages/people/PeoplePage";
 
 export function App() {
   return (
@@ -15,6 +18,9 @@ export function App() {
       <Route path="/config/sources/:id" element={<SourceEditPage />} />
       <Route path="/config/schemas" element={<SchemasListPage />} />
       <Route path="/config/schemas/:id" element={<SchemaEditPage />} />
+      <Route path="/config/people" element={<PeoplePage />} />
+      <Route path="/config/channels" element={<ChannelsPage />} />
+      <Route path="/settings/notifications" element={<MyNotificationsPage />} />
       <Route path="*" element={<FeedPage />} />
     </Routes>
   );
