@@ -1,0 +1,15 @@
+# Anna (personal): anything critical from payments-api. No `force`, so Anna's preferences apply.
+# Her quiet-hours preference (20:00-08:00, allowing only ui) lives in the `preference` store kind
+# (id person:anna), because config/ has no preferences directory.
+id: anna-payments-critical
+name: Anna (personal)
+enabled: true
+when: 'alert.severity = critical AND alert.source = payments-api'
+who:
+  - recipients:
+      - { type: person, id: anna }
+looks:
+  titleTemplate: '{{alert.title}}'
+  fields: [alert.source]
+createdAt: '2026-11-01T00:00:00Z'
+updatedAt: '2026-11-01T00:00:00Z'

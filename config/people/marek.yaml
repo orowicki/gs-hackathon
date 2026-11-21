@@ -1,0 +1,5 @@
+id: marek
+name: Marek Nowak
+role: Settlements on-call
+canCreateRules: false
+ntfyTopic: alerting-marek
