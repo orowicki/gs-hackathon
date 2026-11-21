@@ -41,8 +41,8 @@ interface Outcome {
 }
 
 /**
- * Dedup / auto-resolve hook. The repo (Postgres) is authoritative: it holds at most one unresolved
- * alert per (rule, dedupKey) and create-or-bump is one atomic statement (`upsertOpen`), so any
+ * Dedup / auto-resolve hook. The repo (Postgres) is authoritative: it maps each (rule, dedupKey) to
+ * at most one unresolved alert (`alert_open_keys`) and create-or-bump is one atomic statement (`upsertOpen`), so any
  * number of workers can race on a key without a lock. Redis only keeps the per-event "seen" marker
  * (redelivery replay, no double count) and an informational rule+dedupKey -> open alert id map
  * written on create and cleared on resolve. A crash after the bump but before the seen-marker is

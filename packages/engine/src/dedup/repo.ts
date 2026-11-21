@@ -51,9 +51,10 @@ export interface AlertRepo {
   ): Promise<Alert | null>;
 }
 
+// Same as migration 005 (minus the seed from existing open alerts).
 const ENSURE_SQL = [
   "ALTER TABLE alerts ADD COLUMN IF NOT EXISTS severity_raised_by text",
-  "CREATE UNIQUE INDEX IF NOT EXISTS alerts_open_dedup_uniq ON alerts (rule_id, dedup_key) WHERE state <> 'resolved'",
+  "CREATE TABLE IF NOT EXISTS alert_open_keys (rule_id text NOT NULL, dedup_key text NOT NULL, alert_id text NOT NULL, PRIMARY KEY (rule_id, dedup_key))",
 ];
 
 /** SQLSTATE class 22 (data exception) or 23 (integrity constraint violation). */
@@ -66,20 +67,74 @@ type UpsertResult = { alert: Alert; created: boolean; raised: boolean };
 
 const batchKey = (ruleId: string, dedupKey: string) => `${ruleId}\u0000${dedupKey}`;
 
-// Shared by the single and the batched upsert; $7 is the severity order. `EXCLUDED` is the row
-// proposed for insertion, so in the batched form every row is compared with its own input.
-const ON_CONFLICT_BUMP = `ON CONFLICT (rule_id, dedup_key) WHERE state <> 'resolved' DO UPDATE SET
-         last_seen = GREATEST(alerts.last_seen, EXCLUDED.last_seen),
-         severity_raised_by = CASE
-           WHEN COALESCE(array_position($7::text[], EXCLUDED.data->>'severity'), 0) > COALESCE(array_position($7::text[], alerts.data->>'severity'), 0)
-           THEN EXCLUDED.id ELSE alerts.severity_raised_by END,
-         data = alerts.data || jsonb_build_object(
-           'count', COALESCE((alerts.data->>'count')::int, 0) + 1,
-           'lastSeen', CASE WHEN EXCLUDED.last_seen >= alerts.last_seen THEN EXCLUDED.data->>'lastSeen' ELSE alerts.data->>'lastSeen' END,
-           'common', CASE WHEN EXCLUDED.last_seen >= alerts.last_seen THEN EXCLUDED.data->'common' ELSE alerts.data->'common' END,
-           'severity', CASE
-             WHEN COALESCE(array_position($7::text[], EXCLUDED.data->>'severity'), 0) > COALESCE(array_position($7::text[], alerts.data->>'severity'), 0)
-             THEN EXCLUDED.data->>'severity' ELSE alerts.data->>'severity' END)`;
+// The engine's open alert per (rule, dedup key) lives in `alert_open_keys`, not in a unique index on
+// `alerts`, so other writers of `alerts` (API, fixtures, seed) may hold any number of open alerts
+// with the same key. One statement per batch:
+//   f    events not applied before (their deterministic alert id does not exist: replay guard)
+//   k    claim the key for the event's own alert id, or lock and return the alert already mapped
+//        (ON CONFLICT sees and waits for concurrent writers, so the key is serialized across workers)
+//   ins  the key is ours: insert the alert
+//   upd  the key maps to another alert: count+1, lastSeen, raise severity, unless it is resolved
+// A fresh event that was neither inserted nor applied has a stale mapping (alert resolved, e.g. by the
+// API, or deleted) or mapped an alert committed after this statement's snapshot; see upsertMany.
+const upsertSql = (input: string) => `WITH i AS (${input}),
+       f AS (SELECT * FROM i WHERE NOT EXISTS (SELECT 1 FROM alerts a WHERE a.id = i.id)),
+       k AS (
+         INSERT INTO alert_open_keys AS k (rule_id, dedup_key, alert_id)
+         SELECT rule_id, dedup_key, id FROM f
+         ON CONFLICT (rule_id, dedup_key) DO UPDATE SET alert_id = k.alert_id
+         RETURNING k.rule_id, k.dedup_key, k.alert_id
+       ),
+       fk AS (
+         SELECT f.*, k.alert_id AS open_id FROM f JOIN k ON k.rule_id = f.rule_id AND k.dedup_key = f.dedup_key
+       ),
+       ins AS (
+         INSERT INTO alerts (id, rule_id, dedup_key, state, last_seen, data)
+         SELECT id, rule_id, dedup_key, state, last_seen, data FROM fk WHERE open_id = id
+         RETURNING id, data
+       ),
+       upd AS (
+         UPDATE alerts al SET
+           last_seen = GREATEST(al.last_seen, fk.last_seen),
+           severity_raised_by = CASE
+             WHEN COALESCE(array_position($7::text[], fk.data->>'severity'), 0) > COALESCE(array_position($7::text[], al.data->>'severity'), 0)
+             THEN fk.id ELSE al.severity_raised_by END,
+           data = al.data || jsonb_build_object(
+             'count', COALESCE((al.data->>'count')::int, 0) + 1,
+             'lastSeen', CASE WHEN fk.last_seen >= al.last_seen THEN fk.data->>'lastSeen' ELSE al.data->>'lastSeen' END,
+             'common', CASE WHEN fk.last_seen >= al.last_seen THEN fk.data->'common' ELSE al.data->'common' END,
+             'severity', CASE
+               WHEN COALESCE(array_position($7::text[], fk.data->>'severity'), 0) > COALESCE(array_position($7::text[], al.data->>'severity'), 0)
+               THEN fk.data->>'severity' ELSE al.data->>'severity' END)
+         FROM fk
+         WHERE fk.open_id <> fk.id AND al.id = fk.open_id AND al.state <> 'resolved'
+         RETURNING fk.id AS input_id, al.data, al.severity_raised_by IS NOT DISTINCT FROM fk.id AS raised
+       )
+       SELECT i.id, fk.id IS NOT NULL AS fresh, fk.rule_id, fk.dedup_key, fk.open_id,
+              ins.data AS created_data, upd.data AS bumped_data, COALESCE(upd.raised, false) AS raised
+       FROM i
+       LEFT JOIN fk ON fk.id = i.id
+       LEFT JOIN ins ON ins.id = i.id
+       LEFT JOIN upd ON upd.input_id = i.id`;
+const UPSERT_BATCH_SQL = upsertSql(`
+         SELECT * FROM unnest($1::text[], $2::text[], $3::text[], $4::text[], $5::timestamptz[], $6::jsonb[])
+           AS t(id, rule_id, dedup_key, state, last_seen, data)`);
+/** Same for one alert (scalar parameters): used to retry the items of a failed batch one by one. */
+const UPSERT_ONE_SQL = upsertSql(`
+         SELECT $1::text AS id, $2::text AS rule_id, $3::text AS dedup_key, $4::text AS state,
+                $5::timestamptz AS last_seen, $6::jsonb AS data`);
+
+// Drop mappings to alerts that are resolved or gone; mappings to an open alert stay (that event only
+// raced a concurrent create and is simply retried).
+const DROP_STALE_SQL = `WITH s AS (
+         SELECT * FROM unnest($1::text[], $2::text[], $3::text[]) AS t(rule_id, dedup_key, alert_id)
+       )
+       DELETE FROM alert_open_keys k USING s
+       WHERE k.rule_id = s.rule_id AND k.dedup_key = s.dedup_key AND k.alert_id = s.alert_id
+         AND NOT EXISTS (SELECT 1 FROM alerts a WHERE a.id = s.alert_id AND a.state <> 'resolved')`;
+
+/** Retries of the items of one batch whose mapping was stale or raced (normally at most one). */
+const MAX_UPSERT_ROUNDS = 4;
 
 /** Postgres-backed repo on the `alerts` table (full Alert JSON in `data`, hot columns kept in sync). */
 export function createPgAlertRepo(
@@ -111,7 +166,7 @@ export function createPgAlertRepo(
       const present = async () =>
         (
           await pool.query(
-            `SELECT (SELECT count(*) FROM pg_indexes WHERE schemaname = current_schema() AND tablename = 'alerts' AND indexname = 'alerts_open_dedup_uniq')
+            `SELECT (SELECT count(*) FROM pg_indexes WHERE schemaname = current_schema() AND tablename = 'alert_open_keys' AND indexname = 'alert_open_keys_pkey')
                   + (SELECT count(*) FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = 'alerts' AND column_name = 'severity_raised_by') AS n`,
           )
         ).rows[0]?.n == 2;
@@ -129,57 +184,62 @@ export function createPgAlertRepo(
       );
       throw err;
     }));
-  const upsertOne = async (alert: Alert): Promise<UpsertResult | null> => {
-    const r = await pool.query<{ data: Alert; created: boolean; raised: boolean }>(
-      `INSERT INTO alerts (id, rule_id, dedup_key, state, last_seen, data)
-       SELECT $1::text, $2::text, $3::text, $4::text, $5::timestamptz, $6::jsonb
-       WHERE NOT EXISTS (SELECT 1 FROM alerts WHERE id = $1::text)
-       ${ON_CONFLICT_BUMP}
-       RETURNING data, (xmax = 0) AS created, (severity_raised_by IS NOT DISTINCT FROM $1::text AND xmax <> 0) AS raised`,
-      [alert.id, alert.ruleId, alert.dedupKey, alert.state, alert.lastSeen, JSON.stringify(alert), [...SEVERITIES]],
-    );
-    const row = r.rows[0];
-    return row ? { alert: row.data, created: row.created, raised: row.raised } : null;
+  type Row = {
+    id: string;
+    fresh: boolean;
+    rule_id: string | null;
+    dedup_key: string | null;
+    open_id: string | null;
+    created_data: Alert | null;
+    bumped_data: Alert | null;
+    raised: boolean;
   };
 
   /**
-   * One statement (one commit, so one WAL flush) for a whole batch of upserts with pairwise distinct
-   * (ruleId, dedupKey). Results are mapped back by key; a missing row means the id existed (replay).
+   * Create-or-bump for a batch with pairwise distinct (ruleId, dedupKey): one statement (one commit)
+   * in the normal case. Null for an event applied before (replay).
    */
-  const upsertMany = async (alerts: Alert[]): Promise<Array<UpsertResult | null>> => {
-    const r = await pool.query<{
-      rule_id: string;
-      dedup_key: string;
-      data: Alert;
-      created: boolean;
-      severity_raised_by: string | null;
-    }>(
-      `WITH i AS (
-         SELECT * FROM unnest($1::text[], $2::text[], $3::text[], $4::text[], $5::timestamptz[], $6::jsonb[])
-           AS t(id, rule_id, dedup_key, state, last_seen, data)
-       )
-       INSERT INTO alerts (id, rule_id, dedup_key, state, last_seen, data)
-       SELECT id, rule_id, dedup_key, state, last_seen, data FROM i
-       WHERE NOT EXISTS (SELECT 1 FROM alerts a WHERE a.id = i.id)
-       ${ON_CONFLICT_BUMP}
-       RETURNING rule_id, dedup_key, data, (xmax = 0) AS created, severity_raised_by`,
-      [
-        alerts.map((a) => a.id),
-        alerts.map((a) => a.ruleId),
-        alerts.map((a) => a.dedupKey),
-        alerts.map((a) => a.state),
-        alerts.map((a) => a.lastSeen),
-        alerts.map((a) => JSON.stringify(a)),
+  const upsertMany = async (alerts: Alert[], single = false): Promise<Array<UpsertResult | null>> => {
+    const out = new Array<UpsertResult | null>(alerts.length).fill(null);
+    let todo = alerts.map((alert, i) => ({ alert, i }));
+    for (let round = 0; todo.length > 0; round++) {
+      if (round >= MAX_UPSERT_ROUNDS)
+        throw new Error(`dedup: open alert of ${todo[0]!.alert.ruleId}/${todo[0]!.alert.dedupKey} kept changing, retry later`);
+      const one = todo.length === 1 && single;
+      const col = (f: (a: Alert) => unknown) => (one ? f(todo[0]!.alert) : todo.map((t) => f(t.alert)));
+      const r = await pool.query<Row>(one ? UPSERT_ONE_SQL : UPSERT_BATCH_SQL, [
+        col((a) => a.id),
+        col((a) => a.ruleId),
+        col((a) => a.dedupKey),
+        col((a) => a.state),
+        col((a) => a.lastSeen),
+        col((a) => JSON.stringify(a)),
         [...SEVERITIES],
-      ],
-    );
-    const byKey = new Map(r.rows.map((row) => [batchKey(row.rule_id, row.dedup_key), row]));
-    return alerts.map((a) => {
-      const row = byKey.get(batchKey(a.ruleId, a.dedupKey));
-      if (!row) return null;
-      return { alert: row.data, created: row.created, raised: !row.created && row.severity_raised_by === a.id };
-    });
+      ]);
+      const byId = new Map(r.rows.map((row) => [row.id, row]));
+      const again: typeof todo = [];
+      const stale: Row[] = [];
+      for (const t of todo) {
+        const row = byId.get(t.alert.id);
+        if (!row || !row.fresh) continue; // replay: stays null
+        if (row.created_data) out[t.i] = { alert: row.created_data, created: true, raised: false };
+        else if (row.bumped_data) out[t.i] = { alert: row.bumped_data, created: false, raised: row.raised };
+        else {
+          again.push(t);
+          stale.push(row);
+        }
+      }
+      if (stale.length > 0)
+        await pool.query(DROP_STALE_SQL, [
+          stale.map((s) => s.rule_id),
+          stale.map((s) => s.dedup_key),
+          stale.map((s) => s.open_id),
+        ]);
+      todo = again;
+    }
+    return out;
   };
+  const upsertOne = async (alert: Alert) => (await upsertMany([alert], true))[0] ?? null;
 
   // Coalescing: upserts issued while up to `maxInFlight` statements are running are sent together.
   // Calls on the same (ruleId, dedupKey) never share a statement or run concurrently, so they apply
@@ -277,13 +337,26 @@ export function createPgAlertRepo(
       });
     },
     async resolveOpen(ruleId, dedupKey, at, common) {
-      const r = await pool.query<{ data: Alert }>(
-        `UPDATE alerts SET state = 'resolved', last_seen = $3::timestamptz,
-           data = data || jsonb_build_object('state', 'resolved', 'resolvedAt', $4::text, 'lastSeen', $4::text, 'common', $5::jsonb)
-         WHERE rule_id = $1 AND dedup_key = $2 AND state <> 'resolved' RETURNING data`,
-        [ruleId, dedupKey, at, at, JSON.stringify(common)],
+      await ensure();
+      // $1 = resolvedAt, $2 = common
+      const set = `state = 'resolved', last_seen = $1::timestamptz,
+           data = data || jsonb_build_object('state', 'resolved', 'resolvedAt', $1::text, 'lastSeen', $1::text, 'common', $2::jsonb)`;
+      // the key row is the lock: unmap and resolve the engine's open alert of this key together
+      const r = await pool.query<{ alert_id: string | null; data: Alert | null }>(
+        `WITH k AS (DELETE FROM alert_open_keys WHERE rule_id = $3 AND dedup_key = $4 RETURNING alert_id),
+              u AS (UPDATE alerts SET ${set} WHERE id IN (SELECT alert_id FROM k) AND state <> 'resolved' RETURNING data)
+         SELECT (SELECT alert_id FROM k) AS alert_id, (SELECT data FROM u) AS data`,
+        [at, JSON.stringify(common), ruleId, dedupKey],
       );
-      return r.rows[0]?.data ?? null;
+      const row = r.rows[0];
+      if (row?.data) return row.data;
+      if (!row?.alert_id) return null;
+      // mapped alert committed after this statement's snapshot: resolve it by id in a new one
+      const again = await pool.query<{ data: Alert }>(
+        `UPDATE alerts SET ${set} WHERE id = $3 AND state <> 'resolved' RETURNING data`,
+        [at, JSON.stringify(common), row.alert_id],
+      );
+      return again.rows[0]?.data ?? null;
     },
     async get(id) {
       const r = await pool.query<{ data: Alert }>(
