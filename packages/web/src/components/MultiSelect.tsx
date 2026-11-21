@@ -22,6 +22,9 @@ export function MultiSelect({
 }) {
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState("");
+  // Selection when the panel opened: those stay on top, and the order doesn't change
+  // while you tick boxes (re-sorting on every click moved items under the pointer).
+  const [pinned, setPinned] = useState<string[]>(selected);
   const ref = useRef<HTMLDivElement>(null);
   const search = useRef<HTMLInputElement>(null);
   const panelId = useId();
@@ -36,12 +39,11 @@ export function MultiSelect({
     return () => document.removeEventListener("mousedown", onDown);
   }, [open]);
 
-  const all = [...new Set([...selected, ...options])];
+  const all = [...new Set([...pinned, ...options, ...selected])];
   const needle = q.trim().toLowerCase();
   const shown = all
     .filter((o) => o.toLowerCase().includes(needle))
-    // selected first, then the catalogue order
-    .sort((a, b) => Number(selected.includes(b)) - Number(selected.includes(a)));
+    .sort((a, b) => Number(pinned.includes(b)) - Number(pinned.includes(a)));
   const canAdd = allowCustom && needle !== "" && !all.some((o) => o.toLowerCase() === needle);
   const flip = (o: string) => onChange(selected.includes(o) ? selected.filter((x) => x !== o) : [...selected, o]);
 
@@ -61,7 +63,10 @@ export function MultiSelect({
         aria-expanded={open}
         aria-controls={panelId}
         aria-label={`${label}: ${selected.length === 0 ? "none" : selected.join(", ")}`}
-        onClick={() => setOpen((v) => !v)}
+        onClick={() => {
+          if (!open) setPinned(selected);
+          setOpen((v) => !v);
+        }}
       >
         <span className={selected.length === 0 ? "ms-summary empty" : "ms-summary"}>{summary}</span>
         {selected.length > 0 && <span className="ms-count">{selected.length}</span>}

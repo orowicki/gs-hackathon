@@ -136,7 +136,10 @@ function ListToggles({
 }
 
 /** The alert as it will look in the feed: collapsed row plus the expanded facts. */
+const PREVIEW_FIELDS = 8;
+
 function AlertPreview({ draft }: { draft: RuleDraft }) {
+  const [showAll, setShowAll] = useState(false);
   const sev = draft.severityOverride || "error";
   const label: Record<string, string> = { critical: "CRIT", error: "ERR", warning: "WARN", info: "INFO" };
   const fields = splitList(draft.fields);
@@ -154,14 +157,21 @@ function AlertPreview({ draft }: { draft: RuleDraft }) {
         <div className="alert-preview-body">
           {draft.bodyTemplate.trim() && <p>{render(draft.bodyTemplate)}</p>}
           {fields.length > 0 && (
-            <dl>
-              {fields.map((f) => (
-                <div key={f}>
-                  <dt>{f}</dt>
-                  <dd>{SAMPLE[f] ?? "…"}</dd>
-                </div>
-              ))}
-            </dl>
+            <>
+              <dl className="alert-preview-facts">
+                {(showAll ? fields : fields.slice(0, PREVIEW_FIELDS)).map((f) => (
+                  <div key={f}>
+                    <dt title={f}>{f}</dt>
+                    <dd>{SAMPLE[f] ?? "…"}</dd>
+                  </div>
+                ))}
+              </dl>
+              {fields.length > PREVIEW_FIELDS && (
+                <button type="button" className="link-btn alert-preview-more" onClick={() => setShowAll((v) => !v)}>
+                  {showAll ? "Show fewer" : `and ${fields.length - PREVIEW_FIELDS} more`}
+                </button>
+              )}
+            </>
           )}
         </div>
       )}
