@@ -15,3 +15,5 @@ config/people/*.yaml    config/groups/*.yaml    config/runbooks/*.yaml
 - Invalid YAML or an invalid entity is reported (logged with file path and reason) and skipped. It is never fatal and the watcher keeps running.
 - The watcher only writes to the DB, never to these files.
 - The app reads the directory from `CONFIG_DIR` (compose mounts `./config` at `/app/config`).
+
+Full format reference: [../docs/config-formats.md](../docs/config-formats.md).
