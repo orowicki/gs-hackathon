@@ -1,7 +1,16 @@
 import { Redis } from "ioredis";
 import pg from "pg";
 import { CHANNEL_CONFIG_CHANGE } from "@alerting/shared";
-import type { ConfigChange, Group, Person, Preference, Rule, Runbook, Schema, Source } from "@alerting/shared";
+import type {
+  ConfigChange,
+  Group,
+  Person,
+  Preference,
+  Rule,
+  Runbook,
+  Schema,
+  Source,
+} from "@alerting/shared";
 
 export type Kind = ConfigChange["kind"];
 
@@ -37,8 +46,14 @@ export function entityId(kind: Kind, entity: unknown): string {
   const e = entity as Record<string, unknown>;
   if (kind === "preference") {
     const { ownerType, ownerId } = e;
-    if ((ownerType !== "person" && ownerType !== "group") || typeof ownerId !== "string" || ownerId === "") {
-      throw new Error("invalid preference: needs ownerType ('person'|'group') and a non-empty string ownerId");
+    if (
+      (ownerType !== "person" && ownerType !== "group") ||
+      typeof ownerId !== "string" ||
+      ownerId === ""
+    ) {
+      throw new Error(
+        "invalid preference: needs ownerType ('person'|'group') and a non-empty string ownerId",
+      );
     }
     return `${ownerType}:${ownerId}`;
   }
@@ -48,7 +63,7 @@ export function entityId(kind: Kind, entity: unknown): string {
   return e.id;
 }
 
-export type ChangeHandler = (change: ConfigChange) => void;
+export type ChangeHandler = (change: ConfigChange) => unknown;
 
 export interface ConfigStoreOptions {
   pool?: pg.Pool;
@@ -67,8 +82,10 @@ export interface ConfigStore {
 }
 
 export function createConfigStore(opts: ConfigStoreOptions): ConfigStore {
-  if (!opts.pool && !opts.databaseUrl) throw new Error("createConfigStore: pool or databaseUrl required");
-  if (!opts.redis && !opts.redisUrl) throw new Error("createConfigStore: redis or redisUrl required");
+  if (!opts.pool && !opts.databaseUrl)
+    throw new Error("createConfigStore: pool or databaseUrl required");
+  if (!opts.redis && !opts.redisUrl)
+    throw new Error("createConfigStore: redis or redisUrl required");
   const ownPool = !opts.pool;
   const ownRedis = !opts.redis;
   const pool = opts.pool ?? new pg.Pool({ connectionString: opts.databaseUrl });
@@ -76,10 +93,32 @@ export function createConfigStore(opts: ConfigStoreOptions): ConfigStore {
   let sub: Redis | undefined;
   const handlers = new Set<{ kind: Kind | "*"; fn: ChangeHandler }>();
 
-  const publish = (change: ConfigChange) => redis.publish(CHANNEL_CONFIG_CHANGE, JSON.stringify(change));
+  // The DB write is the source of truth: a failed publish is logged and does not fail the write.
+  const publish = async (change: ConfigChange) => {
+    try {
+      await redis.publish(CHANNEL_CONFIG_CHANGE, JSON.stringify(change));
+    } catch (err) {
+      console.error("config store: failed to publish change", change, err);
+    }
+  };
 
-  async function ensureSub(): Promise<Redis> {
-    if (sub) return sub;
+  let subPromise: Promise<Redis> | undefined;
+  let closed = false;
+
+  function dispatch(h: { fn: ChangeHandler }, change: ConfigChange) {
+    try {
+      const r: unknown = h.fn(change);
+      if (r instanceof Promise)
+        r.catch((err: unknown) =>
+          console.error("config store: change handler rejected", err),
+        );
+    } catch (err) {
+      console.error("config store: change handler threw", err);
+    }
+  }
+
+  function ensureSub(): Promise<Redis> {
+    if (subPromise) return subPromise;
     const s = redis.duplicate();
     sub = s;
     s.on("message", (_channel: string, message: string) => {
@@ -89,21 +128,35 @@ export function createConfigStore(opts: ConfigStoreOptions): ConfigStore {
       } catch {
         return;
       }
-      for (const h of handlers) {
-        if (h.kind === "*" || h.kind === change.kind) h.fn(change);
+      for (const h of [...handlers]) {
+        if (h.kind === "*" || h.kind === change.kind) dispatch(h, change);
       }
     });
-    await s.subscribe(CHANNEL_CONFIG_CHANGE);
-    return s;
+    const p = s.subscribe(CHANNEL_CONFIG_CHANGE).then(
+      () => s,
+      (err: unknown) => {
+        if (subPromise === p) subPromise = undefined;
+        if (sub === s) sub = undefined;
+        s.disconnect();
+        throw err;
+      },
+    );
+    subPromise = p;
+    return p;
   }
 
   return {
     async list(kind) {
-      const r = await pool.query(`SELECT data FROM ${TABLES[kind]} ORDER BY id`);
+      const r = await pool.query(
+        `SELECT data FROM ${TABLES[kind]} ORDER BY id`,
+      );
       return r.rows.map((row) => row.data);
     },
     async get(kind, id) {
-      const r = await pool.query(`SELECT data FROM ${TABLES[kind]} WHERE id = $1`, [id]);
+      const r = await pool.query(
+        `SELECT data FROM ${TABLES[kind]} WHERE id = $1`,
+        [id],
+      );
       return r.rows[0]?.data;
     },
     async upsert(kind, entity) {
@@ -116,7 +169,9 @@ export function createConfigStore(opts: ConfigStoreOptions): ConfigStore {
       await publish({ kind, id, op: "upsert" });
     },
     async delete(kind, id) {
-      const r = await pool.query(`DELETE FROM ${TABLES[kind]} WHERE id = $1`, [id]);
+      const r = await pool.query(`DELETE FROM ${TABLES[kind]} WHERE id = $1`, [
+        id,
+      ]);
       const deleted = (r.rowCount ?? 0) > 0;
       if (deleted) await publish({ kind, id, op: "delete" });
       return deleted;
@@ -124,12 +179,19 @@ export function createConfigStore(opts: ConfigStoreOptions): ConfigStore {
     async onChange(kind, fn) {
       const h = { kind, fn };
       handlers.add(h);
-      await ensureSub();
+      try {
+        await ensureSub();
+      } catch (err) {
+        handlers.delete(h);
+        throw err;
+      }
       return () => {
         handlers.delete(h);
       };
     },
     async close() {
+      if (closed) return;
+      closed = true;
       handlers.clear();
       if (sub) sub.disconnect();
       if (ownRedis) await redis.quit();

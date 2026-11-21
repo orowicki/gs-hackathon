@@ -1,11 +1,28 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { mkdtemp, mkdir, writeFile, rm, unlink } from "node:fs/promises";
+import {
+  mkdtemp,
+  mkdir,
+  writeFile,
+  rm,
+  unlink,
+  rename,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { entityId, exportYaml, fromYaml, importYaml, toYaml, watchConfigDir } from "../src/index.js";
+import {
+  entityId,
+  exportYaml,
+  fromYaml,
+  importYaml,
+  toYaml,
+  watchConfigDir,
+} from "../src/index.js";
 import type { ConfigStore, Kind } from "../src/index.js";
 
-function fakeStore(): ConfigStore & { data: Map<string, unknown>; ops: string[] } {
+function fakeStore(): ConfigStore & {
+  data: Map<string, unknown>;
+  ops: string[];
+} {
   const data = new Map<string, unknown>();
   const ops: string[] = [];
   return {
@@ -55,9 +72,15 @@ describe("yaml helpers", () => {
   });
   it("errors clearly", async () => {
     const store = fakeStore();
-    await expect(exportYaml(store, "rule", "nope")).rejects.toThrow(/not found/);
-    await expect(importYaml(store, "rule", "a: [unclosed")).rejects.toThrow(/invalid YAML/);
-    await expect(importYaml(store, "rule", "name: x")).rejects.toThrow(/non-empty string id/);
+    await expect(exportYaml(store, "rule", "nope")).rejects.toThrow(
+      /not found/,
+    );
+    await expect(importYaml(store, "rule", "a: [unclosed")).rejects.toThrow(
+      /invalid YAML/,
+    );
+    await expect(importYaml(store, "rule", "name: x")).rejects.toThrow(
+      /non-empty string id/,
+    );
     expect(store.ops).toEqual([]);
   });
 });
@@ -75,7 +98,10 @@ describe("watchConfigDir", () => {
     await writeFile(join(dir, "rules", "existing.yaml"), "id: r0\nname: old\n");
     const store = fakeStore();
     const errors: Array<[string, string]> = [];
-    const w = watchConfigDir(store, dir, { onError: (e, f) => errors.push([f, e.message]), debounceMs: 20 });
+    const w = watchConfigDir(store, dir, {
+      onError: (e, f) => errors.push([f, e.message]),
+      debounceMs: 20,
+    });
     await w.ready;
     expect(store.data.has("rule/r0")).toBe(true);
 
@@ -83,7 +109,9 @@ describe("watchConfigDir", () => {
     await until(() => store.data.has("person/alice"));
 
     await writeFile(join(dir, "rules", "existing.yaml"), "id: r0\nname: new\n");
-    await until(() => (store.data.get("rule/r0") as { name: string }).name === "new");
+    await until(
+      () => (store.data.get("rule/r0") as { name: string }).name === "new",
+    );
 
     await writeFile(join(dir, "rules", "bad.yaml"), "a: [unclosed");
     await until(() => errors.length > 0);
@@ -95,6 +123,60 @@ describe("watchConfigDir", () => {
 
     await unlink(join(dir, "rules", "existing.yaml"));
     await until(() => !store.data.has("rule/r0"));
+    await w.close();
+  });
+
+  it("arms kind dirs that appear after start, and re-arms after delete+recreate", async () => {
+    dir = await mkdtemp(join(tmpdir(), "cfg-"));
+    const store = fakeStore();
+    const w = watchConfigDir(store, dir, { onError: () => {}, debounceMs: 20 });
+    await w.ready;
+    await mkdir(join(dir, "rules"));
+    await writeFile(join(dir, "rules", "a.yaml"), "name: a\n");
+    await until(() => store.data.has("rule/a"));
+    await rm(join(dir, "rules"), { recursive: true });
+    await until(() => !store.data.has("rule/a"));
+    await mkdir(join(dir, "rules"));
+    await writeFile(join(dir, "rules", "b.yaml"), "name: b\n");
+    await until(() => store.data.has("rule/b"));
+    await w.close();
+    await w.close();
+  });
+
+  it("deletes a duplicated id only when no file defines it; warns on duplicate", async () => {
+    dir = await mkdtemp(join(tmpdir(), "cfg-"));
+    await mkdir(join(dir, "rules"));
+    await writeFile(join(dir, "rules", "one.yaml"), "id: dup\nname: one\n");
+    await writeFile(join(dir, "rules", "two.yaml"), "id: dup\nname: two\n");
+    const store = fakeStore();
+    const errors: string[] = [];
+    const w = watchConfigDir(store, dir, {
+      onError: (e) => errors.push(e.message),
+      debounceMs: 20,
+    });
+    await w.ready;
+    expect(errors.some((m) => /duplicate rule id 'dup'/.test(m))).toBe(true);
+    await unlink(join(dir, "rules", "one.yaml"));
+    await new Promise((r) => setTimeout(r, 150));
+    expect(store.data.has("rule/dup")).toBe(true);
+    await unlink(join(dir, "rules", "two.yaml"));
+    await until(() => !store.data.has("rule/dup"));
+    await w.close();
+  });
+
+  it("rename with the same id does not delete", async () => {
+    dir = await mkdtemp(join(tmpdir(), "cfg-"));
+    await mkdir(join(dir, "rules"));
+    await writeFile(join(dir, "rules", "a.yaml"), "id: r\nname: x\n");
+    const store = fakeStore();
+    const w = watchConfigDir(store, dir, { onError: () => {}, debounceMs: 50 });
+    await w.ready;
+    store.ops.length = 0;
+    await rename(join(dir, "rules", "a.yaml"), join(dir, "rules", "b.yaml"));
+    await until(() => store.ops.length > 0);
+    await new Promise((r) => setTimeout(r, 200));
+    expect(store.ops.filter((o) => o.startsWith("delete"))).toEqual([]);
+    expect(store.data.has("rule/r")).toBe(true);
     await w.close();
   });
 });
