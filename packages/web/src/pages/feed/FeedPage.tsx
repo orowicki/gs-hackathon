@@ -235,6 +235,15 @@ export function FeedPage() {
     [source],
   );
 
+  const unack = useCallback(
+    async (id: string) => {
+      if (!source?.unack) return;
+      const updated = await source.unack(id);
+      setAlerts((prev) => upsertAlert(prev ?? [], updated));
+    },
+    [source],
+  );
+
   // "/" focuses the filter.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -336,7 +345,9 @@ export function FeedPage() {
       );
     }
     return (
-      <AlertList alerts={visible} now={now} expanded={expanded} onToggle={toggle} flash={flash} onAck={source?.ack ? ack : undefined} />
+      <AlertList alerts={visible} now={now} expanded={expanded} onToggle={toggle} flash={flash} onAck={source?.ack ? ack : undefined}
+        onUnack={source?.unack ? unack : undefined}
+      />
     );
   }
 

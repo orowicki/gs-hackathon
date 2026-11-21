@@ -14,6 +14,8 @@ export interface FeedSource {
   suggestFields?(): Promise<string[]>;
   /** Acknowledge an alert; returns the updated alert. */
   ack?(id: string): Promise<Alert>;
+  /** Undo an acknowledge: the alert goes back to open. */
+  unack?(id: string): Promise<Alert>;
   /** True when the data is the built-in fixture mock, not a real API. */
   demo?: boolean;
 }
@@ -62,6 +64,7 @@ export function createHttpSource(first: Alert[], fetchFn: typeof fetch = (...a) 
     },
     getAlert: (id) => json<Alert>(fetchFn, "/api/alerts/" + encodeURIComponent(id)),
     ack: (id) => json<Alert>(fetchFn, "/api/alerts/" + encodeURIComponent(id) + "/ack", { method: "POST" }),
+    unack: (id) => json<Alert>(fetchFn, "/api/alerts/" + encodeURIComponent(id) + "/unack", { method: "POST" }),
     subscribe(onPush, onStatus) {
       const es = new EventSource("/api/stream");
       es.onopen = () => onStatus(true);
