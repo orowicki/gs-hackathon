@@ -6,7 +6,7 @@ import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { Icon } from "../../components/Icon";
 import { SettingsMenu } from "../../components/SettingsPanel";
 import { withFilter } from "../../filterUrl";
-import { parseRange, withRange, withRangeTree, type TimeRange } from "../../timeRange";
+import { rangeNode, rangeOf, setRange, withoutRange, type TimeRange } from "../../timeRange";
 import { TimeRangePicker } from "../../components/time-range/TimeRangePicker";
 import { AlertList, SkeletonRows } from "./AlertList";
 import { createSource, isDemoSource } from "./data";
@@ -56,7 +56,6 @@ export function FeedPage() {
   const navigate = useNavigate();
   const q = params.get("q") ?? "";
   const tab = parseTab(params.get("tab"));
-  const range = parseRange(params.get("range"));
   const input = useRef<HTMLInputElement>(null);
   const scroller = useRef<HTMLElement>(null);
 
@@ -80,9 +79,9 @@ export function FeedPage() {
   }, [applied]);
   // Keep showing the last valid result when the applied text is invalid.
   const [lastTree, setLastTree] = useState<FilterNode | null>(tree);
-  const userTree = parseFilter(applied).ok ? tree : lastTree;
-  // The time range picker adds `alert.lastSeen >= now-<range>` to whatever the user typed.
-  const activeTree = useMemo(() => withRangeTree(userTree, range), [userTree, range]);
+  const activeTree = parseFilter(applied).ok ? tree : lastTree;
+  // The time range lives in the filter text (`alert.occurredAt >= now-24h`); the picker reads it from there.
+  const range = rangeOf(applied);
   const applyText = useCallback((text: string) => {
     setApplied(text);
     const r = parseFilter(text);
@@ -91,7 +90,7 @@ export function FeedPage() {
 
   // `now` ticks, so alerts drop out of a relative range as time passes.
   const matching = useMemo(() => filterAlerts(alerts ?? [], activeTree), [alerts, activeTree, now]);
-  const inRange = useMemo(() => filterAlerts(alerts ?? [], withRangeTree(null, range)), [alerts, range, now]);
+  const inRange = useMemo(() => filterAlerts(alerts ?? [], rangeNode(range)), [alerts, range, now]);
   const statusInFilter = mentionsStatus(activeTree);
   const visible = useMemo(() => tabAlerts(matching, tab, activeTree), [matching, tab, activeTree]);
   const tabCounts = useMemo(
@@ -349,7 +348,11 @@ export function FeedPage() {
         />
         <TimeRangePicker
           value={range}
-          onChange={(r: TimeRange) => setParams((p) => withRange(p, r), { replace: true })}
+          onChange={(r: TimeRange) => {
+            const text = setRange(q, r);
+            setQ(text);
+            applyText(text);
+          }}
         />
         {canCreate && (
           <button type="button" className="icon-btn square" title="New rule" aria-label="New rule" onClick={() => navigate("/rules/new")}>
@@ -360,8 +363,10 @@ export function FeedPage() {
       {alerts && alerts.length > 0 && (
         <StatPanels
           alerts={inRange}
-          filter={q}
-          onFilter={(text) => {
+          filter={withoutRange(q)}
+          onFilter={(picked) => {
+            // Panels set the whole filter; keep the chosen time range on it.
+            const text = setRange(picked, range);
             setParams((p) => {
               const n = withFilter(p, text);
               n.delete("tab");
