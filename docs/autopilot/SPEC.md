@@ -38,15 +38,22 @@ needs but the demo does not (auth, multi-tenancy, credentials management) is out
   form in the UI is generated from `configSchema`.
 - **Schema (event type):** how to recognise an event (`match`, a filter expression) and how to map it
   onto the **common fields**: `severity` (ordered: critical > error > warning > info; default info),
-  `title`, `source`, `environment`, `dedupKey`, `status` (firing | resolved), `occurredAt`. Each
-  common field is one of: a path (`labels.severity`), a constant, or a template
-  (`"{{workflowName}}-{{step}}"`), plus an optional value map (`ERROR → error`) and default.
-  Timestamps (ISO, epoch s, epoch ms) and numeric strings are normalised automatically. No
-  conditional mapping. Events that match no schema are still stored and their raw fields are usable
-  in rules and filters.
+  `title`, `source` (the system that emitted the event, e.g. `payments-api`; not the ingest
+  connector, which is `sourceId`), `environment`, `dedupKey`, `status` (firing | resolved, as
+  reported by the source), `occurredAt`, and four optional ones: `type` (kind of event, finer than
+  the schema, e.g. `alertname`), `message` (longer description, e.g. `error.message`), `entity` (the
+  main object the alert is about, e.g. a workflow ID, instrument or instance) and `runbookUrl`
+  (e.g. `annotations.runbook_url`). Each common field is one of: a path (`labels.severity`), a
+  constant, or a template (`"{{workflowName}}-{{step}}"`), plus an optional value map
+  (`ERROR → error`) and default. Timestamps (ISO, epoch s, epoch ms) and numeric strings are
+  normalised automatically. No conditional mapping and no user-defined common fields: anything else
+  is reached through raw paths. Events that match no schema are still stored and their raw fields
+  are usable in rules and filters.
 - **Filter language** (one parser, used everywhere: rules, routing, runbook matching, the UI filter
-  bar): fields are `alert.<commonField>` (e.g. `alert.severity`, `alert.source`, `alert.schema`,
-  `alert.status`) or raw event paths (`payload.notional`, `error.code`). Operators `=`, `!=`, `>`,
+  bar): fields are `alert.<commonField>` (e.g. `alert.severity`, `alert.source`, `alert.status`,
+  `alert.type`), `alert.schema`, `alert.state` (our alert lifecycle: open | acknowledged | resolved;
+  not the same as `alert.status`, which comes from the source) or raw event paths
+  (`payload.notional`, `error.code`). Operators `=`, `!=`, `>`,
   `>=`, `<`, `<=`, `contains`, `in [..]`, `matches` (glob, e.g. `pricing-engine-*`); `>=`/`<=` on
   `alert.severity` use severity order. Logic `AND`, `OR`, `NOT`, parentheses. Keywords
   case-insensitive, field names case-sensitive. Parse errors return a plain-English message with a
@@ -93,7 +100,7 @@ needs but the demo does not (auth, multi-tenancy, credentials management) is out
    each produce a stored event within 1 s. An unparseable line produces an event with `raw` set.
    Covered by an automated end-to-end test per source type.
 3. **Schemas:** the three Appendix A events are seeded as schemas; each maps to the correct common
-   fields (tested). A new schema created via `POST /api/schemas` (or by adding a YAML file to
+   fields, including `type`, `message` and `entity` (tested). A new schema created via `POST /api/schemas` (or by adding a YAML file to
    `config/schemas/`) is used for the next event without a restart (tested).
 4. **Filter language:** a parser test suite covers every operator, precedence, case rules, glob
    `matches`, severity ordering, and error messages with positions; text ↔ tree round-trips.
