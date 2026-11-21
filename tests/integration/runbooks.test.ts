@@ -68,6 +68,7 @@ describe.skipIf(!DATABASE_URL || !REDIS_URL)("Appendix B runbooks end to end (SP
   let demo: {
     url: string;
     calls: Array<{ method: string; path: string; body: unknown }>;
+    setRetryFails(v: boolean): void;
     close(): Promise<void>;
   };
   let worker: { close(): Promise<void> } | undefined;
@@ -178,6 +179,7 @@ describe.skipIf(!DATABASE_URL || !REDIS_URL)("Appendix B runbooks end to end (SP
         },
       },
       actions: createDefaultActions({ notifyGroup: async (g) => (notified.push(g), `notified group ${g}`) }),
+      retryDelayMs: 0,
     });
     const registry = { match: (ctx: { alert: Alert; event?: Event }) => matchRunbooks(runbooks, ctx) };
     const events = createPgEventLoader(pool);
@@ -199,6 +201,8 @@ describe.skipIf(!DATABASE_URL || !REDIS_URL)("Appendix B runbooks end to end (SP
       source: "order-settlement",
       environment: "prod",
     });
+    // The retry fails twice, so the "if: steps.retry.ok = false" escalation waits for approval.
+    demo.setRetryFails(true);
     const alert = await raise(event, rule(wfRuleId, "type = WORKFLOW_FAILED"));
 
     const pending = await waitFor(async () => {
@@ -207,7 +211,11 @@ describe.skipIf(!DATABASE_URL || !REDIS_URL)("Appendix B runbooks end to end (SP
     });
     expect(pending.runbookId).toBe("settlement-timeout");
     expect(errors).toEqual([]);
-    expect(demo.calls.map((c) => `${c.method} ${c.path}`)).toEqual(["GET /health", "POST /workflows/WF-20261023-00042/retry"]);
+    expect(demo.calls.map((c) => `${c.method} ${c.path}`)).toEqual([
+      "GET /health",
+      "POST /workflows/WF-20261023-00042/retry",
+      "POST /workflows/WF-20261023-00042/retry",
+    ]);
     expect(demo.calls[1]!.body).toEqual({ workflowId: "WF-20261023-00042", reason: "TIMEOUT" });
     expect(notified).toEqual([]);
 
@@ -238,15 +246,18 @@ describe.skipIf(!DATABASE_URL || !REDIS_URL)("Appendix B runbooks end to end (SP
     expect(audit.map((e) => [e.action, e.actor, e.stepIndex])).toEqual([
       ["step_executed", "system", 0],
       ["step_executed", "system", 1],
+      ["step_executed", "system", 1],
       ["step_approved", "p-alice", 2],
       ["step_executed", "p-alice", 2],
     ]);
     const times = audit.map((e) => Date.parse(e.at));
     expect(times.every((t) => !Number.isNaN(t))).toBe(true);
     expect([...times].sort((a, b) => a - b)).toEqual(times);
+    const retry500 = `POST ${demo.url}/workflows/WF-20261023-00042/retry \u2192 500 {"workflowId":"WF-20261023-00042","status":"failed","error":"counterparty timed out again"}`;
     expect(audit.map((e) => e.result)).toEqual([
       `GET ${demo.url}/health \u2192 200 {"status":"ok"}`,
-      `POST ${demo.url}/workflows/WF-20261023-00042/retry \u2192 200 {"workflowId":"WF-20261023-00042","status":"retried"}`,
+      `attempt 1 of 2 failed: ${retry500}`,
+      `failed 2 of 2 attempts: ${retry500}`,
       undefined,
       "notified group counterparty-support",
     ]);

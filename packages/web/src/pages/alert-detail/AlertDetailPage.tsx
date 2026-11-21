@@ -1,4 +1,4 @@
-import { BookOpen, Check, CheckCircle2, ChevronDown, ChevronRight, FileCode2, Lock, MessageSquare, Play } from "lucide-react";
+import { BookOpen, Check, CheckCircle2, ChevronDown, ChevronRight, FileCode2, GitBranch, Lock, MessageSquare, Play, Repeat, RotateCcw, Trash2 } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Icon } from "../../components/Icon";
 import { useAccount } from "../../account";
@@ -11,6 +11,8 @@ import {
   getMatchedRunbooks,
   type MatchedRunbook,
   decideStep,
+  removeRunbook,
+  restoreRunbook,
   startRunbook,
   putRuleRunbook,
   type RuleRunbook,
@@ -146,7 +148,7 @@ function StepList({
   busy,
   onDecide,
 }: {
-  steps: Array<{ index: number; name?: string; approval?: string }>;
+  steps: Array<{ index: number; name?: string; approval?: string; if?: string; retries?: number }>;
   run?: RunbookRun;
   busy: boolean;
   onDecide(index: number, decision: "approve" | "skip"): void;
@@ -163,7 +165,17 @@ function StepList({
               <span className="step-name">
                 {st?.name ?? planned.name ?? `Step ${planned.index + 1}`}
                 {planned.approval === "required" && !st ? <span className="tag warn">needs approval</span> : null}
+                {planned.retries ? (
+                  <span className="tag" title={`Tried up to ${planned.retries + 1} times before it counts as failed`}>
+                    <Icon as={Repeat} /> {planned.retries + 1} tries
+                  </span>
+                ) : null}
               </span>
+              {planned.if ? (
+                <span className="step-if" title="This step runs only when the condition holds">
+                  <Icon as={GitBranch} /> only if <code>{planned.if}</code>
+                </span>
+              ) : null}
               {st?.result ? <span className="muted step-result">{st.result}</span> : null}
               {state === "awaiting_approval" ? (
                 <span className="actions step-actions">
@@ -193,13 +205,16 @@ function Runbooks({
   matched,
   runs,
   onRun,
+  onRemovedChange,
 }: {
   alertId: string;
   matched: MatchedRunbook[] | null;
   runs: RunbookRun[] | null;
   onRun(run: RunbookRun): void;
+  onRemovedChange(runbookId: string, removed: boolean): void;
 }) {
   const [busy, setBusy] = useState<string | null>(null);
+  const [showRemoved, setShowRemoved] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const isCurrent = useIsCurrent(alertId);
   const runAction = async (key: string, fn: () => Promise<RunbookRun>) => {
@@ -214,22 +229,46 @@ function Runbooks({
       if (isCurrent(alertId)) setBusy(null);
     }
   };
-  const list = matched ?? [];
-  // Runs of runbooks that no longer match (e.g. edited since) still belong to this alert.
-  const orphanRuns = (runs ?? []).filter((r) => !list.some((m) => m.id === r.runbookId));
-  const empty = matched !== null && runs !== null && list.length === 0 && orphanRuns.length === 0;
+  const setRemoved = async (m: MatchedRunbook, removed: boolean) => {
+    if (removed && !window.confirm(`Remove "${m.name}" from this alert? Steps that have not run yet will be skipped.`)) return;
+    setBusy(`rm:${m.id}`);
+    setError(null);
+    try {
+      if (removed) {
+        const r = await removeRunbook(alertId, m.id);
+        if (isCurrent(alertId) && r.run) onRun(r.run);
+      } else await restoreRunbook(alertId, m.id);
+      if (isCurrent(alertId)) onRemovedChange(m.id, removed);
+    } catch (e) {
+      if (isCurrent(alertId)) setError(e instanceof Error ? e.message : "Could not update the runbook.");
+    } finally {
+      if (isCurrent(alertId)) setBusy(null);
+    }
+  };
+  const all = matched ?? [];
+  const list = all.filter((m) => !m.removed);
+  const removedList = all.filter((m) => m.removed);
+  // Runs of runbooks that no longer match (e.g. edited since) still belong to this alert. Only once
+  // the matched list is in: before that every run would count as an orphan.
+  const orphanRuns = matched === null ? [] : (runs ?? []).filter((r) => !all.some((m) => m.id === r.runbookId));
+  const shown = list.length + orphanRuns.length;
+  const empty = matched !== null && runs !== null && shown === 0;
   return (
     <section aria-label="Runbooks" className="ad-panel">
       <div className="panel-head">
         <h2>
           Runbooks
-          {list.length + orphanRuns.length > 0 ? <span className="count-chip">{list.length + orphanRuns.length}</span> : null}
+          {shown > 0 ? <span className="count-chip">{shown}</span> : null}
         </h2>
         <span className="muted small-text">Automation runbooks start by themselves on new alerts</span>
       </div>
       <div className="panel-body">
         {matched === null && runs === null ? <p className="muted">Loading…</p> : null}
-        {empty ? <p className="muted">No runbook applies to this alert. Write one for its rule below.</p> : null}
+        {empty ? (
+          <p className="muted">
+            {removedList.length > 0 ? "Every runbook was removed from this alert." : "No runbook applies to this alert. Write one for its rule below."}
+          </p>
+        ) : null}
         <ul className="plain runs">
           {list.map((m) => {
             const run = (runs ?? []).find((r) => r.runbookId === m.id);
@@ -240,16 +279,28 @@ function Runbooks({
                   <span className={`type-chip type-${m.type}`}>{m.type}</span>
                   <span className="tag">{m.origin === "rule" ? "this rule" : "shared"}</span>
                   {run?.status ? <span className={`run-status rs-${run.status}`}>{STEP_LABEL[run.status] ?? run.status}</span> : null}
-                  {m.type === "automation" && !run ? (
+                  <span className="run-actions">
+                    {m.type === "automation" && !run ? (
+                      <button
+                        type="button"
+                        className="btn primary solid run-now"
+                        disabled={busy !== null}
+                        onClick={() => runAction(`run:${m.id}`, () => startRunbook(alertId, m.id))}
+                      >
+                        <Icon as={Play} /> {busy === `run:${m.id}` ? "Starting…" : "Run now"}
+                      </button>
+                    ) : null}
                     <button
                       type="button"
-                      className="btn primary solid run-now"
+                      className="btn icon-btn rb-remove"
                       disabled={busy !== null}
-                      onClick={() => runAction(`run:${m.id}`, () => startRunbook(alertId, m.id))}
+                      title="Remove this runbook from this alert"
+                      aria-label={`Remove ${m.name} from this alert`}
+                      onClick={() => void setRemoved(m, true)}
                     >
-                      <Icon as={Play} /> {busy === `run:${m.id}` ? "Starting…" : "Run now"}
+                      <Icon as={Trash2} />
                     </button>
-                  ) : null}
+                  </span>
                 </div>
                 {m.type === "text" ? (
                   <p className="prose rb-text">{m.content}</p>
@@ -279,6 +330,26 @@ function Runbooks({
             </li>
           ))}
         </ul>
+        {removedList.length > 0 ? (
+          <div className="rb-removed">
+            <button type="button" className="link-btn muted small-text" aria-expanded={showRemoved} onClick={() => setShowRemoved(!showRemoved)}>
+              <Icon as={showRemoved ? ChevronDown : ChevronRight} /> Removed from this alert ({removedList.length})
+            </button>
+            {showRemoved ? (
+              <ul className="plain">
+                {removedList.map((m) => (
+                  <li key={m.id} className="rb-removed-item">
+                    <span className="muted">{m.name}</span>
+                    <span className={`type-chip type-${m.type}`}>{m.type}</span>
+                    <button type="button" className="btn" disabled={busy !== null} onClick={() => void setRemoved(m, false)}>
+                      <Icon as={RotateCcw} /> Restore
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+          </div>
+        ) : null}
         {error ? <p className="error-text" role="alert">{error}</p> : null}
       </div>
     </section>
@@ -937,7 +1008,16 @@ export function AlertDetailPage() {
         </section>
       )}
 
-      <Runbooks alertId={id} matched={matched} runs={runs} onRun={upsertRun} />
+      <Runbooks
+        alertId={id}
+        matched={matched}
+        runs={runs}
+        onRun={upsertRun}
+        onRemovedChange={(runbookId, removed) => {
+          setMatched((prev) => prev?.map((m) => (m.id === runbookId ? { ...m, removed } : m)) ?? prev);
+          void getAudit(id).then((a) => isCurrent(id) && setAudit(a));
+        }}
+      />
 
       {alert.ruleId ? (
         <RuleRunbookPanel

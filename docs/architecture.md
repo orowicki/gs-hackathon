@@ -21,7 +21,7 @@ flowchart LR
   dw -.failed.-> retry[(retry zset, dead letters)]
   out -->|Acknowledge button| api[API]
   api --> pgaud[(Postgres alert_audit)]
-  al -.no consumer wired.-> rb[Runbook worker]
+  al -->|group runbooks| rb[Runbook worker]
 ```
 
 ## Processes
@@ -32,7 +32,7 @@ The Docker image has one default command: the API (`packages/api/dist/main.js`).
 |---|---|---|
 | API | `app` | HTTP server and web UI (port 3000), the delivery worker, the ingest sources runner with the HTTP ingest route, a parse worker, the config store and YAML watcher, the SSE relay, the runbook runner and routes. |
 | Ingest worker | `worker` | `packages/ingest/dist/main.js`: a second parse worker. It excludes `http` sources. |
-| Engine worker | `worker` | `packages/engine/dist/main.js`: the rule engine, dedup and throttle. |
+| Engine worker | `worker` | `packages/engine/dist/main.js`: the rule engine, dedup, notification grouping and throttle. |
 
 Details that matter:
 
@@ -61,6 +61,7 @@ The source of truth for names is `packages/shared/src/streams.ts`. All names sta
 | `alerting:dedup:*` | keys | rule engine | rule engine (rule + dedup key to open alert id) |
 | `alerting:dedupseen:*`, `alerting:deduplock:*` | keys | rule engine | rule engine (redelivery marker, per-key lock) |
 | `alerting:throttle:*`, `alerting:digest:*` | keys | engine throttle | engine throttle |
+| `alerting:group:<hash>` (list), `alerting:groupdue` (sorted set, score = due time), `alerting:groupmeta:<hash>`, `alerting:groupids:<hash>` | keys | engine grouping (`packages/engine/src/grouping/index.ts`) | engine grouping |
 | `alerting:events:recent` | list | parse worker (capped at 1000) | API, for "test against recent events" |
 | `alerting:ingest:failed` | list | parse worker (rows that Postgres rejects, capped at 1000) | nobody reads it in code |
 
@@ -95,13 +96,35 @@ Notes:
 4. In one step the worker inserts into Postgres `events` (`packages/ingest/src/event-store.ts`), then adds the event to `alerting:events` and `alerting:events:recent`, and acks the raw entry.
 5. The engine (`packages/engine/src/rules/runner.ts`) reads `alerting:events` in group `engine`. It matches rules (`packages/engine/src/rules/match.ts`, filter language in `packages/filter`).
 6. For each match, the dedup hook (`packages/engine/src/dedup/hooks.ts`) takes a Redis lock, then creates or updates the row in `alerts` (`packages/engine/src/dedup/repo.ts`).
-7. Routing (`packages/engine/src/routing/route.ts`) picks recipients and channels from people, groups and preferences. The default is the `ui` channel, plus `ntfy` for error and critical alerts when the person has an `ntfyTopic`. Quiet hours and throttling (`packages/engine/src/throttle/index.ts`) can delay or digest it.
+7. Routing (`packages/engine/src/routing/route.ts`) picks recipients and channels from people, groups and preferences. The default is the `ui` channel, plus `ntfy` for error and critical alerts when the person has an `ntfyTopic`. Quiet hours and throttling (`packages/engine/src/throttle/index.ts`) can delay or digest it. If the rule has `groupBy` and `groupWindow`, the notification is buffered instead (see [Notification grouping](#notification-grouping)).
 8. The engine pushes each notification to `alerting:delivery:queue`, writes an `AlertEvent` to `alerting:alerts`, and publishes on `alerting:ui:push`. It then acks the event.
-9. The delivery worker in the API (`packages/delivery/src/queue.ts`) takes the notification into its processing list and sends it through the channel. The ntfy channel (`packages/delivery/src/ntfy.ts`) posts to `NTFY_URL` with an Acknowledge action button that calls `PUBLIC_URL/api/alerts/:id/ack`.
+9. The delivery worker in the API (`packages/delivery/src/queue.ts`) takes the notification into its processing list and sends it through the channel. The ntfy channel (`packages/delivery/src/ntfy.ts`) posts to `NTFY_URL` with an Acknowledge action button that calls `PUBLIC_URL/api/alerts/:id/ack` with an `X-Account` header carrying the recipient's person id, so the acknowledger is recorded.
 10. On a retryable failure the notification goes to the retry sorted set with backoff. After max attempts, or a long outage, it goes to the dead letter list.
 11. When the user taps Acknowledge, the API (`packages/api/src/routes/alerts/http.ts`) changes the alert state and inserts an `alert_audit` row with `action: "acknowledged"`, in one transaction (`packages/api/src/routes/alerts/store.ts`). Resolve works the same way.
 
 An audit entry is not written when the push is sent. Neither the engine nor the delivery code writes to `alert_audit`. The `created` audit action exists in the type (`packages/shared/src/types/alert.ts`), but no code in the pipeline produces it. The audit entries that exist come from user actions in the API and from runbook runs.
+
+## Notification grouping
+
+Grouping runs in the engine process (`packages/engine/src/grouping/`, wired in `packages/engine/src/main.ts`). It is opt-in per rule with `groupBy` and `groupWindow`; the fields are in [config formats](config-formats.md#rules).
+
+- Order: the dedup hook (`onAlert`) runs first and decides whether to notify. Routing then builds the notifications. For a rule with grouping, `beforeEnqueue` in `main.ts` calls grouping first. Grouping buffers the notification and returns `null`, so the dedup `beforeEnqueue` and the throttle are skipped at that point (grouping does its own alert id fix-up for severity increases, `grouping/index.ts`). Rules without grouping go to the dedup `beforeEnqueue` (which applies the throttle) as before.
+- Dedup is unchanged. Alerts are still created and updated per dedup key. A dedup update does not notify (`notify` is false in `packages/engine/src/dedup/hooks.ts`), so it adds nothing to a group. Only new alerts and severity increases are buffered.
+- Group key: a hash of the rule id, the values of the `groupBy` fields, the recipient id and the channel (`groupHash`). So each recipient and channel has its own group. A field is read from the alert first, then from the event by dotted path (`groupValue`).
+- Storage: Redis, not memory. A list holds the buffered notifications, a sorted set `alerting:groupdue` holds the due time per group, and a meta hash and an id set make redelivery safe (see the keys table). The first notification of a group starts its window.
+- Flush: a timer in the engine (`grouping.start()`, every 1 s by default) delivers each group whose window has ended. One buffered notification is sent unchanged. More become one notification titled `N alerts: <rule name>`, with the highest severity and up to 10 titles. A flushed group goes through the throttle, then to `alerting:delivery:queue` (`deliver` in `main.ts`). It skips the dedup hook.
+- Failures and scaling: a flush that fails is retried after 1 s. An engine claims a group with a lease (30 s by default), so several engines do not send the same group twice.
+- Shutdown: `grouping.stop()` stops the timer and waits for a running flush. It does not flush open windows. They stay in Redis and are sent by the next engine that runs.
+
+## Runbooks
+
+Runbook config and the step format are in [config formats](config-formats.md#runbooks). Automation runbooks run in the runbook worker (see the details list under [Processes](#processes)).
+
+- Conditional steps: a step can have an `if` filter, checked when the step is reached (`packages/runbooks/src/conditions.ts`). It can read the alert, the event and earlier steps (`steps.<id>.*`, `previous.*`). A false condition skips the step.
+- Retries: a step can have `retries` (0 to 5, clamped in `packages/runbooks/src/runner.ts`). A failed step runs again after a pause (1 s by default) before it counts as failed. Each failed attempt is audited as `step_executed`.
+- Remove from an alert: `DELETE /api/alerts/{id}/runbooks/{runbookId}` (`packages/runbooks/src/http.ts`). It writes a `runbook_removed` audit entry. Steps that are pending or awaiting approval are skipped ("runbook removed by ..."). Steps that already ran are not changed.
+- Restore: `POST /api/alerts/{id}/runbooks/{runbookId}/restore` writes a `runbook_restored` audit entry, so the runbook shows on the alert again. It does not un-skip steps. To run the runbook again, start it on a new alert. Whether a runbook is removed is read from the alert's audit: the last remove or restore wins (`removedRunbooks`).
+- Both calls take an optional `actor` query parameter. A signed-in account overrides it; the default is `anonymous` (`packages/runbooks/src/http.ts`). Both are in the OpenAPI document (`packages/api/src/openapi/operations.ts`).
 
 ## Scaling
 
@@ -110,12 +133,12 @@ What the code supports:
 - Parse workers: yes. They use consumer group `parse`, a unique consumer name per process (host and pid) and `XAUTOCLAIM` for entries stuck in another consumer's pending list. The API's own parse worker is one more consumer.
 - Engine: yes. It uses group `engine`, a consumer name with pid and a random suffix, and `XAUTOCLAIM` with a maximum delivery count. Dedup uses a per-key Redis lock, so several engines do not double-create an alert. Delivery is at least once, so a crash can repeat one event.
 - Delivery workers: yes in principle. Each worker has its own processing list and an `:alive` lease key (refreshed every 5 s, TTL 15 s). Other workers move the items of a dead worker back to the queue. In the current wiring the only delivery worker is in the API, so it scales only with API replicas. The compose file publishes port 3000 on `app` and sets no replicas for it, so running several API containers needs your own setup.
-- Compose scaling: `WORKERS=N` scales the `worker` container (ingest parse worker plus engine).
+- Compose scaling: `WORKERS=N` scales the `worker` container (ingest parse worker, engine and runbook worker).
 
 What does not scale, or is not covered:
 
 - The HTTP ingest route and the in-API sources runner exist in the API process only. Two API replicas would each run all non-HTTP sources and read the same file or stream, so events would be read twice. Use one API instance for sources.
-- The runbook worker is not running, so there is nothing to scale.
+- The runbook worker scales with `WORKERS=N`, because it is part of the `worker` container. Replicas share the work through consumer group `runbooks`.
 - Postgres and Redis are single containers in compose.
 
 ## Config directory

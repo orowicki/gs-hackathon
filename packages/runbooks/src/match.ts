@@ -1,5 +1,6 @@
 import { evaluate, tryParse } from "@alerting/filter";
 import { parseDuration } from "./actions.js";
+import { conditionError } from "./conditions.js";
 import type { Alert, Event, FilterNode, Runbook } from "@alerting/shared";
 
 export interface MatchContext {
@@ -61,6 +62,7 @@ export function validateRunbook(x: unknown, opts: { maxWaitMs?: number } = {}): 
   if (x.type !== "automation") return fail('type must be "text" or "automation"');
   if (!Array.isArray(x.steps)) return fail("automation runbook needs a steps array");
   const steps: unknown[] = [];
+  const seenIds = new Set<string>();
   for (const [i, raw] of x.steps.entries()) {
     const at = `steps[${i}]`;
     if (!isObj(raw)) return fail(`${at} must be an object`);
@@ -77,6 +79,17 @@ export function validateRunbook(x: unknown, opts: { maxWaitMs?: number } = {}): 
       const ms = parseDuration(raw.duration as string);
       if (ms > maxWaitMs) return fail(`${at}: wait duration ${raw.duration} exceeds the maximum of ${maxWaitMs}ms`);
     }
+    if (raw.id !== undefined && !(typeof raw.id === "string" && /^[A-Za-z_][A-Za-z0-9_]*$/.test(raw.id)))
+      return fail(`${at}.id must be a name like retry or check_health (letters, digits, _)`);
+    if (raw.id !== undefined && seenIds.has(raw.id as string)) return fail(`${at}.id "${raw.id as string}" is used twice`);
+    if (raw.id !== undefined) seenIds.add(raw.id as string);
+    if (raw.if !== undefined) {
+      if (!isStr(raw.if)) return fail(`${at}.if must be a filter, e.g. steps.retry.ok = false`);
+      const err = conditionError(raw.if);
+      if (err) return fail(`${at}.if: ${err}`);
+    }
+    if (raw.retries !== undefined && !(Number.isInteger(raw.retries) && (raw.retries as number) >= 0 && (raw.retries as number) <= 5))
+      return fail(`${at}.retries must be a whole number from 0 to 5`);
     steps.push({ ...raw, approval });
   }
   return { ok: true, runbook: { ...x, matches, steps } as unknown as Runbook };

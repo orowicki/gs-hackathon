@@ -3,6 +3,7 @@ import type { Filter } from "../../../../shared/src/types/filter";
 import type { Person, Preference, PreferenceRule, QuietHours } from "../../../../shared/src/types/people";
 
 export const SEVERITY_ROWS: Severity[] = ["critical", "error", "warning", "info"];
+/** Fallback when GET /api/channels is unavailable; the page normally shows every registered channel. */
 export const CHANNELS: ChannelId[] = ["ui", "ntfy"];
 
 export type Grid = Record<Severity, ChannelId[]>;
@@ -54,7 +55,10 @@ export function isValidTime(s: string): boolean {
   return /^([01]\d|2[0-3]):[0-5]\d$/.test(s);
 }
 
-export function gridFromPreference(pref: Pick<Preference, "rules">): {
+export function gridFromPreference(
+  pref: Pick<Preference, "rules">,
+  channels: readonly ChannelId[] = CHANNELS,
+): {
   grid: Grid;
   lossy: boolean;
   extraRules: PreferenceRule[];
@@ -64,7 +68,7 @@ export function gridFromPreference(pref: Pick<Preference, "rules">): {
   const extraRules: PreferenceRule[] = [];
   for (const rule of pref.rules ?? []) {
     const sev = severityOfFilter(rule.when);
-    const known = Array.isArray(rule.channels) && rule.channels.every((c) => CHANNELS.includes(c));
+    const known = Array.isArray(rule.channels) && rule.channels.every((c) => channels.includes(c));
     if (!sev || seen.has(sev) || !known) {
       extraRules.push(rule); // kept unchanged after the grid rules
       continue;
@@ -88,10 +92,16 @@ export function quietFromPreference(pref: Preference, timezone: string): QuietFo
 }
 
 /** Build the preference. Every severity row yields a rule (empty channels = none). */
-export function preferenceFromForm(personId: string, grid: Grid, quiet: QuietForm, extraRules: PreferenceRule[] = []): Preference {
+export function preferenceFromForm(
+  personId: string,
+  grid: Grid,
+  quiet: QuietForm,
+  extraRules: PreferenceRule[] = [],
+  channels: readonly ChannelId[] = CHANNELS,
+): Preference {
   const rules: PreferenceRule[] = SEVERITY_ROWS.map((sev) => ({
     when: severityFilter(sev),
-    channels: CHANNELS.filter((c) => grid[sev].includes(c)),
+    channels: channels.filter((c) => grid[sev].includes(c)),
   }));
   const pref: Preference = { ownerType: "person", ownerId: personId, rules: [...rules, ...extraRules] };
   if (quiet.enabled) {
@@ -99,7 +109,7 @@ export function preferenceFromForm(personId: string, grid: Grid, quiet: QuietFor
       from: quiet.from,
       to: quiet.to,
       timezone: quiet.timezone,
-      allowChannels: CHANNELS.filter((c) => quiet.allowChannels.includes(c)),
+      allowChannels: channels.filter((c) => quiet.allowChannels.includes(c)),
     };
     pref.quietHours = qh;
   }

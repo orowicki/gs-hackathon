@@ -2,7 +2,7 @@ import type { ParserConfig, Source } from "./sourceTypes";
 import { sourceTypeLabel } from "./sourceTypes";
 
 /** Intro under "New source": the same on every tab and in the editor. */
-export const SOURCE_INTRO = "A source is where events come from: a webhook, log files on disk or a Redis stream.";
+export const SOURCE_INTRO = "A source is where events come from: a webhook, log files on disk, a Redis stream or a Kafka topic.";
 
 export const ID_RE = /^[A-Za-z0-9][A-Za-z0-9_-]*$/;
 
@@ -59,6 +59,19 @@ export const SOURCE_EXAMPLES: SourceExample[] = [
     },
   },
   {
+    id: "payments-kafka",
+    what: "Consume payment events from a Kafka topic.",
+    sample: '{"type":"PAYMENT_DECLINED","service":"payments-api","amount":1200,"reason":"CARD_EXPIRED"}',
+    source: {
+      id: "payments-kafka",
+      name: "Payment events (Kafka)",
+      enabled: true,
+      type: "kafka",
+      config: { brokers: "redpanda:9092", topic: "payments.events", groupId: "alerting" },
+      parser: { type: "json" },
+    },
+  },
+  {
     id: "trades-stream",
     what: "Read trade events from a Redis stream.",
     sample: '{"type":"TRADE_REJECTED","desk":"rates","notional":25000000,"reason":"LIMIT_BREACH"}',
@@ -97,7 +110,7 @@ export function yamlToSource(text: string, parse: (t: string) => unknown): Sourc
 /** The URL services POST to for an http source (served by the app, not under /api). */
 export function ingestUrl(id: string): string {
   const origin = typeof window === "undefined" ? "http://localhost:3000" : window.location.origin;
-  return `${origin}/ingest/${encodeURIComponent(id || "<id>")}`;
+  return `${origin}/ingest/${id ? encodeURIComponent(id) : "<id>"}`;
 }
 
 const PARSER_LABEL: Record<string, string> = { json: "JSON", logfmt: "logfmt (key=value)", regex: "a regex", raw: "raw text" };
@@ -111,6 +124,10 @@ export function sourceSentence(s: Source): string {
     return `Follows ${typeof s.config.path === "string" && s.config.path ? s.config.path : "the files you choose"} and ${parse}, one line at a time.`;
   if (s.type === "redis_stream")
     return `Reads the Redis stream ${typeof s.config.stream === "string" && s.config.stream ? `"${s.config.stream}"` : "you choose"} and ${parse}.`;
+  if (s.type === "kafka")
+    return `Consumes the Kafka topic ${typeof s.config.topic === "string" && s.config.topic ? `"${s.config.topic}"` : "you choose"}${
+      typeof s.config.brokers === "string" && s.config.brokers ? ` on ${s.config.brokers}` : ""
+    } and ${parse}.`;
   return `Receives events from a ${sourceTypeLabel(s.type)} source and ${parse}.`;
 }
 

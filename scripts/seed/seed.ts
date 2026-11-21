@@ -62,19 +62,6 @@ export const DEMO_SOURCES: Entity[] = [
   },
 ];
 
-/** Anna: critical alerts also to ntfy; quiet hours 20:00-08:00 leave only the UI. */
-export const ANNA_PREFERENCE: Entity = {
-  ownerType: "person",
-  ownerId: "anna",
-  rules: [
-    {
-      when: { type: "cmp", field: "alert.severity", op: "=", value: "critical" },
-      channels: ["ui", "ntfy"],
-    },
-  ],
-  quietHours: { from: "20:00", to: "08:00", timezone: "Europe/Warsaw", allowChannels: ["ui"] },
-};
-
 export function loadConfigDir(dir: string): SeedData {
   const data = Object.fromEntries(KIND_ORDER.map((k) => [k, []])) as unknown as SeedData;
   for (const [kind, sub] of Object.entries(CONFIG_DIRS) as [SeedKind, string][]) {
@@ -91,7 +78,21 @@ export function loadConfigDir(dir: string): SeedData {
     }
   }
   data.source = DEMO_SOURCES.map((e) => ({ id: e.id as string, entity: e }));
-  data.preference = [{ id: "person:anna", entity: ANNA_PREFERENCE }];
+  // Preferences have no id of their own: the store id is `${ownerType}:${ownerId}`.
+  const pd = join(dir, "preferences");
+  if (existsSync(pd)) {
+    for (const f of readdirSync(pd).sort()) {
+      if (![".yaml", ".yml"].includes(extname(f))) continue;
+      const value = parse(readFileSync(join(pd, f), "utf8")) as Entity | null;
+      if (value === null || typeof value !== "object" || Array.isArray(value)) {
+        throw new Error(`${join(pd, f)}: expected a YAML mapping`);
+      }
+      if (typeof value.ownerType !== "string" || typeof value.ownerId !== "string") {
+        throw new Error(`${join(pd, f)}: preference needs ownerType and ownerId`);
+      }
+      data.preference.push({ id: `${value.ownerType}:${value.ownerId}`, entity: value });
+    }
+  }
   return data;
 }
 
@@ -136,7 +137,9 @@ export function httpClient(baseUrl: string): SeedClient {
   return {
     async get(kind, id) {
       if (kind === "preference") {
-        const [owner, ownerId] = id.split(":") as [string, string];
+        const i = id.indexOf(":");
+        const owner = id.slice(0, i);
+        const ownerId = id.slice(i + 1);
         const r = await call("GET", `/api/${owner === "group" ? "groups" : "people"}/${encodeURIComponent(ownerId)}/preferences`);
         if (!r.ok) return fail(`GET preference ${id}`, r);
         const p = (await r.json()) as Entity;
@@ -150,7 +153,9 @@ export function httpClient(baseUrl: string): SeedClient {
     },
     async put(kind, id, entity) {
       if (kind === "preference") {
-        const [owner, ownerId] = id.split(":") as [string, string];
+        const i = id.indexOf(":");
+        const owner = id.slice(0, i);
+        const ownerId = id.slice(i + 1);
         const r = await call("PUT", `/api/${owner === "group" ? "groups" : "people"}/${encodeURIComponent(ownerId)}/preferences`, entity);
         if (!r.ok) await fail(`PUT preference ${id}`, r);
         return;

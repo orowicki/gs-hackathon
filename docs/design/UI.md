@@ -11,10 +11,12 @@
 > "no sidebars, no stat cards" rule.
 
 1. **Two areas, always one click away.** A left sidebar (Grafana-style) with two sections:
-   **Alerts** (alert feed, my notifications) for people handling alerts, and **Configuration**
+   **Alerts** (alert feed) for people handling alerts, and **Configuration**
    (rules, sources, schemas, people & groups, channels) for setting the service up. Every page is
-   reachable from the sidebar; no page is hidden behind another page's button. Each page declares
-   its sidebar entry with `nav` in its `packages/web/src/routes/*.route.tsx` file.
+   reachable from the sidebar, except personal settings, which live in the account menu (top right):
+   **Notification preferences** (`/settings/notifications`). Each sidebar page declares its entry
+   with `nav` in its `packages/web/src/routes/*.route.tsx` file; a page outside the sidebar sets
+   `crumb` instead and shows as "Account › <crumb>" in the breadcrumb.
 2. **The filter is the main control on the feed.** Stat panels above the feed (open alerts, and open
    alerts per severity) give the overview and filter the feed when clicked. No charts or dashboards
    beyond these panels.
@@ -30,7 +32,7 @@
 |---|---|---|---|
 | `/` | Alert feed (landing page) | Alerts | everyone |
 | `/alerts/:id` | Alert detail | (under Alert feed) | everyone |
-| `/settings/notifications` | My notifications | Alerts | everyone |
+| `/settings/notifications` | Notification preferences | (account menu, not in the sidebar) | everyone |
 | `/rules`, `/rules/new`, `/rules/:id` | Rules list and editor | Configuration | everyone; editing only profiles with permission to create rules |
 | `/config/sources`, `/config/sources/:id` | Sources | Configuration | everyone |
 | `/config/schemas`, `/config/schemas/:id` | Schemas | Configuration | everyone |
@@ -227,11 +229,23 @@ The full event is shown as a clean, readable list of fields. The user should nev
 | Icons | Lucide, 16 px, stroke 1.5. |
 | Motion | 120–160 ms ease-out, only for expanding rows, opening panels and highlighting new alerts. Respect `prefers-reduced-motion`. |
 
-Colours: Grafana dark palette by default, light theme via `data-theme="light"`. The single source
-is `packages/web/src/styles/tokens.css` (severity: critical `#F2495C`, error `#FF9830`,
-warning `#FADE2A`, info `#5794F2`; valid `#73BF69`; accent `#6E9FFF`; alert state:
-acknowledged `#B877D9` (purple), resolved `#73BF69`). Don't hard-code colours in
-page CSS; use the variables.
+Colours: Grafana's structure and neutrals with Goldman Sachs blue as the one brand highlight.
+The single source is `packages/web/src/styles/tokens.css`; never hard-code colours in page CSS.
+
+| Role | Dark | Light |
+|---|---|---|
+| Brand / highlight (links, focus, active nav, primary buttons) | `#7399C6` (links `#8FB2DD`, buttons `#3E6AA6`) | `#2F5D97` |
+| Critical (text / fill) | hipred `#EE454A` / `#EE454A` | `#D31319` / `#EE454A` |
+| Error | hiporange `#FC5E1F` / `#FC5E1F` | `#D13E03` / `#FC5E1F` |
+| Warning | hipyellow `#FABB2D` / brighter-but-deep hipyellow `#D29406` | `#9A6C03` / `#D29406` |
+| Info | hipblue `#3995DA` / `#3995DA` | `#2071AE` / `#3995DA` |
+| OK / healthy, resolved | hipgreen `#3CB538` | `#277624` |
+| Neutral tags | hipgray `#6C7788` | `#515966` |
+| Acknowledged | purple `#B877D9` | `#8F3BB8` |
+
+The severity colours are the "Hip" palette (-500 shades).
+Every solid severity fill carries white text; hipyellow is too light for that, so its fill is a deeper shade of the same hue.
+Severity colours are for severity only; decoration (badges, edges, icons) stays neutral.
 
 ### Do not
 
@@ -269,7 +283,7 @@ Record answers here as they are decided:
   are the people in People & groups, chosen from a profile picker in the settings panel (no
   password). A `canCreateRules` flag on each person decides whether `+` is rendered.
 - ~~Where starred filters are stored.~~ **Decided:** backend, per profile.
-- ~~Content of the settings panel.~~ **Decided:** profile picker, My notifications, theme, starred
+- ~~Content of the settings panel.~~ **Decided:** profile picker, Notification preferences (now in the account menu), theme, starred
   filters, and a short **Configure** list linking to separate pages: `/config/sources`,
   `/config/schemas`, `/config/rules`, `/config/people`, `/config/channels`. These pages follow this
   file's visual style; they are the only additions to section 2's routes.

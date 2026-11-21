@@ -21,7 +21,7 @@ export default {
     const owned =
       path === "/api/approvals" ||
       /^\/api\/alerts\/[^/]+\/runbook-runs$/.test(path) ||
-      /^\/api\/alerts\/[^/]+\/runbooks$/.test(path) ||
+      /^\/api\/alerts\/[^/]+\/runbooks(\/[^/]+(\/restore)?)?$/.test(path) ||
       /^\/api\/alerts\/[^/]+\/runbook-steps\/[^/]+\/approve$/.test(path);
     if (!owned) return false;
     return deps.runbooks.handle(req, res, url, accountOf(req)?.id);

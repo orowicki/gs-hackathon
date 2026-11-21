@@ -163,6 +163,11 @@ button.primary:disabled {
   font-weight: var(--weight-strong);
   white-space: nowrap;
 }
+/* Neutral tags pick up hipgray for their edge. */
+.badge,
+.tag:not([class*="sev-"]):not(.ok):not(.ev-unrec) {
+  border-color: color-mix(in srgb, var(--neutral) 45%, transparent);
+}
 
 .tag.sev-critical { background: var(--critical-tint); border-color: transparent; color: var(--critical); }
 .tag.sev-error { background: var(--error-tint); border-color: transparent; color: var(--error); }
@@ -381,10 +386,18 @@ input.mono,
 
 .switch input {
   position: absolute;
+  /* Above the drawn track: clicks land on the real checkbox (for people and for Playwright,
+     which otherwise sees the track intercepting the click and waits forever). */
+  z-index: 1;
   opacity: 0;
   width: 32px;
   height: 18px;
   margin: 0;
+  cursor: pointer;
+}
+
+.switch input:disabled {
+  cursor: not-allowed;
 }
 
 .switch-track {

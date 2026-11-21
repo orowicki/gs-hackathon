@@ -4,9 +4,9 @@ Reference for the YAML files in `config/` (and for the same entities when create
 
 ## How files are loaded
 
-- Layout: one entity per file; the directory is the kind (`config/sources/`, `schemas/`, `rules/`, `people/`, `groups/`, `runbooks/`). Preferences have no directory (see [Preferences](#preferences)).
+- Layout: one entity per file; the directory is the kind (`config/sources/`, `schemas/`, `rules/`, `people/`, `groups/`, `runbooks/`, `preferences/`).
 - Extensions: `.yaml` and `.yml` (case-insensitive). Other files, such as `.gitkeep` or `README.md`, are ignored.
-- File name: free. The entity id is the `id` field in the file; if it is missing, the file name without extension is used (not for preferences). The id must be a non-empty string. Two files with the same id: the duplicate is reported and the entity is overwritten by whichever file is read later (directory scan order), so avoid duplicate ids.
+- File name: free. The entity id is the `id` field in the file; if it is missing, the file name without extension is used (not for preferences: their id is `ownerType:ownerId`). The id must be a non-empty string. Two files with the same id: the duplicate is reported and the entity is overwritten by whichever file is read later (directory scan order), so avoid duplicate ids.
 - The app reads the directory from the `CONFIG_DIR` environment variable (default `./config`; compose mounts `./config` at `/app/config`). If the directory does not exist, live reload is disabled and an error is logged.
 - Seed vs live reload (`packages/api/src/config-watch.ts`, `watchConfigDir` in `@alerting/config`): on start, a file is loaded only if no entity with that id exists in the database yet, so edits made through the API survive restarts. After start, adding or editing a file upserts the entity (writes are debounced by about 100 ms), and deleting a file deletes the entity. Other processes are told through the config change channel.
 - An invalid YAML file or an invalid entity is logged with the file path and the reason, then skipped. It never stops the watcher. The watcher never writes to the files.
@@ -169,7 +169,32 @@ Directory `config/rules/` (kind `rule`). Who is told about which alerts, and how
 | `looks.severityOverride` | `info` \| `warning` \| `error` \| `critical` | no | |
 | `looks.colour` | string | no | CSS colour token or hex. |
 | `dedupFields` | list of common field names | no | Dedup key source when the event has none. |
+| `groupBy` | list of strings | no | Alert fields or dotted event paths to group notifications by. Needs `groupWindow`. |
+| `groupWindow` | duration (`500ms`, `30s`, `5m`, `1h`) | no | Length of a grouping window. Needs `groupBy`. |
 | `createdAt`, `updatedAt` | ISO-8601 string | yes | Quote the value so YAML keeps it a string. |
+
+**Grouping.** With `groupBy` and `groupWindow` set, alerts are still created per dedup key, but each recipient gets one notification per group and window instead of one per alert. The first alert of a group starts the window; when it ends the recipient gets a single notification (`N alerts: <rule name>`, severity of the highest alert, titles listed in the body). A group with one alert is sent unchanged. Missing values group as the empty string. Rules with `force` channels still group (grouping is opt-in per rule); the grouped notification then goes through the normal throttle.
+
+Complete rule with grouping:
+
+<!-- kind: rules -->
+```yaml
+id: disk-full-grouped
+name: Disk full
+enabled: true
+when: 'alert.severity >= warning'
+who:
+  - recipients:
+      - { type: group, id: pricing-team }
+    force: [ui]
+looks:
+  titleTemplate: '{{alert.title}}'
+  fields: [alert.source]
+groupBy: [source, environment]
+groupWindow: 5m
+createdAt: '2026-11-01T00:00:00Z'
+updatedAt: '2026-11-01T00:00:00Z'
+```
 
 A `who` row: `recipients` (list of `{ type: person | group, id }`, required); `condition` (filter, optional, omit for "everyone else"); `force` (list of channel ids such as `ui`, `ntfy`, optional, overrides the recipients' preferences).
 
@@ -260,7 +285,7 @@ memberIds: [tomasz, anna]
 
 ## Preferences
 
-Kind `preference`. There is no `config/preferences/` directory: the watcher does not load preferences. They are stored through the API (`PUT /api/people/{id}/preferences` or `PUT /api/groups/{id}/preferences`, JSON body) and the YAML below is the same entity (it is the seeded preference of Anna from `scripts/seed/seed.ts`). One preference per person or group; its storage id is `person:<ownerId>` or `group:<ownerId>`.
+Kind `preference`. Files go in `config/preferences/` (for example `person-anna.yaml`; the file name is free). The same entity can be stored through the API (`PUT /api/people/{id}/preferences` or `PUT /api/groups/{id}/preferences`, JSON body). The file has no `id`: the id comes from `ownerType` and `ownerId`, so a file with a missing or invalid owner, or a body the API would reject (`rules` not a list, a rule without `when`/`channels`, `quietHours` not a mapping), is reported and skipped. The watcher does not check that the person or group exists. The YAML below is Anna's demo preference (`config/preferences/person-anna.yaml`, used by the seed). One preference per person or group; its storage id is `person:<ownerId>` or `group:<ownerId>`.
 
 | Field | Type | Required | Notes |
 |---|---|---|---|
@@ -306,6 +331,37 @@ Step fields: `action` (`http`, `escalate` or `wait`, required), `name` (string, 
 
 Placeholders (`{{alert.entity}}`, `{{error.code}}`) are filled from the alert and the event.
 
+Branching (optional on every step):
+
+| Field | Meaning |
+|---|---|
+| `id` | Name for the step (letters, digits, `_`), so later steps can refer to it as `steps.<id>.*`. |
+| `if` | Filter (same language as rules), checked when the step is reached; false = the step is skipped with "condition not met". It sees the event's fields, `alert.*`, `steps.<id>.ok` / `.failed` / `.state` / `.status` (HTTP code) / `.attempts` / `.body.*` (the JSON response) and `previous.*` (the last step that ran). |
+| `retries` | 0 to 5: run a failed step again up to N more times (1 s apart) before it counts as failed. |
+
+Without an `if`, a step is skipped once an earlier step failed. A step with an `if` is still checked, which is how failure branches are written (`if: steps.retry.ok = false`). The condition is checked before approval, so a branch that does not apply never asks anyone. A run whose failure was handled by a branch that ran ends as `done`.
+
+```text
+- id: regions
+  action: http
+  method: GET
+  url: "http://demo-service:4100/regions/{{labels.service}}"
+- name: Fail traffic over
+  if: steps.regions.body.scope = "one-region"
+  action: http
+  method: POST
+  url: "http://demo-service:4100/failover/{{labels.service}}"
+  approval: required
+- name: Roll back the last deployment
+  if: steps.regions.body.scope = "all-regions"
+  action: http
+  method: POST
+  url: "http://demo-service:4100/deployments/{{labels.service}}/rollback"
+  approval: required
+```
+
+A runbook can be removed from a single alert on the alert page (bin icon). The removal is recorded in the alert's audit, steps that have not run are skipped, and Restore shows it again.
+
 Text runbook, `config/runbooks/pricing-latency.yaml`:
 
 <!-- kind: runbooks; file: config/runbooks/pricing-latency.yaml -->
@@ -322,27 +378,33 @@ Automation runbook, `config/runbooks/settlement-timeout.yaml`:
 
 <!-- kind: runbooks; file: config/runbooks/settlement-timeout.yaml -->
 ```yaml
+# Appendix B "structured steps", as written by Team Settlements. "if: retry fails twice" is a real
+# condition here: the retry runs up to 2 times, and the escalation (with approval) only happens if
+# it still failed. Steer it live on the demo-service page (http://localhost:4100): Workflow retry → Fails.
 id: settlement-timeout
 name: Settlement workflow timeout
 type: automation
 matches: type = WORKFLOW_FAILED AND error.code = TIMEOUT
-# Note: the original "if retry fails twice" condition is approximated by the
-# approval gate on the escalate step (our format has no conditional steps).
 steps:
-  - name: Check counterparty-service health
+  - id: health
+    name: Is counterparty-service healthy?
     action: http
     method: GET
     url: http://demo-service:4100/health
-    approval: none
-  - name: "Retry workflow {{workflowId}}"
+
+  - id: retry
+    name: "Retry workflow {{workflowId}}"
     action: http
     method: POST
     url: "http://demo-service:4100/workflows/{{workflowId}}/retry"
     headers:
       content-type: application/json
     body: '{"workflowId":"{{workflowId}}","reason":"{{error.code}}"}'
+    retries: 1
     approval: none
-  - name: Escalate to counterparty-support
+
+  - name: Retry failed twice - escalate to counterparty-support
+    if: steps.retry.ok = false
     action: escalate
     group: counterparty-support
     approvers: settlements-oncall

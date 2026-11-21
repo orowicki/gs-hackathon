@@ -1,0 +1,63 @@
+/* Alerts > Events (ev-*): Grafana Explore-style log list. */
+.ev-toolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+.ev-toolbar select { min-width: 200px; }
+.ev-spacer { flex: 1; }
+
+.ev-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+
+.ev-row + .ev-row { border-top: 1px solid var(--border); }
+.ev-row.open { background: var(--bg); }
+
+.ev-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  width: 100%;
+  min-height: 38px;
+  padding: 0 var(--space-3);
+  background: transparent;
+  color: var(--text);
+  border: 0;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.ev-head:hover { background: var(--surface-2); }
+.ev-head > svg { flex: none; color: var(--muted); }
+.ev-time { flex: none; width: 44px; color: var(--muted); font-size: var(--text-sm); font-variant-numeric: tabular-nums; }
+.ev-source { flex: none; width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font-size: var(--text-sm); }
+.ev-head .tag { flex: none; }
+.tag.ev-unrec { background: var(--warning-tint); border-color: transparent; color: var(--warning); }
+.ev-summary { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-strong); font-size: var(--text-sm); }
+
+.ev-body { display: flex; flex-direction: column; gap: var(--space-3); padding: var(--space-2) var(--space-4) var(--space-4) 36px; }
+.ev-actions { display: flex; align-items: center; gap: var(--space-3); }
+.ev-id { font-size: var(--text-xs); }
+.ev-cols { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: var(--space-4); }
+.ev-cols h3 { margin: 0 0 var(--space-2); font-size: var(--text-sm); color: var(--muted); }
+.ev-cols .code-block { max-height: 320px; }
+
+.ev-fields { margin: 0; display: grid; gap: 3px; }
+.ev-fields div { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 3fr); gap: var(--space-2); align-items: baseline; }
+.ev-fields dt { color: var(--muted); font-family: var(--font-mono); font-size: var(--text-xs); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ev-fields dd { margin: 0; color: var(--text-strong); font-size: var(--text-sm); overflow-wrap: anywhere; }
+
+.ev-more { align-self: flex-start; }
+
+@media (max-width: 1000px) {
+  .ev-cols { grid-template-columns: 1fr; }
+  .ev-source { width: 100px; }
+}

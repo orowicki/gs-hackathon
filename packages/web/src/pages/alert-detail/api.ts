@@ -54,7 +54,7 @@ export interface RunbookRun {
   runbookName?: string;
   /** running | waiting | done | failed (as the runner reports it). */
   status?: string;
-  steps: Array<{ index: number; state: string; result?: string; at?: string; name?: string }>;
+  steps: Array<{ index: number; state: string; result?: string; at?: string; name?: string; attempts?: number }>;
 }
 
 export interface AuditEntry {
@@ -108,9 +108,17 @@ export interface MatchedRunbook {
   type: "text" | "automation";
   origin: "rule" | "config";
   content?: string;
-  steps?: Array<{ index: number; name: string; action: string; approval: string }>;
+  steps?: Array<{ index: number; name: string; action: string; approval: string; id?: string; if?: string; retries?: number }>;
+  /** Taken off this alert by a person. */
+  removed?: boolean;
 }
 export const getMatchedRunbooks = (id: string) => listOrEmpty<MatchedRunbook>(`${base(id)}/runbooks`);
+
+/** Take a runbook off this alert (steps not yet run are skipped), or put it back. */
+export const removeRunbook = (id: string, runbookId: string) =>
+  request<{ removed: boolean; run?: RunbookRun }>("DELETE", `${base(id)}/runbooks/${encodeURIComponent(runbookId)}`);
+export const restoreRunbook = (id: string, runbookId: string) =>
+  request<{ removed: boolean }>("POST", `${base(id)}/runbooks/${encodeURIComponent(runbookId)}/restore`);
 
 /** Start an automation runbook on this alert now. */
 export const startRunbook = (id: string, runbookId: string) =>

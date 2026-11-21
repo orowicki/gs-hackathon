@@ -1,6 +1,7 @@
 import { evaluate, type FilterNode } from "@alerting/filter";
 import type { Event } from "@alerting/shared";
 import type { AlertsApiDeps } from "../common.js";
+import { compileFilterToSql } from "./sql-filter.js";
 import { alertContext } from "./filter-context.js";
 import { addToSummary, emptySummary, type AlertSummary } from "./store.js";
 
@@ -8,9 +9,10 @@ const BATCH = 200;
 const SCAN_CAP = 5000;
 
 /**
- * Without a filter: one aggregate SQL query. With a filter: the filter language is
- * evaluated in Node (as for the list), so alerts are scanned in the same newest-first
- * order and with the same cap as `GET /api/alerts`, keeping panel counts equal to the list.
+ * Without a filter: one aggregate SQL query. With a filter that compiles to SQL: a grouped
+ * count in Postgres over all matching alerts (no SCAN_CAP, like the unfiltered summary).
+ * Otherwise the filter language is evaluated in Node (as for the list): alerts are scanned
+ * newest-first with the same cap as `GET /api/alerts`.
  */
 export async function computeSummary(
   deps: AlertsApiDeps,
@@ -18,6 +20,8 @@ export async function computeSummary(
   needsEvents: boolean,
 ): Promise<AlertSummary> {
   if (!tree) return deps.alerts.summary();
+  const compiled = !needsEvents && deps.alerts.summaryWhere ? compileFilterToSql(tree) : null;
+  if (compiled) return deps.alerts.summaryWhere!(compiled);
   const out = emptySummary();
   let scanned = 0;
   let cursor: { lastSeen: string; id: string } | undefined;

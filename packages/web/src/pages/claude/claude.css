@@ -1,0 +1,76 @@
+/* Connect Claude (cc-*): Grafana "Connections"-style setup page. */
+.cc-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 340px;
+  gap: var(--space-4);
+  align-items: start;
+  margin-top: var(--space-1);
+}
+
+.cc-panel {
+  padding: var(--space-4);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+}
+
+/* Numbered setup: this is a real sequence, so numbers are information. */
+.cc-steps {
+  list-style: none;
+  counter-reset: step;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+.cc-steps > li {
+  counter-increment: step;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding-left: 44px;
+}
+
+.cc-steps > li::before {
+  content: counter(step);
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: var(--surface-2);
+  border: 1px solid var(--border-strong);
+  color: var(--text-strong);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-strong);
+}
+
+.cc-steps h2 { margin: 3px 0 0; font-size: 15px; }
+.cc-steps p { margin: 0; color: var(--muted); font-size: var(--text-sm); }
+.cc-link { align-self: flex-start; font-size: var(--text-sm); }
+
+.cc-tools h2 { display: flex; align-items: center; gap: var(--space-2); margin: 0 0 var(--space-3); font-size: var(--text-md); }
+.cc-tools h2 svg { color: var(--brand); }
+.cc-group { padding: var(--space-3) 0; border-top: 1px solid var(--border); }
+.cc-group h3 { margin: 0 0 2px; font-size: var(--text-sm); color: var(--text-strong); }
+.cc-group p { margin: 0 0 var(--space-2); color: var(--muted); font-size: var(--text-sm); }
+.cc-group ul { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 4px; }
+.cc-group li {
+  padding: 1px 6px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-size: var(--text-xs);
+  color: var(--text);
+}
+
+@media (max-width: 1000px) {
+  .cc-layout { grid-template-columns: 1fr; }
+}

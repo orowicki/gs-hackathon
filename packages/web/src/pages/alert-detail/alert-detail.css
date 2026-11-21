@@ -114,10 +114,11 @@
   white-space: nowrap;
 }
 
-.sev-badge { font-family: var(--font-mono); color: #fff; background: var(--info); }
-.sev-badge.sev-critical { background: var(--critical); }
-.sev-badge.sev-error { background: var(--error); color: #1a1a1a; }
-.sev-badge.sev-warning { background: var(--warning); color: #1a1a1a; }
+/* Severity badge: the palette's solid fills (tokens.css), same as the stat panels. */
+.sev-badge { font-family: var(--font-mono); color: var(--on-fill); background: var(--info-fill); }
+.sev-badge.sev-critical { background: var(--critical-fill); }
+.sev-badge.sev-error { background: var(--error-fill); }
+.sev-badge.sev-warning { background: var(--warning-fill); color: var(--on-warning-fill); }
 
 .state-pill { border: 1px solid currentColor; color: var(--muted); }
 .state-pill.state-open { color: var(--critical); }
@@ -186,20 +187,8 @@
 
 /* ---- Buttons --------------------------------------------------------------- */
 
-/* Global baseline kept as it was (other pages, e.g. schemas, use .btn without their own rules). */
-.btn {
-  padding: var(--space-1) var(--space-3);
-  font: inherit;
-  font-size: var(--text-sm);
-  color: var(--text);
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  cursor: pointer;
-}
-.btn:hover:not(:disabled) { border-color: var(--muted); }
-.btn.primary { border-color: var(--accent); color: var(--accent); }
-.btn:disabled { opacity: 0.5; cursor: default; }
+/* The global .btn baseline lives in styles/components.css. A global .btn rule here loaded
+   after it and turned every page's primary buttons into blue text on blue. Scoped only. */
 
 .alert-detail .actions { display: flex; align-items: center; gap: var(--space-2); }
 
@@ -551,3 +540,15 @@
 .alert-detail .panel-toggle:hover h2 { color: var(--accent); }
 .audit-latest { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .comment-as { margin-right: auto; }
+
+/* Runbooks: remove / restore, conditional steps */
+.alert-detail .run-head .run-actions { margin-left: auto; display: inline-flex; align-items: center; gap: var(--space-2); }
+.alert-detail .run-head .run-actions .run-now { margin-left: 0; }
+.alert-detail .rb-remove { height: 26px; width: 26px; padding: 0; display: inline-flex; align-items: center; justify-content: center; color: var(--muted); }
+.alert-detail .rb-remove:hover:not(:disabled) { color: var(--error); border-color: color-mix(in srgb, var(--error) 45%, var(--border)); }
+.step-if { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--accent); }
+.step-if code { font-size: 12px; padding: 1px 6px; border-radius: 4px; background: color-mix(in srgb, var(--accent) 10%, transparent); color: var(--text-strong); }
+.rb-removed { margin-top: var(--space-3); }
+.rb-removed .link-btn { background: none; border: 0; padding: 0; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; }
+.rb-removed-item { display: flex; align-items: center; gap: var(--space-2); padding: var(--space-2) 0; }
+.rb-removed-item .btn { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; height: 26px; }

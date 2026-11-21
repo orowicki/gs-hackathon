@@ -1,8 +1,9 @@
-import { Check, Copy, Database, Download, FileText, Globe, Plug, Trash2 } from "lucide-react";
+import { Check, Database, Download, FileText, Globe, Layers, Plug, Trash2 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Step } from "../../components/EditorStep";
+import { CopyBox } from "../../components/CopyBox";
 import { Icon } from "../../components/Icon";
 import { getJson, getText, sendJson } from "./api";
 import { ID_RE, ingestUrl, localParse, parserLabel, slugify, SOURCE_INTRO, sourceSentence } from "./helpers";
@@ -14,6 +15,7 @@ const TYPE_INFO: Record<string, { icon: LucideIcon; text: string }> = {
   http: { icon: Globe, text: "Services send events to a URL on this app." },
   file_tail: { icon: FileText, text: "Follow log files on disk as they grow." },
   redis_stream: { icon: Database, text: "Read messages from a Redis stream." },
+  kafka: { icon: Layers, text: "Consume a Kafka topic as a consumer group." },
 };
 const PARSER_HELP: Record<string, string> = {
   json: "One JSON object per message.",
@@ -102,31 +104,6 @@ function ParsedFields({ state }: { state: ParseState }) {
           </div>
         ))}
       </dl>
-    </div>
-  );
-}
-
-function CopyBox({ label, text }: { label: string; text: string }) {
-  const [done, setDone] = useState(false);
-  return (
-    <div className="src-copy">
-      <span className="field-label">{label}</span>
-      <div className="src-copy-row">
-        <code>{text}</code>
-        <button
-          type="button"
-          className="icon-btn"
-          aria-label={`Copy ${label.toLowerCase()}`}
-          onClick={() => {
-            void navigator.clipboard?.writeText(text).then(() => {
-              setDone(true);
-              setTimeout(() => setDone(false), 1200);
-            });
-          }}
-        >
-          <Icon as={done ? Check : Copy} />
-        </button>
-      </div>
     </div>
   );
 }

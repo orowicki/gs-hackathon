@@ -112,7 +112,6 @@ services:
       - --check=false
       - --kafka-addr=internal://0.0.0.0:9092,external://0.0.0.0:19092
       - --advertise-kafka-addr=internal://redpanda:9092,external://localhost:19092
-      - --set=redpanda.auto_create_topics_enabled=true
     ports:
       - "19092:19092"
     healthcheck:
@@ -146,8 +145,9 @@ services:
       PORT: "4100"
     volumes:
       - ./fixtures/demo-service:/srv:ro
-    expose:
-      - "4100"
+    # Live page of runbook calls with scenario switches: http://localhost:4100
+    ports:
+      - "4100:4100"
 
 volumes:
   pgdata:

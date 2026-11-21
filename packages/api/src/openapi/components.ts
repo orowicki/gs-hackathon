@@ -111,9 +111,24 @@ export const componentSchemas: Record<string, object> = {
           ),
         ],
       },
+      {
+        allOf: [
+          ref("SourceBase"),
+          obj(
+            {
+              type: { const: "kafka" },
+              config: obj(
+                { brokers: str(), topic: str(), groupId: str(), fromBeginning: { type: "boolean" } },
+                ["brokers", "topic", "groupId"],
+              ),
+            },
+            ["type", "config"],
+          ),
+        ],
+      },
     ],
   },
-  SourceType: strEnum(["http", "file_tail", "redis_stream"]),
+  SourceType: strEnum(["http", "file_tail", "redis_stream", "kafka"]),
   SourceTypeInfo: obj({ type: str(), configSchema: ref("JsonObject") }, ["type", "configSchema"]),
   SourceTypesResponse: obj(
     { sourceTypes: arr(ref("SourceTypeInfo")), parserConfigSchema: ref("JsonObject") },
@@ -150,6 +165,37 @@ export const componentSchemas: Record<string, object> = {
   ),
   SchemaTestRequest: obj({ schema: ref("Schema"), sample: ref("JsonObject") }, ["schema", "sample"]),
   SchemaTestResponse: obj({ matched: { type: "boolean" }, common: ref("CommonFields") }, ["matched", "common"]),
+
+  // ---- config changes ----
+  ConfigChange: obj(
+    {
+      id: { type: "integer" },
+      kind: strEnum(["source", "schema", "rule", "person", "group", "runbook"]),
+      itemId: str("Id of the changed item"),
+      action: strEnum(["create", "update", "delete", "import"]),
+      actor: {
+        description: "The signed-in person who made the change; null without an account",
+        oneOf: [obj({ id: str(), name: str() }, ["id", "name"]), { type: "null" }],
+      },
+      occurredAt: str("ISO timestamp"),
+    },
+    ["id", "kind", "itemId", "action", "actor", "occurredAt"],
+    {
+      examples: [
+        { id: 12, kind: "rule", itemId: "r1", action: "update", actor: { id: "anna", name: "Anna" }, occurredAt: "2026-01-15T09:30:00.000Z" },
+      ],
+    },
+  ),
+  ConfigChangeList: obj({ changes: arr(ref("ConfigChange")) }, ["changes"], {
+    examples: [
+      {
+        changes: [
+          { id: 12, kind: "rule", itemId: "r1", action: "update", actor: { id: "anna", name: "Anna" }, occurredAt: "2026-01-15T09:30:00.000Z" },
+          { id: 11, kind: "source", itemId: "demo-http", action: "import", actor: null, occurredAt: "2026-01-15T09:00:00.000Z" },
+        ],
+      },
+    ],
+  }),
 
   // ---- events ----
   Event: obj(
@@ -235,6 +281,8 @@ export const componentSchemas: Record<string, object> = {
       who: arr(ref("WhoRow")),
       looks: ref("Looks"),
       dedupFields: arr(strEnum(commonFieldNames)),
+      groupBy: arr(str()),
+      groupWindow: { type: "string", pattern: "^\\d+(ms|s|m|h)$", example: "5m", description: "Grouping window; with groupBy, one notification per recipient per burst" },
       createdAt: str(),
       updatedAt: str(),
     },
@@ -252,30 +300,39 @@ export const componentSchemas: Record<string, object> = {
           url: str(),
           headers: { type: "object", additionalProperties: str() },
           body: str("Templated"),
-          approval: strEnum(["none", "required"]),
+          approval: { ...strEnum(["none", "required"]), default: "none", description: "Optional; a step without it runs without approval" },
           approvers: str("Group id notified when this step awaits approval"),
+          id: str("Name later steps use as steps.<id>.* in their if"),
+          if: str("Filter checked when the step is reached; false = skipped. Sees event fields, alert.*, steps.<id>.*, previous.*"),
+          retries: { type: "integer", minimum: 0, maximum: 5, description: "Extra attempts before the step counts as failed" },
         },
-        ["action", "method", "url", "approval"],
+        ["action", "method", "url"],
       ),
       obj(
         {
           action: { const: "escalate" },
           name: str(),
           group: str("Group id"),
-          approval: strEnum(["none", "required"]),
+          approval: { ...strEnum(["none", "required"]), default: "none", description: "Optional; a step without it runs without approval" },
           approvers: str("Group id notified when this step awaits approval"),
+          id: str("Name later steps use as steps.<id>.* in their if"),
+          if: str("Filter checked when the step is reached; false = skipped. Sees event fields, alert.*, steps.<id>.*, previous.*"),
+          retries: { type: "integer", minimum: 0, maximum: 5, description: "Extra attempts before the step counts as failed" },
         },
-        ["action", "group", "approval"],
+        ["action", "group"],
       ),
       obj(
         {
           action: { const: "wait" },
           name: str(),
           duration: str("e.g. 2m, 30s"),
-          approval: strEnum(["none", "required"]),
+          approval: { ...strEnum(["none", "required"]), default: "none", description: "Optional; a step without it runs without approval" },
           approvers: str("Group id notified when this step awaits approval"),
+          id: str("Name later steps use as steps.<id>.* in their if"),
+          if: str("Filter checked when the step is reached; false = skipped. Sees event fields, alert.*, steps.<id>.*, previous.*"),
+          retries: { type: "integer", minimum: 0, maximum: 5, description: "Extra attempts before the step counts as failed" },
         },
-        ["action", "duration", "approval"],
+        ["action", "duration"],
       ),
     ],
   },
@@ -300,7 +357,7 @@ export const componentSchemas: Record<string, object> = {
       status: strEnum(["running", "awaiting_approval", "done", "failed"]),
       steps: arr(
         obj(
-          { index: { type: "integer" }, state: ref("StepRunState"), result: str(), at: str(), name: str() },
+          { index: { type: "integer" }, state: ref("StepRunState"), result: str(), at: str(), name: str(), attempts: { type: "integer" }, status: { type: "integer" }, body: {} },
           ["index", "state"],
         ),
       ),
@@ -395,10 +452,18 @@ export const componentSchemas: Record<string, object> = {
       origin: strEnum(["rule", "config"]),
       content: str("Text runbooks: the instructions with the alert's values filled in"),
       steps: arr(
-        obj({ index: { type: "integer" }, name: str(), action: str(), approval: strEnum(["none", "required"]) }, ["index", "name", "action", "approval"]),
+        obj(
+          { index: { type: "integer" }, name: str(), action: str(), approval: strEnum(["none", "required"]), id: str(), if: str("Condition: the step runs only when it holds"), retries: { type: "integer" } },
+          ["index", "name", "action", "approval"],
+        ),
       ),
+      removed: { type: "boolean", description: "Taken off this alert by a person" },
     },
     ["id", "name", "type", "origin"],
+  ),
+  RunbookRemoval: obj(
+    { alertId: str(), runbookId: str(), removed: { type: "boolean" }, run: ref("RunbookRun") },
+    ["alertId", "runbookId", "removed"],
   ),
   StartRunbookRequest: obj({ runbookId: str("An automation runbook") }, ["runbookId"]),
   AuditEntry: obj(
@@ -407,7 +472,7 @@ export const componentSchemas: Record<string, object> = {
       alertId: str(),
       at: str(),
       actor: str("Person id or system"),
-      action: strEnum(["created", "acknowledged", "unacknowledged", "resolved", "step_executed", "step_approved", "step_skipped", "escalated", "suggestion"]),
+      action: strEnum(["created", "acknowledged", "unacknowledged", "resolved", "step_executed", "step_approved", "step_skipped", "escalated", "suggestion", "runbook_removed", "runbook_restored"]),
       runbookId: optStr(),
       stepIndex: { type: ["integer", "null"] },
       result: optStr(),

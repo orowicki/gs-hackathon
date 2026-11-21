@@ -1,5 +1,6 @@
 import type { ConfigStore } from "@alerting/config";
 import type { RouteModule } from "../http.js";
+import { changesOf } from "./config/changes.js";
 import { handleConfigRoute } from "./config/index.js";
 
 declare module "../http.js" {
@@ -14,6 +15,6 @@ export default {
   // Before alerts (50, owns /api/rules/:id/suggestions, which this module never claims).
   order: 30,
   handle({ req, res, deps }) {
-    return handleConfigRoute(req, res, deps);
+    return handleConfigRoute(req, res, { config: deps.config, changes: changesOf(deps) });
   },
 } satisfies RouteModule;

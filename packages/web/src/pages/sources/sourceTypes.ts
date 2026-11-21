@@ -39,6 +39,7 @@ const SOURCE_TYPE_LABELS: Record<string, string> = {
   http: "HTTP ingest",
   file_tail: "File tail",
   redis_stream: "Redis stream",
+  kafka: "Kafka topic",
 };
 
 export function sourceTypeLabel(type: string): string {
