@@ -1,6 +1,7 @@
 import http from "node:http";
 import type { ChannelStatus, DeadLetter, Notification } from "@alerting/shared";
 import { buildOpenApi } from "./openapi.js";
+import { serveStatic } from "./static.js";
 
 export interface DeliveryDeps {
   listDeadLetters(): Promise<DeadLetter[]>;
@@ -14,6 +15,8 @@ export interface Deps {
   delivery?: DeliveryDeps;
   /** Subscribe to CHANNEL_UI_PUSH messages; returns an unsubscribe function. */
   subscribeUiPush?(onMessage: (json: string) => void): () => void;
+  /** Directory with the built web app; defaults to env WEB_DIST. */
+  webDist?: string;
 }
 
 const SSE_PING_MS = 15_000;
@@ -115,6 +118,16 @@ export function createServer(deps: Deps): http.Server {
       req.on("close", cleanup);
       res.on("close", cleanup);
       res.on("error", cleanup);
+      return;
+    }
+    const webDist = deps.webDist ?? process.env.WEB_DIST;
+    if (
+      webDist &&
+      (req.method === "GET" || req.method === "HEAD") &&
+      path !== "/api" &&
+      !path.startsWith("/api/") &&
+      serveStatic(req, res, webDist)
+    ) {
       return;
     }
     send(res, 404, { error: "not found" });
