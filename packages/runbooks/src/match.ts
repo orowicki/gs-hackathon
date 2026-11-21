@@ -67,6 +67,7 @@ export function validateRunbook(x: unknown, opts: { maxWaitMs?: number } = {}): 
     if (typeof raw.action !== "string" || !raw.action) return fail(`${at}.action must be a string`);
     const approval = raw.approval ?? "none";
     if (approval !== "none" && approval !== "required") return fail(`${at}.approval must be "none" or "required"`);
+    if (raw.approvers !== undefined && !isStr(raw.approvers)) return fail(`${at}.approvers must be a non-empty string (group id)`);
     if (raw.action === "http" && (!isStr(raw.method) || !isStr(raw.url)))
       return fail(`${at}: http step needs method and url`);
     if (raw.action === "escalate" && !isStr(raw.group)) return fail(`${at}: escalate step needs group`);

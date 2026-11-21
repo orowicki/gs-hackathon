@@ -321,5 +321,8 @@ steps:
   - name: Escalate to counterparty-support
     action: escalate
     group: counterparty-support
+    approvers: settlements-oncall
     approval: required
 ```
+
+`approvers` (optional group id) is notified, with an ntfy Approve button, when a step with `approval: required` waits; without it the alert's own recipients are notified.
