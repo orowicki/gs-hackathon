@@ -25,24 +25,31 @@
   --accent-bg-hover: #4a78b6;
   --on-accent: #ffffff;
 
-  /* Severity (Grafana alerting colours) and validity */
-  --critical: #f2495c;
-  --error: #ff9830;
+  /* Severity: Grafana's red / orange / yellow / blue roles, re-tuned to the calm
+     saturation of the GS blue. Info IS the GS blue, so the most common severity carries
+     the brand. *-fill = solid stat-panel backgrounds (white text readable on all four). */
+  --critical: #f0646b;
+  --error: #ee9a57;
   --warning: #cfb158;
-  --info: #5794f2;
-  --valid: #73bf69;
-  --critical-tint: rgba(242, 73, 92, 0.15);
-  --error-tint: rgba(255, 152, 48, 0.15);
+  --info: #8fb2dd;
+  --valid: #6fbf8b;
+  --critical-tint: rgba(240, 100, 107, 0.14);
+  --error-tint: rgba(238, 154, 87, 0.14);
   --warning-tint: rgba(207, 177, 88, 0.13);
-  --info-tint: rgba(87, 148, 242, 0.15);
-  --valid-tint: rgba(115, 191, 105, 0.15);
+  --info-tint: rgba(115, 153, 198, 0.16);
+  --valid-tint: rgba(111, 191, 139, 0.14);
+  --critical-fill: #b93a42;
+  --error-fill: #b8682c;
+  --warning-fill: #6e5c26;
+  --info-fill: #3e6aa6;
+  --on-fill: #f6f7f9;
 
-  /* Alert lifecycle state (Grafana palette), deliberately unlike any severity colour:
-     acknowledged = Grafana purple, resolved = Grafana "Normal" green. */
-  --state-acknowledged: #b877d9;
-  --state-resolved: #73bf69;
-  --state-acknowledged-tint: rgba(184, 119, 217, 0.14);
-  --state-resolved-tint: rgba(115, 191, 105, 0.12);
+  /* Alert lifecycle state, deliberately unlike any severity colour:
+     acknowledged = muted violet, resolved = the OK green. */
+  --state-acknowledged: #a98bd6;
+  --state-resolved: #6fbf8b;
+  --state-acknowledged-tint: rgba(169, 139, 214, 0.14);
+  --state-resolved-tint: rgba(111, 191, 139, 0.12);
 
   --shadow: 0 8px 24px rgba(1, 4, 9, 0.75);
 
@@ -89,19 +96,25 @@
   --accent-bg: #2f5d97;
   --accent-bg-hover: #284f81;
   --on-accent: #ffffff;
-  --critical: #d10e5c;
-  --error: #d65b00;
+  --critical: #b4232c;
+  --error: #a5510f;
   --warning: #8a6d12;
-  --info: #1f62e0;
+  --info: #2f5d97;
   --valid: #1a7f4b;
-  --critical-tint: rgba(209, 14, 92, 0.1);
-  --error-tint: rgba(214, 91, 0, 0.1);
+  --critical-tint: rgba(180, 35, 44, 0.09);
+  --error-tint: rgba(165, 81, 15, 0.09);
   --warning-tint: rgba(138, 109, 18, 0.1);
-  --info-tint: rgba(31, 98, 224, 0.1);
-  --valid-tint: rgba(26, 127, 75, 0.1);
-  --state-acknowledged: #8a3fb3;
+  --info-tint: rgba(47, 93, 151, 0.09);
+  --valid-tint: rgba(26, 127, 75, 0.09);
+  /* Light theme: pale fills with dark text instead of solid blocks. */
+  --critical-fill: #f6d4d6;
+  --error-fill: #f5dfcb;
+  --warning-fill: #efe2b3;
+  --info-fill: #d8e3f1;
+  --on-fill: #1d2229;
+  --state-acknowledged: #6f4fa8;
   --state-resolved: #1a7f4b;
-  --state-acknowledged-tint: rgba(138, 63, 179, 0.1);
+  --state-acknowledged-tint: rgba(111, 79, 168, 0.09);
   --state-resolved-tint: rgba(26, 127, 75, 0.08);
   --shadow: 0 8px 24px rgba(24, 26, 27, 0.18);
 }

@@ -227,11 +227,20 @@ The full event is shown as a clean, readable list of fields. The user should nev
 | Icons | Lucide, 16 px, stroke 1.5. |
 | Motion | 120–160 ms ease-out, only for expanding rows, opening panels and highlighting new alerts. Respect `prefers-reduced-motion`. |
 
-Colours: Grafana dark palette by default, light theme via `data-theme="light"`. The single source
-is `packages/web/src/styles/tokens.css` (severity: critical `#F2495C`, error `#FF9830`,
-warning `#FADE2A`, info `#5794F2`; valid `#73BF69`; accent `#6E9FFF`; alert state:
-acknowledged `#B877D9` (purple), resolved `#73BF69`). Don't hard-code colours in
-page CSS; use the variables.
+Colours: Grafana's structure and neutrals with Goldman Sachs blue as the one brand highlight.
+The single source is `packages/web/src/styles/tokens.css`; never hard-code colours in page CSS.
+
+| Role | Dark | Light |
+|---|---|---|
+| Brand / highlight (links, focus, active nav, primary buttons) | `#7399C6` (links `#8FB2DD`, buttons `#3E6AA6`) | `#2F5D97` |
+| Critical (text / fill) | `#F0646B` / `#B93A42` | `#B4232C` / pale red |
+| Error | `#EE9A57` / `#B8682C` | `#A5510F` / pale orange |
+| Warning | `#CFB158` / `#6E5C26` (calm ochre, never bright yellow) | `#8A6D12` / pale ochre |
+| Info (the GS blue) | `#8FB2DD` / `#3E6AA6` | `#2F5D97` / pale blue |
+| OK / healthy, resolved | `#6FBF8B` | `#1A7F4B` |
+| Acknowledged | `#A98BD6` | `#6F4FA8` |
+
+Severity colours are for severity only; decoration (badges, edges, icons) stays neutral.
 
 ### Do not
 

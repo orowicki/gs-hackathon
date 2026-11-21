@@ -667,24 +667,18 @@ a.crumb:hover {
 
 .stat.lit .stat-label,
 .stat.lit .stat-value {
-  color: #fff;
+  color: var(--on-fill);
 }
 
 .stat.lit:hover {
   filter: brightness(1.08);
 }
 
-.stat.lit.sev-critical { background: var(--critical); }
-.stat.lit.sev-error { background: var(--error); }
-/* Warning is a calm ochre, not a bright yellow block. */
-.stat.lit.sev-warning { background: #6e5c26; }
-.stat.lit.sev-warning .stat-label,
-.stat.lit.sev-warning .stat-value { color: #f4e8c1; }
-.stat.lit.sev-info { background: var(--info); }
-/* Light theme: the darker text-safe yellow reads muddy as a fill; use Grafana's bright one. */
-:root[data-theme="light"] .stat.lit.sev-warning { background: #efe2b3; }
-:root[data-theme="light"] .stat.lit.sev-warning .stat-label,
-:root[data-theme="light"] .stat.lit.sev-warning .stat-value { color: #4f3f08; }
+/* Solid severity fills from the palette (tokens.css: *-fill, --on-fill). */
+.stat.lit.sev-critical { background: var(--critical-fill); }
+.stat.lit.sev-error { background: var(--error-fill); }
+.stat.lit.sev-warning { background: var(--warning-fill); }
+.stat.lit.sev-info { background: var(--info-fill); }
 
 /* The panel matching the current filter: a ring in the text colour. Others step back. */
 .stat.selected {
@@ -845,7 +839,7 @@ a.crumb:hover {
 
 .feed-tab.active .feed-tab-count {
   background: var(--accent-bg);
-  color: #fff;
+  color: var(--on-accent);
 }
 
 .feed-tabs-note {
