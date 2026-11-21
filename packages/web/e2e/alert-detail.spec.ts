@@ -127,10 +127,16 @@ for (const scheme of ["light", "dark"] as const) {
       expect(fieldText).not.toMatch(/[{}[\]"]/);
 
       await page.getByRole("button", { name: "Acknowledge", exact: true }).click();
-      await expect(page.getByRole("button", { name: "Acknowledged" })).toHaveAttribute("aria-pressed", "true");
+      const ackBtn = page.getByRole("button", { name: "Acknowledged" });
+      await expect(ackBtn).toHaveAttribute("aria-pressed", "true");
       await expect(page.getByTestId("alert-state")).toHaveText("acknowledged");
-      await page.getByRole("button", { name: "Undo" }).click();
+      // The same button undoes it, and keeps its width in both states.
+      const ackedWidth = (await ackBtn.boundingBox())!.width;
+      await ackBtn.click();
       await expect(page.getByTestId("alert-state")).toHaveText("open");
+      const openBtn = page.getByRole("button", { name: "Acknowledge", exact: true });
+      await expect(openBtn).toHaveAttribute("aria-pressed", "false");
+      expect((await openBtn.boundingBox())!.width).toBe(ackedWidth);
       await page.getByRole("button", { name: "Acknowledge", exact: true }).click();
       await expect(page.getByTestId("alert-state")).toHaveText("acknowledged");
 

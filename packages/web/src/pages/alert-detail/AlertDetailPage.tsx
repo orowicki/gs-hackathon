@@ -1,4 +1,4 @@
-import { BookOpen, Check, CheckCircle2, ChevronDown, ChevronRight, FileCode2, Lock, MessageSquare, Play, Undo2 } from "lucide-react";
+import { BookOpen, Check, CheckCircle2, ChevronDown, ChevronRight, FileCode2, Lock, MessageSquare, Play } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Icon } from "../../components/Icon";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
@@ -672,20 +672,23 @@ function StateActions({
   const acked = state === "acknowledged";
   return (
     <div className="actions head-actions" role="group" aria-label="Alert actions">
-      {acked ? (
-        <span className="btn-pair">
-          <button type="button" className="state-btn on" aria-pressed="true" disabled title="Acknowledged">
+      {/* One toggle: Acknowledge <-> ✓ Acknowledged (click again to undo). Both labels share a grid
+          cell, so the button keeps one width and nothing next to it moves. */}
+      <button
+        type="button"
+        className={acked ? "state-btn on" : "state-btn"}
+        aria-pressed={acked}
+        disabled={busy}
+        onClick={acked ? onUnack : onAck}
+        title={acked ? "Acknowledged. Click to undo" : "Acknowledge"}
+      >
+        <span className="stable-label">
+          <span className={acked ? undefined : "invisible"}>
             <Icon as={Check} /> Acknowledged
-          </button>
-          <button type="button" className="state-btn undo" disabled={busy} onClick={onUnack} title="Undo acknowledge">
-            <Icon as={Undo2} /> Undo
-          </button>
+          </span>
+          <span className={acked ? "invisible" : undefined}>Acknowledge</span>
         </span>
-      ) : (
-        <button type="button" className="state-btn" aria-pressed="false" disabled={busy} onClick={onAck}>
-          Acknowledge
-        </button>
-      )}
+      </button>
       <button
         type="button"
         className={resolving ? "state-btn resolve on" : "state-btn resolve"}
