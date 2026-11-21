@@ -70,7 +70,7 @@ A **source** receives events, a **schema** recognises and normalises each kind o
 
 ### Scalability and performance
 - **Horizontal scaling:** the ingest, rule engine and runbook workers share Redis stream consumer groups, so you scale with `WORKERS=N`. Rules, alerts and delivery state live in Postgres and Redis, not in process memory.
-- **Measured, not estimated:** `just loadtest` measures throughput and p50/p99 latency. At 5000 events/s, 1 and 2 workers both keep up (about 4995 events/s processed, backlog 0, no events lost), with end-to-end p50 67 ms (1 worker) and 56 ms (2 workers). At 1000 events/s on 1 worker, p50 is 24 ms and p99 40 ms. Before #137 the engine managed only about 520 events/s with 1 worker and 930 with 2 (details in [docs/performance.md](docs/performance.md)).
+- **Measured, not estimated:** `just loadtest` measures throughput and p50/p99 latency. At 5000 events/s, 1 and 2 workers both keep up (about 4999 events/s processed, backlog 0 including the notification delivery queue, no events lost), with end-to-end p50 20 ms (1 worker) and 13 ms (2 workers) and notification p50 11 ms and 7 ms. At 1000 events/s on 1 worker, p50 is 24 ms and p99 40 ms. Before #137 the engine managed only about 520 events/s with 1 worker and 930 with 2 (details in [docs/performance.md](docs/performance.md)).
 
 ### Configure with Claude
 - The whole service is described by an OpenAPI document at `/api/openapi.json`, and `packages/mcp` is an MCP server, so Claude can add sources, schemas and rules from plain-language requests. See **Connect Claude** in the app.
