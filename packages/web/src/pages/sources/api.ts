@@ -42,13 +42,13 @@ export async function getText(url: string): Promise<string> {
   const res = await fetch(url);
   const text = await res.text();
   if (!res.ok) {
+    let j: { error?: string } | undefined;
     try {
-      const j = JSON.parse(text) as { error?: string };
-      throw new Error(j.error ?? `Request failed (${res.status})`);
-    } catch (e) {
-      if (e instanceof SyntaxError) throw new Error(`Request failed (${res.status})`);
-      throw e;
+      j = JSON.parse(text) as { error?: string };
+    } catch {
+      j = undefined;
     }
+    throw new Error(j?.error ?? `Request failed (${res.status})`);
   }
   return text;
 }

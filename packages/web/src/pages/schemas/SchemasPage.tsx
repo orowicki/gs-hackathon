@@ -475,6 +475,11 @@ function useTest(
 }
 
 export function SchemaEditPage() {
+  const { id } = useParams();
+  return <SchemaEditForm key={id} />;
+}
+
+function SchemaEditForm() {
   const { id: routeId } = useParams();
   const isNew = routeId === "new";
   const navigate = useNavigate();
@@ -490,6 +495,7 @@ export function SchemaEditPage() {
 
   useEffect(() => {
     if (isNew || !routeId) return;
+    let live = true;
     getJson<Schema>(`/api/schemas/${encodeURIComponent(routeId)}`).then(
       async (s) => {
         let text = "";
@@ -505,11 +511,15 @@ export function SchemaEditPage() {
             text = "";
           }
         }
+        if (!live) return;
         setMatch(text);
         setSchema(s);
       },
-      (e: Error) => setError(e.message),
+      (e: Error) => live && setError(e.message),
     );
+    return () => {
+      live = false;
+    };
   }, [isNew, routeId]);
 
   const sample = useMemo(() => parseSample(sampleText), [sampleText]);
@@ -621,7 +631,7 @@ export function SchemaEditPage() {
       a.href = url;
       a.download = `${schema.id}.yaml`;
       a.click();
-      URL.revokeObjectURL(url);
+      setTimeout(() => URL.revokeObjectURL(url), 0);
     } catch (e) {
       setError((e as Error).message);
     }

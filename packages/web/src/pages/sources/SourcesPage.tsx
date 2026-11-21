@@ -143,6 +143,11 @@ function ParsedView({ state }: { state: { parsed?: unknown; error?: string } }) 
   return <pre className="preview" aria-label="Parsed result">{JSON.stringify(state.parsed, null, 2)}</pre>;
 }
 
+interface StreamLine {
+  uid: number;
+  text: string;
+}
+
 function StreamMessage({ parser, line }: { parser: ParserConfig; line: string }) {
   const state = useParsed(parser, line);
   return (
@@ -154,12 +159,13 @@ function StreamMessage({ parser, line }: { parser: ParserConfig; line: string })
 }
 
 function MessageStream({ id, parser }: { id: string; parser: ParserConfig }) {
-  const [lines, setLines] = useState<string[]>([]);
+  const [lines, setLines] = useState<StreamLine[]>([]);
   useEffect(() => {
     setLines([]);
+    let nextUid = 0;
     const es = new EventSource(`/api/sources/${encodeURIComponent(id)}/preview`);
     es.onmessage = (e: MessageEvent<string>) => {
-      setLines((prev) => [parseSseData(e.data), ...prev].slice(0, 20));
+      setLines((prev) => [{ uid: nextUid++, text: parseSseData(e.data) }, ...prev].slice(0, 20));
     };
     return () => es.close();
   }, [id]);
@@ -170,8 +176,8 @@ function MessageStream({ id, parser }: { id: string; parser: ParserConfig }) {
         <p className="muted">Waiting for messages…</p>
       ) : (
         <ul className="stream">
-          {lines.map((l, i) => (
-            <StreamMessage key={`${lines.length - i}`} parser={parser} line={l} />
+          {lines.map((l) => (
+            <StreamMessage key={l.uid} parser={parser} line={l.text} />
           ))}
         </ul>
       )}
@@ -180,6 +186,11 @@ function MessageStream({ id, parser }: { id: string; parser: ParserConfig }) {
 }
 
 export function SourceEditPage() {
+  const { id } = useParams();
+  return <SourceEditForm key={id} />;
+}
+
+function SourceEditForm() {
   const { id: routeId } = useParams();
   const isNew = routeId === "new";
   const navigate = useNavigate();
@@ -193,7 +204,14 @@ export function SourceEditPage() {
 
   useEffect(() => {
     if (isNew || !routeId) return;
-    getJson<Source>(`/api/sources/${encodeURIComponent(routeId)}`).then(setSrc, (e: Error) => setError(e.message));
+    let live = true;
+    getJson<Source>(`/api/sources/${encodeURIComponent(routeId)}`).then(
+      (r) => live && setSrc(r),
+      (e: Error) => live && setError(e.message),
+    );
+    return () => {
+      live = false;
+    };
   }, [isNew, routeId]);
 
   const parsed = useParsed(src?.parser ?? { type: "json" }, sample);
@@ -254,7 +272,7 @@ export function SourceEditPage() {
       a.href = url;
       a.download = `${src.id}.yaml`;
       a.click();
-      URL.revokeObjectURL(url);
+      setTimeout(() => URL.revokeObjectURL(url), 0);
     } catch (e) {
       setError((e as Error).message);
     }
