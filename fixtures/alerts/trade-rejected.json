@@ -1,0 +1,29 @@
+{
+  "id": "alert-trade-0001",
+  "ruleId": "rule-rates-trade-rejected",
+  "eventId": "evt-trade-rejected",
+  "schemaId": "schema-trade-rejected",
+  "dedupKey": "T-998877",
+  "state": "resolved",
+  "severity": "info",
+  "title": "Rejected EUR 25000000 — LIMIT_BREACH",
+  "source": "trade-gateway",
+  "environment": "prod",
+  "count": 1,
+  "firstSeen": "2026-10-23T09:14:05.000Z",
+  "lastSeen": "2026-10-23T09:14:05.000Z",
+  "resolvedAt": "2026-10-23T09:30:00.000Z",
+  "fields": [
+    { "label": "Desk", "value": "rates" },
+    { "label": "Trade", "value": "T-998877" }
+  ],
+  "common": {
+    "severity": "info",
+    "title": "Rejected EUR 25000000 — LIMIT_BREACH",
+    "source": "trade-gateway",
+    "environment": "prod",
+    "dedupKey": "T-998877",
+    "status": "firing",
+    "occurredAt": "2026-10-23T09:14:05.000Z"
+  }
+}

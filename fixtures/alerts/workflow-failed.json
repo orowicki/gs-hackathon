@@ -1,0 +1,30 @@
+{
+  "id": "alert-wf-00042",
+  "ruleId": "rule-settlements",
+  "eventId": "evt-workflow-failed",
+  "schemaId": "schema-workflow-failed",
+  "dedupKey": "order-settlement-validate-counterparty",
+  "state": "open",
+  "severity": "error",
+  "title": "order-settlement failed at validate-counterparty",
+  "body": "Counterparty service did not respond in 5000 ms",
+  "source": "order-settlement",
+  "environment": "prod",
+  "count": 1,
+  "firstSeen": "2026-10-23T09:14:02.331Z",
+  "lastSeen": "2026-10-23T09:14:02.331Z",
+  "fields": [
+    { "label": "Step", "value": "validate-counterparty" },
+    { "label": "Error", "value": "Counterparty service did not respond in 5000 ms" }
+  ],
+  "colour": "red",
+  "common": {
+    "severity": "error",
+    "title": "order-settlement failed at validate-counterparty",
+    "source": "order-settlement",
+    "environment": "prod",
+    "dedupKey": "order-settlement-validate-counterparty",
+    "status": "firing",
+    "occurredAt": "2026-10-23T09:14:02.331Z"
+  }
+}

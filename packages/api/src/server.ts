@@ -1,4 +1,5 @@
 import http from "node:http";
+import { buildOpenApi } from "./openapi.js";
 
 export interface Deps {
   checkPostgres(): Promise<boolean>;
@@ -40,6 +41,10 @@ export function createServer(deps: Deps): http.Server {
         const ok = postgres && redis;
         send(res, ok ? 200 : 503, { ok, checks: { postgres, redis } });
       })();
+      return;
+    }
+    if (req.method === "GET" && path === "/api/openapi.json") {
+      send(res, 200, buildOpenApi());
       return;
     }
     send(res, 404, { error: "not found" });
