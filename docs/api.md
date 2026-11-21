@@ -1476,6 +1476,46 @@ Runbooks that apply to this alert: text ones filled in with the alert's values, 
 | 400 | `application/json` | [Error](#schema-error) | Bad request (invalid id, body, filter or parameter) |
 | 404 | `application/json` | [Error](#schema-error) | Not found |
 
+### DELETE `/api/alerts/{id}/runbooks/{runbookId}`
+
+Remove a runbook from this alert (recorded in its audit); steps of its run that have not happened yet are skipped
+
+**Parameters**
+
+| name | in | type | required | description |
+| --- | --- | --- | --- | --- |
+| `id` | path | string | yes |  |
+| `runbookId` | path | string | yes | Runbook id |
+| `actor` | query | string | no | Who removed it (a signed-in account wins) |
+
+**Responses**
+
+| status | media type | schema | description |
+| --- | --- | --- | --- |
+| 200 | `application/json` | [RunbookRemoval](#schema-runbookremoval) | Removed from this alert; steps not yet run are skipped |
+| 400 | `application/json` | [Error](#schema-error) | Bad request (invalid id, body, filter or parameter) |
+| 404 | `application/json` | [Error](#schema-error) | Not found |
+
+### POST `/api/alerts/{id}/runbooks/{runbookId}/restore`
+
+Show a removed runbook on this alert again
+
+**Parameters**
+
+| name | in | type | required | description |
+| --- | --- | --- | --- | --- |
+| `id` | path | string | yes |  |
+| `runbookId` | path | string | yes | Runbook id |
+| `actor` | query | string | no | Who restored it (a signed-in account wins) |
+
+**Responses**
+
+| status | media type | schema | description |
+| --- | --- | --- | --- |
+| 200 | `application/json` | [RunbookRemoval](#schema-runbookremoval) | Shown on this alert again |
+| 400 | `application/json` | [Error](#schema-error) | Bad request (invalid id, body, filter or parameter) |
+| 404 | `application/json` | [Error](#schema-error) | Not found |
+
 ### GET `/api/approvals`
 
 Pending runbook step approvals
@@ -2744,7 +2784,7 @@ Type: "open" \| "acknowledged" \| "resolved"
 | `alertId` | string | yes |  |
 | `at` | string | yes |  |
 | `actor` | string | yes | Person id or system |
-| `action` | "created" \| "acknowledged" \| "unacknowledged" \| "resolved" \| "step_executed" \| "step_approved" \| "step_skipped" \| "escalated" \| "suggestion" | yes |  |
+| `action` | "created" \| "acknowledged" \| "unacknowledged" \| "resolved" \| "step_executed" \| "step_approved" \| "step_skipped" \| "escalated" \| "suggestion" \| "runbook_removed" \| "runbook_restored" | yes |  |
 | `runbookId` | string \| null | no |  |
 | `stepIndex` | integer \| null | no |  |
 | `result` | string \| null | no |  |
@@ -2936,7 +2976,8 @@ Type: object
 | `type` | "text" \| "automation" | yes |  |
 | `origin` | "rule" \| "config" | yes |  |
 | `content` | string | no | Text runbooks: the instructions with the alert's values filled in |
-| `steps` | { index: integer, name: string, action: string, approval: "none" \| "required" }[] | no |  |
+| `steps` | { index: integer, name: string, action: string, approval: "none" \| "required", id?: string, if?: string, retries?: integer }[] | no |  |
+| `removed` | boolean | no | Taken off this alert by a person |
 
 <a id="schema-notification"></a>
 
@@ -3087,6 +3128,17 @@ Type: object
 
 Type: { id: string, name: string, type: "text", matches: [Filter](#schema-filter), content: string } \| { id: string, name: string, type: "automation", matches: [Filter](#schema-filter), steps: [RunbookStep](#schema-runbookstep)[] }
 
+<a id="schema-runbookremoval"></a>
+
+### RunbookRemoval
+
+| name | type | required | description |
+| --- | --- | --- | --- |
+| `alertId` | string | yes |  |
+| `runbookId` | string | yes |  |
+| `removed` | boolean | yes |  |
+| `run` | [RunbookRun](#schema-runbookrun) | no |  |
+
 <a id="schema-runbookrun"></a>
 
 ### RunbookRun
@@ -3097,13 +3149,13 @@ Type: { id: string, name: string, type: "text", matches: [Filter](#schema-filter
 | `runbookId` | string | yes |  |
 | `runbookName` | string | no |  |
 | `status` | "running" \| "awaiting_approval" \| "done" \| "failed" | no |  |
-| `steps` | { index: integer, state: [StepRunState](#schema-steprunstate), result?: string, at?: string, name?: string }[] | yes |  |
+| `steps` | { index: integer, state: [StepRunState](#schema-steprunstate), result?: string, at?: string, name?: string, attempts?: integer, status?: integer, body?: any }[] | yes |  |
 
 <a id="schema-runbookstep"></a>
 
 ### RunbookStep
 
-Type: { action: "http", name?: string, method: string, url: string, headers?: map<string, string>, body?: string, approval: "none" \| "required", approvers?: string } \| { action: "escalate", name?: string, group: string, approval: "none" \| "required", approvers?: string } \| { action: "wait", name?: string, duration: string, approval: "none" \| "required", approvers?: string }
+Type: { action: "http", name?: string, method: string, url: string, headers?: map<string, string>, body?: string, approval: "none" \| "required", approvers?: string, id?: string, if?: string, retries?: integer } \| { action: "escalate", name?: string, group: string, approval: "none" \| "required", approvers?: string, id?: string, if?: string, retries?: integer } \| { action: "wait", name?: string, duration: string, approval: "none" \| "required", approvers?: string, id?: string, if?: string, retries?: integer }
 
 <a id="schema-schema"></a>
 

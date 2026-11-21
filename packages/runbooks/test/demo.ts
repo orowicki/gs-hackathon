@@ -2,6 +2,7 @@ export interface Demo {
   url: string;
   calls: Array<{ method: string; path: string; body: unknown; headers: Record<string, string> }>;
   setHealthy(v: boolean): void;
+  setRetryFails(v: boolean): void;
   reset(): void;
   close(): Promise<void>;
 }

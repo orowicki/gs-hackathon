@@ -331,6 +331,37 @@ Step fields: `action` (`http`, `escalate` or `wait`, required), `name` (string, 
 
 Placeholders (`{{alert.entity}}`, `{{error.code}}`) are filled from the alert and the event.
 
+Branching (optional on every step):
+
+| Field | Meaning |
+|---|---|
+| `id` | Name for the step (letters, digits, `_`), so later steps can refer to it as `steps.<id>.*`. |
+| `if` | Filter (same language as rules), checked when the step is reached; false = the step is skipped with "condition not met". It sees the event's fields, `alert.*`, `steps.<id>.ok` / `.failed` / `.state` / `.status` (HTTP code) / `.attempts` / `.body.*` (the JSON response) and `previous.*` (the last step that ran). |
+| `retries` | 0 to 5: run a failed step again up to N more times (1 s apart) before it counts as failed. |
+
+Without an `if`, a step is skipped once an earlier step failed. A step with an `if` is still checked, which is how failure branches are written (`if: steps.retry.ok = false`). The condition is checked before approval, so a branch that does not apply never asks anyone. A run whose failure was handled by a branch that ran ends as `done`.
+
+```text
+- id: regions
+  action: http
+  method: GET
+  url: "http://demo-service:4100/regions/{{labels.service}}"
+- name: Fail traffic over
+  if: steps.regions.body.scope = "one-region"
+  action: http
+  method: POST
+  url: "http://demo-service:4100/failover/{{labels.service}}"
+  approval: required
+- name: Roll back the last deployment
+  if: steps.regions.body.scope = "all-regions"
+  action: http
+  method: POST
+  url: "http://demo-service:4100/deployments/{{labels.service}}/rollback"
+  approval: required
+```
+
+A runbook can be removed from a single alert on the alert page (bin icon). The removal is recorded in the alert's audit, steps that have not run are skipped, and Restore shows it again.
+
 Text runbook, `config/runbooks/pricing-latency.yaml`:
 
 <!-- kind: runbooks; file: config/runbooks/pricing-latency.yaml -->
@@ -347,27 +378,33 @@ Automation runbook, `config/runbooks/settlement-timeout.yaml`:
 
 <!-- kind: runbooks; file: config/runbooks/settlement-timeout.yaml -->
 ```yaml
+# Appendix B "structured steps", as written by Team Settlements. "if: retry fails twice" is a real
+# condition here: the retry runs up to 2 times, and the escalation (with approval) only happens if
+# it still failed. Steer it live on the demo-service page (http://localhost:4100): Workflow retry → Fails.
 id: settlement-timeout
 name: Settlement workflow timeout
 type: automation
 matches: type = WORKFLOW_FAILED AND error.code = TIMEOUT
-# Note: the original "if retry fails twice" condition is approximated by the
-# approval gate on the escalate step (our format has no conditional steps).
 steps:
-  - name: Check counterparty-service health
+  - id: health
+    name: Is counterparty-service healthy?
     action: http
     method: GET
     url: http://demo-service:4100/health
-    approval: none
-  - name: "Retry workflow {{workflowId}}"
+
+  - id: retry
+    name: "Retry workflow {{workflowId}}"
     action: http
     method: POST
     url: "http://demo-service:4100/workflows/{{workflowId}}/retry"
     headers:
       content-type: application/json
     body: '{"workflowId":"{{workflowId}}","reason":"{{error.code}}"}'
+    retries: 1
     approval: none
-  - name: Escalate to counterparty-support
+
+  - name: Retry failed twice - escalate to counterparty-support
+    if: steps.retry.ok = false
     action: escalate
     group: counterparty-support
     approvers: settlements-oncall
