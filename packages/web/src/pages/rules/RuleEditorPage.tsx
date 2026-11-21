@@ -86,11 +86,11 @@ const SEV_LABEL: Record<string, string> = {
 const DEDUP_OPTIONS = ["source", "title", "environment", "severity"];
 const COLOURS: { value: string; label: string }[] = [
   { value: "", label: "Severity colour (default)" },
-  { value: "#f2495c", label: "Red" },
-  { value: "#ff7b3a", label: "Orange" },
-  { value: "#f2a60d", label: "Amber" },
-  { value: "#73bf69", label: "Green" },
-  { value: "#7399c6", label: "Brand blue" },
+  { value: "#ee454a", label: "Red" },
+  { value: "#fc5e1f", label: "Orange" },
+  { value: "#fabb2d", label: "Yellow" },
+  { value: "#3cb538", label: "Green" },
+  { value: "#3995da", label: "Blue" },
   { value: "#b877d9", label: "Purple" },
 ];
 

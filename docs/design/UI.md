@@ -233,14 +233,16 @@ The single source is `packages/web/src/styles/tokens.css`; never hard-code colou
 | Role | Dark | Light |
 |---|---|---|
 | Brand / highlight (links, focus, active nav, primary buttons) | `#7399C6` (links `#8FB2DD`, buttons `#3E6AA6`) | `#2F5D97` |
-| Critical (text / fill) | Grafana red `#F2495C` / dark-red `#E02F44` | `#C4162A` / `#E02F44` |
-| Error | red-orange `#FF7B3A` / `#D9500B` | `#B8440A` / `#D9500B` |
-| Warning | amber `#F2A60D` / `#AD7300` (no yellow) | `#8F5E00` / `#AD7300` |
-| Info | blue `#5794F2` / dark-blue `#3274D9` | `#1F60C4` / `#3274D9` |
-| OK / healthy, resolved | green `#73BF69` | `#1A7F4B` |
+| Critical (text / fill) | hipred `#EE454A` / `#EE454A` | `#D31319` / `#EE454A` |
+| Error | hiporange `#FC5E1F` / `#FC5E1F` | `#D13E03` / `#FC5E1F` |
+| Warning | hipyellow `#FABB2D` / deeper hipyellow `#BB8304` | `#9A6C03` / `#BB8304` |
+| Info | hipblue `#3995DA` / `#3995DA` | `#2071AE` / `#3995DA` |
+| OK / healthy, resolved | hipgreen `#3CB538` | `#277624` |
+| Neutral tags | hipgray `#6C7788` | `#515966` |
 | Acknowledged | purple `#B877D9` | `#8F3BB8` |
 
-Every solid severity fill carries white text (contrast >= 4:1), so there is no yellow.
+The severity colours are the "Hip" palette (-500 shades).
+Every solid severity fill carries white text; hipyellow is too light for that, so its fill is a deeper shade of the same hue.
 Severity colours are for severity only; decoration (badges, edges, icons) stays neutral.
 
 ### Do not
