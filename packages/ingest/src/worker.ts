@@ -242,7 +242,8 @@ export function startParseWorker(opts: WorkerOptions): ParseWorker {
     }
   }
 
-  /** Take over entries idle for 30 s (dead consumers, failed deliveries), following the cursor until "0". */
+  /** Take over entries idle for 30 s (dead consumers, failed deliveries), following the cursor until done.
+   *  Redis returns "0-0" as the final cursor (older docs say "0"); accept both. */
   async function claimAbandoned(): Promise<void> {
     try {
       let cursor = "0";
@@ -262,7 +263,7 @@ export function startParseWorker(opts: WorkerOptions): ParseWorker {
           .filter((e) => e && e[0])
           .map(([eid, f]): Entry => [eid, f ?? []]);
         if (claimed.length > 0) await processBatch(claimed);
-      } while (cursor !== "0" && !stopping);
+      } while (cursor !== "0-0" && cursor !== "0" && !stopping);
     } catch (err) {
       log.warn(`parse worker: xautoclaim skipped: ${String(err)}`);
     }
