@@ -1,7 +1,9 @@
-import { useEffect, useState } from "react";
+import { ArrowDown, ArrowUp, Plus, Trash2, X } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
-import type { Rule } from "@alerting/shared";
+import type { RecipientRef, Rule } from "@alerting/shared";
 import { FilterBar } from "../../components/filter-bar";
+import { Icon } from "../../components/Icon";
 import {
   acceptSuggestion,
   createRule,
@@ -15,7 +17,22 @@ import {
   type Suggestion,
   type TestResult,
 } from "./api";
-import { buildRule, emptyDraft, moveRow, newWhoDraft, ruleToDraft, slugify, SEVERITY_OPTIONS, validateDraft, type RuleDraft, type WhoDraft } from "./helpers";
+import { useDirectory, type DirEntry, type Directory } from "./directory";
+import {
+  buildRule,
+  emptyDraft,
+  moveRow,
+  newWhoDraft,
+  parseRecipients,
+  recipientsText,
+  ruleToDraft,
+  slugify,
+  splitList,
+  SEVERITY_OPTIONS,
+  validateDraft,
+  type RuleDraft,
+  type WhoDraft,
+} from "./helpers";
 import "./rules.css";
 
 const FIELDS = [
@@ -34,14 +51,205 @@ const VALUES: Record<string, string[]> = {
 const valuesFor = (f: string) => VALUES[f] ?? [];
 const noop = () => {};
 
-export function RuleEditorPage() {
+/** Sample values for the title preview, from the Appendix A events. */
+const SAMPLE: Record<string, string> = {
+  "alert.title": "HighErrorRate on payments-api",
+  "alert.source": "payments-api",
+  "alert.severity": "critical",
+  "alert.environment": "prod",
+  "alert.status": "open",
+  "alert.schema": "metric.breach",
+  failedStep: "validate-counterparty",
+  workflowName: "order-settlement",
+  "payload.desk": "rates",
+  "payload.notional": "25000000",
+};
+const render = (t: string) =>
+  t.replace(/\{\{\s*([\w.]+)\s*\}\}/g, (_, k: string) => SAMPLE[k] ?? `‹${k}›`);
+
+const SEV_LABEL: Record<string, string> = {
+  "": "Keep the event's",
+  critical: "Critical",
+  error: "Error",
+  warning: "Warning",
+  info: "Info",
+};
+
+/** Step header: number, title (the heading), one line of help. */
+function Step({ n, title, help, children }: { n: number; title: string; help: string; children: React.ReactNode }) {
+  const id = "step-" + title.toLowerCase().replace(/\W+/g, "-");
+  return (
+    <section className="re-step" aria-labelledby={id}>
+      <div className="re-step-num" aria-hidden="true">
+        {n}
+      </div>
+      <div className="re-step-body">
+        <h2 id={id}>{title}</h2>
+        <p className="re-help">{help}</p>
+        {children}
+      </div>
+    </section>
+  );
+}
+
+function nameOf(dir: Directory, r: RecipientRef): string {
+  return dir.entries.find((e) => e.type === r.type && e.id === r.id)?.name ?? r.id;
+}
+
+/** Recipients as chips; add from the people/groups list (or by id if it couldn't load). */
+function RecipientPicker({ value, onChange, dir }: { value: string; onChange: (v: string) => void; dir: Directory }) {
+  const refs = parseRecipients(value);
+  const [typed, setTyped] = useState("");
+  const chosen = new Set(refs.map((r) => `${r.type}:${r.id}`));
+  const available = dir.entries.filter((e) => !chosen.has(`${e.type}:${e.id}`));
+  const add = (r: RecipientRef) => onChange(recipientsText([...refs, r]));
+  const remove = (i: number) => onChange(recipientsText(refs.filter((_, j) => j !== i)));
+  const option = (e: DirEntry) => `${e.type}:${e.id}`;
+  return (
+    <div className="chips" aria-label="Recipients">
+      {refs.map((r, i) => (
+        <span key={`${r.type}:${r.id}`} className={`chip chip-${r.type}`}>
+          <span className="chip-kind">{r.type === "group" ? "Group" : "Person"}</span>
+          {nameOf(dir, r)}
+          <button type="button" className="chip-x" aria-label={`Remove ${nameOf(dir, r)}`} onClick={() => remove(i)}>
+            <X size={12} aria-hidden="true" />
+          </button>
+        </span>
+      ))}
+      {dir.ok ? (
+        <select
+          className="chip-add"
+          aria-label="Add a person or group"
+          value=""
+          onChange={(e) => {
+            const [type, ...rest] = e.target.value.split(":");
+            if (type === "person" || type === "group") add({ type, id: rest.join(":") });
+          }}
+        >
+          <option value="">Add person or group…</option>
+          {available.some((e) => e.type === "group") && (
+            <optgroup label="Groups">
+              {available.filter((e) => e.type === "group").map((e) => (
+                <option key={option(e)} value={option(e)}>
+                  {e.name} ({e.detail})
+                </option>
+              ))}
+            </optgroup>
+          )}
+          {available.some((e) => e.type === "person") && (
+            <optgroup label="People">
+              {available.filter((e) => e.type === "person").map((e) => (
+                <option key={option(e)} value={option(e)}>
+                  {e.name}
+                  {e.detail ? ` (${e.detail})` : ""}
+                </option>
+              ))}
+            </optgroup>
+          )}
+        </select>
+      ) : (
+        <input
+          className="chip-add"
+          aria-label="Add recipient id"
+          placeholder="group:oncall or a person id, then Enter"
+          value={typed}
+          onChange={(e) => setTyped(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key !== "Enter" || typed.trim() === "") return;
+            e.preventDefault();
+            const [r] = parseRecipients(typed);
+            if (r) add(r);
+            setTyped("");
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+/** Channels as toggles; "forced" channels bypass each person's preferences. */
+function ChannelToggles({ value, onChange, channels }: { value: string; onChange: (v: string) => void; channels: string[] }) {
+  const on = splitList(value);
+  const all = [...new Set([...channels, ...on])];
+  return (
+    <div className="toggles" role="group" aria-label="Always send via">
+      {all.map((c) => {
+        const active = on.includes(c);
+        return (
+          <button
+            key={c}
+            type="button"
+            aria-pressed={active}
+            className={active ? "toggle on" : "toggle"}
+            onClick={() => onChange((active ? on.filter((x) => x !== c) : [...on, c]).join(", "))}
+          >
+            {c}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function Summary({ draft, dir }: { draft: RuleDraft; dir: Directory }) {
+  const rows = draft.who.filter((w) => w.recipients.trim() !== "");
+  return (
+    <aside className="re-summary" aria-label="Rule summary">
+      <h2>Summary</h2>
+      <p className="re-sentence">
+        {draft.when.trim() ? (
+          <>
+            When an event matches <code>{draft.when.trim()}</code>,
+          </>
+        ) : (
+          <>For every event,</>
+        )}{" "}
+        {rows.length === 0 ? (
+          <>raise an alert but notify nobody yet.</>
+        ) : (
+          <>
+            notify{" "}
+            {rows
+              .map((w) => {
+                const names = parseRecipients(w.recipients).map((r) => nameOf(dir, r)).join(", ");
+                const cond = w.condition.trim() ? ` when ${w.condition.trim()}` : "";
+                const force = splitList(w.force);
+                return `${names}${cond}${force.length ? ` (always via ${force.join(", ")})` : ""}`;
+              })
+              .join("; then ")}
+            .
+          </>
+        )}
+      </p>
+      <dl className="re-facts">
+        <div>
+          <dt>Status</dt>
+          <dd>
+            <span className={draft.enabled ? "tag ok" : "tag"}>{draft.enabled ? "Enabled" : "Disabled"}</span>
+          </dd>
+        </div>
+        <div>
+          <dt>Alert title</dt>
+          <dd>{render(draft.titleTemplate) || "—"}</dd>
+        </div>
+        <div>
+          <dt>Severity</dt>
+          <dd>{SEV_LABEL[draft.severityOverride] ?? draft.severityOverride}</dd>
+        </div>
+      </dl>
+    </aside>
+  );
+}
+
+export function RuleEditorPage({ initial }: { initial?: RuleDraft } = {}) {
   const { id } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
+  const dir = useDirectory();
   const [loadedRule, setLoadedRule] = useState<Rule | undefined>(undefined);
-  const [idTouched, setIdTouched] = useState(false);
+  const [idTouched, setIdTouched] = useState(initial !== undefined);
   const isNew = id === undefined;
-  const [draft, setDraft] = useState<RuleDraft>(emptyDraft());
+  const [draft, setDraft] = useState<RuleDraft>(initial ?? emptyDraft());
   const [loaded, setLoaded] = useState(isNew);
   const [errors, setErrors] = useState<string[]>([]);
   const [saved, setSaved] = useState((location.state as { saved?: boolean } | null)?.saved === true);
@@ -50,6 +258,7 @@ export function RuleEditorPage() {
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [sugError, setSugError] = useState<string | null>(null);
   const [yaml, setYaml] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (id === undefined) return;
@@ -65,7 +274,7 @@ export function RuleEditorPage() {
     );
     listSuggestions(id).then(
       (s) => live && setSuggestions(s.filter((x) => x.status === "open")),
-      (e: Error) => live && setSugError("Could not load suggestions: " + e.message),
+      (e: Error) => live && setSugError("Couldn't load suggestions: " + e.message),
     );
     return () => {
       live = false;
@@ -79,11 +288,14 @@ export function RuleEditorPage() {
   const setRow = (key: string, p: Partial<WhoDraft>) =>
     set((d) => ({ who: d.who.map((w) => (w.key === key ? { ...w, ...p } : w)) }));
 
+  const preview = useMemo(() => render(draft.titleTemplate), [draft.titleTemplate]);
+
   async function save() {
     const problems = validateDraft(draft, isNew);
     setErrors(problems);
     setSaved(false);
     if (problems.length > 0) return;
+    setSaving(true);
     try {
       if (isNew) {
         const rule = await createRule(buildRule(draft, { id: draft.id }));
@@ -96,6 +308,8 @@ export function RuleEditorPage() {
       }
     } catch (e) {
       setErrors([(e as Error).message]);
+    } finally {
+      setSaving(false);
     }
   }
 
@@ -132,193 +346,278 @@ export function RuleEditorPage() {
 
   if (!loaded && errors.length > 0) {
     return (
-      <main className="rules-page">
-        <p role="alert" className="error">
+      <main className="page rules-page">
+        <p role="alert" className="callout error">
           {errors[0]}
         </p>
         <Link to="/rules">Back to rules</Link>
       </main>
     );
   }
-  if (!loaded) return <main className="rules-page muted">Loading…</main>;
+  if (!loaded) return <main className="page rules-page muted">Loading rule…</main>;
 
   return (
-    <main className="rules-page">
-      <div className="bar">
-        <h1>{isNew ? "New rule" : "Edit rule"}</h1>
-        <Link to="/rules">Back to rules</Link>
+    <main className="page rules-page re-page">
+      <header className="page-header">
+        <div>
+          <h1>{isNew ? "New rule" : draft.name || "Edit rule"}</h1>
+          <p className="page-intro">
+            {isNew ? "Four steps. The summary on the right shows what the rule will do." : `Rule id ${draft.id}`}
+          </p>
+        </div>
+      </header>
+
+      <div className="re-layout">
+        <div className="re-steps">
+          <Step n={1} title="Name and status" help="A name people will recognise in notifications.">
+            <div className="re-grid-2">
+              <label className="field">
+                Name
+                <input
+                  type="text"
+                  value={draft.name}
+                  placeholder="Payments critical alerts"
+                  onChange={(e) =>
+                    set(idTouched || !isNew ? { name: e.target.value } : { name: e.target.value, id: slugify(e.target.value) })
+                  }
+                />
+              </label>
+              {isNew && (
+                <label className="field">
+                  Id
+                  <input
+                    type="text"
+                    className="mono"
+                    value={draft.id}
+                    onChange={(e) => {
+                      setIdTouched(true);
+                      set({ id: e.target.value });
+                    }}
+                  />
+                </label>
+              )}
+            </div>
+            <label className="switch">
+              <input type="checkbox" checked={draft.enabled} onChange={(e) => set({ enabled: e.target.checked })} />
+              <span className="switch-track" aria-hidden="true" />
+              Enabled
+            </label>
+          </Step>
+
+          <Step n={2} title="When" help="Which events raise an alert. Leave it empty to match every event.">
+            <FilterBar
+              value={draft.when}
+              onChange={(t) => {
+                set({ when: t });
+                setTest(null);
+                setTestError(null);
+              }}
+              onApply={noop}
+              fields={FIELDS}
+              valuesFor={valuesFor}
+              starred={[]}
+              onToggleStar={noop}
+            />
+            <div className="re-inline">
+              <button type="button" className="btn" onClick={runTest}>
+                Test against recent events
+              </button>
+              {test && (
+                <span className={test.matched > 0 ? "re-result hit" : "re-result"} role="status">
+                  Matches {test.matched} of {test.total} recent events
+                  {test.warning && <span className="warn"> ({test.warning})</span>}
+                </span>
+              )}
+              {testError && (
+                <span role="alert" className="error">
+                  {testError}
+                </span>
+              )}
+            </div>
+          </Step>
+
+          <Step
+            n={3}
+            title="Who"
+            help="Rows are checked top to bottom; each person is notified by the first row that includes them."
+          >
+            {draft.who.length === 0 && <p className="re-empty">Nobody is notified yet. Add a row to choose who hears about it.</p>}
+            <ol className="who-list">
+              {draft.who.map((w, i) => (
+                <li key={w.key} className="who-card" role="group" aria-label={`Who row ${i + 1}`}>
+                  <div className="who-head">
+                    <div className="segmented-sm" role="radiogroup" aria-label="Applies to">
+                      <button
+                        type="button"
+                        role="radio"
+                        aria-checked={w.condition.trim() === ""}
+                        className={w.condition.trim() === "" ? "seg on" : "seg"}
+                        onClick={() => setRow(w.key, { condition: "" })}
+                      >
+                        Every alert
+                      </button>
+                      <button
+                        type="button"
+                        role="radio"
+                        aria-checked={w.condition.trim() !== ""}
+                        className={w.condition.trim() !== "" ? "seg on" : "seg"}
+                        onClick={() => w.condition.trim() === "" && setRow(w.key, { condition: "alert.environment = prod" })}
+                      >
+                        Only when…
+                      </button>
+                    </div>
+                    <div className="who-tools">
+                      <button type="button" className="icon-btn" aria-label="Move up" disabled={i === 0} onClick={() => set((d) => ({ who: moveRow(d.who, i, i - 1) }))}>
+                        <Icon as={ArrowUp} />
+                      </button>
+                      <button
+                        type="button"
+                        className="icon-btn"
+                        aria-label="Move down"
+                        disabled={i === draft.who.length - 1}
+                        onClick={() => set((d) => ({ who: moveRow(d.who, i, i + 1) }))}
+                      >
+                        <Icon as={ArrowDown} />
+                      </button>
+                      <button type="button" className="icon-btn" aria-label="Remove row" onClick={() => set((d) => ({ who: d.who.filter((x) => x.key !== w.key) }))}>
+                        <Icon as={Trash2} />
+                      </button>
+                    </div>
+                  </div>
+                  {w.condition.trim() !== "" && (
+                    <label className="field">
+                      Condition
+                      <input type="text" className="mono" value={w.condition} onChange={(e) => setRow(w.key, { condition: e.target.value })} />
+                    </label>
+                  )}
+                  <div className="field">
+                    <span className="field-label">Notify</span>
+                    <RecipientPicker value={w.recipients} onChange={(v) => setRow(w.key, { recipients: v })} dir={dir} />
+                  </div>
+                  <div className="field">
+                    <span className="field-label">Always send via</span>
+                    <ChannelToggles value={w.force} onChange={(v) => setRow(w.key, { force: v })} channels={dir.channels} />
+                    <span className="re-hint">Selected channels ignore people's notification preferences and quiet hours.</span>
+                  </div>
+                </li>
+              ))}
+            </ol>
+            <button type="button" className="btn" onClick={() => set((d) => ({ who: [...d.who, newWhoDraft()] }))}>
+              <Plus size={14} aria-hidden="true" /> Add row
+            </button>
+          </Step>
+
+          <Step n={4} title="Looks" help="How the alert reads in the feed and in notifications.">
+            <label className="field">
+              Title template
+              <input type="text" className="mono" value={draft.titleTemplate} onChange={(e) => set({ titleTemplate: e.target.value })} />
+              <span className="re-preview">
+                Preview: <strong>{preview || "—"}</strong>
+              </span>
+            </label>
+            <div className="field">
+              <span className="field-label">Severity</span>
+              <div className="segmented-sm" role="radiogroup" aria-label="Severity">
+                {["", ...SEVERITY_OPTIONS].map((s) => (
+                  <button
+                    key={s || "keep"}
+                    type="button"
+                    role="radio"
+                    aria-checked={draft.severityOverride === s}
+                    className={`seg${draft.severityOverride === s ? " on" : ""}${s ? ` sev-${s}` : ""}`}
+                    onClick={() => set({ severityOverride: s })}
+                  >
+                    {SEV_LABEL[s]}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <label className="field">
+              Fields to show
+              <input
+                type="text"
+                className="mono"
+                placeholder="alert.source, alert.environment"
+                value={draft.fields}
+                onChange={(e) => set({ fields: e.target.value })}
+              />
+            </label>
+            <details className="re-more">
+              <summary>More options</summary>
+              <label className="field">
+                Body template
+                <textarea value={draft.bodyTemplate} onChange={(e) => set({ bodyTemplate: e.target.value })} />
+              </label>
+              <label className="field">
+                Colour
+                <input type="text" value={draft.colour} placeholder="#f2495c" onChange={(e) => set({ colour: e.target.value })} />
+              </label>
+            </details>
+          </Step>
+
+          {!isNew && (
+            <section className="re-suggestions" aria-labelledby="step-sug">
+              <h2 id="step-sug">Suggestions</h2>
+              {suggestions.length === 0 && !sugError && <p className="muted">No open suggestions.</p>}
+              {sugError && (
+                <p role="alert" className="error">
+                  {sugError}
+                </p>
+              )}
+              <ul className="plain">
+                {suggestions.map((s) => (
+                  <li key={s.id} className="sug">
+                    <span>
+                      {s.text} <span className="muted">by {s.author}</span>
+                    </span>
+                    <span className="re-inline">
+                      <button type="button" className="btn primary" onClick={() => act(s, acceptSuggestion)}>
+                        Accept
+                      </button>
+                      <button type="button" className="btn" onClick={() => act(s, dismissSuggestion)}>
+                        Dismiss
+                      </button>
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
+          {yaml !== null && (
+            <pre className="code-block" aria-label="Exported YAML">
+              {yaml}
+            </pre>
+          )}
+        </div>
+
+        <Summary draft={draft} dir={dir} />
       </div>
 
-      <section className="step" aria-labelledby="step-when">
-        <h2 id="step-when">When</h2>
-        <label>
-          Name
-          <input
-            type="text"
-            value={draft.name}
-            onChange={(e) => set(idTouched || !isNew ? { name: e.target.value } : { name: e.target.value, id: slugify(e.target.value) })}
-          />
-        </label>
-        {isNew && (
-          <label>
-            Id
-            <input
-              type="text"
-              value={draft.id}
-              onChange={(e) => {
-                setIdTouched(true);
-                set({ id: e.target.value });
-              }}
-            />
-          </label>
-        )}
-        <label className="inline">
-          <input type="checkbox" checked={draft.enabled} onChange={(e) => set({ enabled: e.target.checked })} />
-          Enabled
-        </label>
-        <FilterBar
-          value={draft.when}
-          onChange={(t) => {
-            set({ when: t });
-            setTest(null);
-            setTestError(null);
-          }}
-          onApply={noop}
-          fields={FIELDS}
-          valuesFor={valuesFor}
-          starred={[]}
-          onToggleStar={noop}
-        />
-        <div className="actions">
-          <button type="button" onClick={runTest}>
-            Test against recent events
-          </button>
-          {test && (
-            <span className="result" role="status">
-              Matches {test.matched} of {test.total} recent events
-              {test.warning && <span className="warn"> ({test.warning})</span>}
-            </span>
-          )}
-          {testError && (
-            <span role="alert" className="error">
-              {testError}
+      <footer className="action-bar">
+        <div className="action-bar-msgs">
+          {errors.map((m) => (
+            <p key={m} role="alert" className="error">
+              {m}
+            </p>
+          ))}
+          {saved && (
+            <span role="status" className="saved">
+              Saved
             </span>
           )}
         </div>
-      </section>
-
-      <section className="step" aria-labelledby="step-who">
-        <h2 id="step-who">Who</h2>
-        {draft.who.length === 0 && <p className="muted">No rows. Add one to notify people.</p>}
-        {draft.who.map((w, i) => (
-          <div key={w.key} className="who-row" role="group" aria-label={`Who row ${i + 1}`}>
-            <label>
-              Condition (optional)
-              <input type="text" value={w.condition} onChange={(e) => setRow(w.key, { condition: e.target.value })} />
-            </label>
-            <label>
-              Recipients (person:id or group:id, comma separated)
-              <input type="text" value={w.recipients} onChange={(e) => setRow(w.key, { recipients: e.target.value })} />
-            </label>
-            <label>
-              Force channels (optional, comma separated)
-              <input type="text" value={w.force} onChange={(e) => setRow(w.key, { force: e.target.value })} />
-            </label>
-            <div className="actions">
-              <button type="button" disabled={i === 0} onClick={() => set((d) => ({ who: moveRow(d.who, i, i - 1) }))}>
-                Move up
-              </button>
-              <button type="button" disabled={i === draft.who.length - 1} onClick={() => set((d) => ({ who: moveRow(d.who, i, i + 1) }))}>
-                Move down
-              </button>
-              <button type="button" onClick={() => set((d) => ({ who: d.who.filter((x) => x.key !== w.key) }))}>
-                Remove row
-              </button>
-            </div>
-          </div>
-        ))}
-        <button type="button" onClick={() => set((d) => ({ who: [...d.who, newWhoDraft()] }))}>
-          Add row
-        </button>
-      </section>
-
-      <section className="step" aria-labelledby="step-looks">
-        <h2 id="step-looks">Looks</h2>
-        <label>
-          Title template
-          <input type="text" value={draft.titleTemplate} onChange={(e) => set({ titleTemplate: e.target.value })} />
-        </label>
-        <label>
-          Body template
-          <textarea value={draft.bodyTemplate} onChange={(e) => set({ bodyTemplate: e.target.value })} />
-        </label>
-        <label>
-          Fields to show (comma separated)
-          <input type="text" value={draft.fields} onChange={(e) => set({ fields: e.target.value })} />
-        </label>
-        <label>
-          Severity override
-          <select value={draft.severityOverride} onChange={(e) => set({ severityOverride: e.target.value })}>
-            <option value="">(none)</option>
-            {SEVERITY_OPTIONS.map((s) => (
-              <option key={s} value={s}>
-                {s}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          Colour
-          <input type="text" value={draft.colour} onChange={(e) => set({ colour: e.target.value })} />
-        </label>
-      </section>
-
-      {errors.map((m) => (
-        <p key={m} role="alert" className="error">
-          {m}
-        </p>
-      ))}
-      <div className="actions">
-        <button type="button" onClick={save}>
-          Save rule
-        </button>
+        <Link className="btn" to="/rules">
+          {isNew ? "Cancel" : "Back to rules"}
+        </Link>
         {!isNew && (
-          <button type="button" onClick={doExport}>
+          <button type="button" className="btn" onClick={doExport}>
             Export YAML
           </button>
         )}
-        {saved && <span role="status">Saved</span>}
-      </div>
-      {yaml !== null && <pre aria-label="Exported YAML">{yaml}</pre>}
-
-      {!isNew && (
-        <section className="step" aria-labelledby="step-sug">
-          <h2 id="step-sug">Suggestions</h2>
-          {suggestions.length === 0 && !sugError && <p className="muted">No open suggestions.</p>}
-          {sugError && (
-            <p role="alert" className="error">
-              {sugError}
-            </p>
-          )}
-          <ul className="plain">
-            {suggestions.map((s) => (
-              <li key={s.id} className="row">
-                <span>
-                  {s.text} <span className="muted">by {s.author}</span>
-                </span>
-                <span className="actions">
-                  <button type="button" onClick={() => act(s, acceptSuggestion)}>
-                    Accept
-                  </button>
-                  <button type="button" onClick={() => act(s, dismissSuggestion)}>
-                    Dismiss
-                  </button>
-                </span>
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
+        <button type="button" className="btn primary" disabled={saving} onClick={save}>
+          Save rule
+        </button>
+      </footer>
     </main>
   );
 }

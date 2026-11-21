@@ -1,7 +1,14 @@
 import pg from "pg";
 import { Redis } from "ioredis";
 import { CHANNEL_UI_PUSH, type UiPush } from "@alerting/shared";
-import { createDeliveryQueue, createNtfyChannel, createUiChannel, registerChannel } from "@alerting/delivery";
+import {
+  createDeliveryQueue,
+  createEmailChannel,
+  createNtfyChannel,
+  createUiChannel,
+  emailConfigFromEnv,
+  registerChannel,
+} from "@alerting/delivery";
 import {
   createDefaultActions,
   createGroupNotifier,
@@ -11,8 +18,9 @@ import {
   createRunner,
   migrateRunbooks,
 } from "@alerting/runbooks";
-import { startIngestService, type IngestService } from "@alerting/ingest";
+import { startIngestService, startSchemaMapping, type IngestService, type SchemaMapping } from "@alerting/ingest";
 import { createConfigStore, migrate, type ConfigStore } from "@alerting/config";
+import { startConfigWatch } from "./config-watch.js";
 import { createServer } from "./server.js";
 import { createUiPushHub } from "./stream/sse.js";
 import { createPgAlertStores, createPgEventLoader } from "./routes/alerts/store.js";
@@ -53,6 +61,7 @@ registerChannel(
     publicUrl: process.env.PUBLIC_URL ?? "http://localhost:3000",
   }),
 );
+registerChannel(createEmailChannel(emailConfigFromEnv()));
 const delivery = createDeliveryQueue(deliveryRedis);
 let stopping = false;
 async function startWorker(): Promise<void> {
@@ -105,6 +114,10 @@ if (process.env.DATABASE_URL) {
   });
   config = createConfigStore({ pool, redis: configRedis });
 }
+// Live YAML reload: files load on start only when the entity is missing (API edits survive), later changes apply.
+const configWatcher = config
+  ? startConfigWatch(config, process.env.CONFIG_DIR ?? "./config")
+  : undefined;
 
 // Runbooks: runs, approvals (audit goes to the alerts audit store). Lazy connections, so the API still starts when Postgres/Redis are down.
 const runbooksReady = migrateRunbooks(pool);
@@ -180,10 +193,25 @@ server.listen(port, () => console.log(`api listening on :${port}`));
 
 // Ingest (sources, http route registry, parse worker) runs in-process: the http plugin registry is per process.
 let ingest: IngestService | undefined;
-if (process.env.DATABASE_URL && process.env.REDIS_URL) {
-  startIngestService({ databaseUrl: process.env.DATABASE_URL, redisUrl: process.env.REDIS_URL })
+// Events are mapped onto the live schema registry (reloads on config changes) so common fields and schema_id are set.
+// Ingest starts only after the first successful schema load (async: does not block server.listen).
+const ingestEnabled = Boolean(process.env.DATABASE_URL && process.env.REDIS_URL);
+const schemaMapping: SchemaMapping | undefined = config && ingestEnabled ? startSchemaMapping(config) : undefined;
+if (ingestEnabled) {
+  (schemaMapping ? schemaMapping.ready : Promise.resolve())
+    .then(() =>
+      stopping
+        ? undefined
+        : startIngestService({
+            databaseUrl: process.env.DATABASE_URL as string,
+            redisUrl: process.env.REDIS_URL as string,
+            mapEvent: schemaMapping?.mapEvent,
+          }),
+    )
     .then((s) => {
-      ingest = s;
+      if (!s) return;
+      if (stopping) void s.stop();
+      else ingest = s;
     })
     .catch((err: unknown) => console.error("ingest failed to start:", err));
 } else {
@@ -195,7 +223,7 @@ function shutdown(): void {
   stopping = true;
   server.close();
   server.closeAllConnections?.();
-  void Promise.allSettled([delivery.stop(), ingest?.stop(), runbookRegistry?.close(), config?.close()])
+  void Promise.allSettled([delivery.stop(), Promise.resolve(ingest?.stop()).finally(() => schemaMapping?.close()), runbookRegistry?.close(), Promise.race([configWatcher?.close(), new Promise((r) => setTimeout(r, 1500))]).finally(() => config?.close())])
     .then(() => Promise.allSettled([pool.end(), redis.quit(), configRedis?.quit(), deliveryRedis.quit(), subRedis.quit()])).then(() => process.exit(0));
 }
 process.on("SIGTERM", shutdown);

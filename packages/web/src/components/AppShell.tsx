@@ -1,9 +1,10 @@
-import { Siren } from "lucide-react";
+import { ChevronRight, Siren } from "lucide-react";
 import type { ReactNode } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { routes } from "../routes/registry";
 import type { NavEntry, RouteDef } from "../routes/types";
 import { Icon } from "./Icon";
+import { ThemeToggle } from "./ThemeSwitch";
 
 const SECTIONS: { id: NavEntry["section"]; title: string }[] = [
   { id: "alerts", title: "Alerts" },
@@ -26,6 +27,9 @@ export function isActive(r: NavRoute, pathname: string): boolean {
 export function AppShell({ children }: { children: ReactNode }) {
   const { pathname } = useLocation();
   const items = routes.filter((r): r is NavRoute => Boolean(r.nav));
+  const current = items.find((r) => isActive(r, pathname));
+  const section = current && SECTIONS.find((s) => s.id === current.nav.section);
+  const deeper = current && pathname !== current.path;
   return (
     <div className="shell">
       <nav className="sidebar" aria-label="Main">
@@ -56,7 +60,31 @@ export function AppShell({ children }: { children: ReactNode }) {
           </div>
         ))}
       </nav>
-      <div className="shell-main">{children}</div>
+      <div className="shell-main">
+        <header className="app-bar">
+          <nav className="crumbs" aria-label="Breadcrumb">
+            {section && <span className="crumb">{section.title}</span>}
+            {current && (
+              <>
+                <Icon as={ChevronRight} />
+                {deeper ? (
+                  <Link className="crumb" to={current.path}>
+                    {current.nav.label}
+                  </Link>
+                ) : (
+                  <span className="crumb current" aria-current="page">
+                    {current.nav.label}
+                  </span>
+                )}
+              </>
+            )}
+          </nav>
+          <div className="app-bar-actions">
+            <ThemeToggle />
+          </div>
+        </header>
+        <div className="shell-content">{children}</div>
+      </div>
     </div>
   );
 }

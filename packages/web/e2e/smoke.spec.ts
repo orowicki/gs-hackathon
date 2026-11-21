@@ -39,7 +39,7 @@ for (const scheme of ["light", "dark"] as const) {
     test("settings panel", async ({ page }) => {
       await page.goto("/");
       await page.getByRole("button", { name: "Settings" }).click();
-      for (const h of ["Profile", "Notifications", "Theme", "Starred filters"]) {
+      for (const h of ["Profile", "Notifications", "Starred filters"]) {
         await expect(page.getByRole("heading", { name: h })).toBeVisible();
       }
       await shot(page, "settings");

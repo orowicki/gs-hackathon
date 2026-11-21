@@ -10,7 +10,7 @@ import { AlertList, SkeletonRows } from "./AlertList";
 import { createSource, isDemoSource } from "./data";
 import type { FeedSource } from "./data";
 import { FilterBar } from "../../components/filter-bar";
-import { fieldNames, filterAlerts, newStarred, parseFilter, starredTexts, upsertAlert, valuesFor } from "./helpers";
+import { fieldNames, filterAlerts, filterText, newStarred, parseFilter, starredTexts, upsertAlert, valuesFor } from "./helpers";
 import { ProfilePicker, StarredList } from "./ProfilePicker";
 import { StatPanels } from "./StatPanels";
 
@@ -165,7 +165,7 @@ export function FeedPage() {
 
   const toggleStar = (text: string) => {
     if (!personId) return;
-    const hit = starred.find((s) => s.name === text);
+    const hit = starred.find((s) => s.name === text || filterText(s.filter) === text);
     saveStarred(hit ? starred.filter((s) => s !== hit) : [...starred, newStarred(personId, text)]);
   };
 
@@ -296,6 +296,7 @@ export function FeedPage() {
       {alerts && alerts.length > 0 && (
         <StatPanels
           alerts={alerts}
+          filter={q}
           onFilter={(text) => {
             setQ(text);
             applyText(text);

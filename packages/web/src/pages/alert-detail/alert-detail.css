@@ -43,20 +43,7 @@
   gap: var(--space-2);
 }
 
-.btn {
-  padding: var(--space-1) var(--space-3);
-  font: inherit;
-  font-size: var(--text-sm);
-  color: var(--text);
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  cursor: pointer;
-}
-
-.btn:hover:not(:disabled) { border-color: var(--muted); }
-.btn.primary { border-color: var(--accent); color: var(--accent); }
-.btn:disabled { opacity: 0.5; cursor: default; }
+/* .btn lives in styles/components.css */
 
 .link-btn {
   padding: 0;
