@@ -11,6 +11,8 @@
     "test:e2e": "bash scripts/e2e.sh"
   },
   "dependencies": {
+    "@alerting/filter": "*",
+    "@alerting/shared": "*",
     "@fontsource/ibm-plex-mono": "^5.1.0",
     "@fontsource/ibm-plex-sans": "^5.1.0",
     "lucide-react": "^0.468.0",

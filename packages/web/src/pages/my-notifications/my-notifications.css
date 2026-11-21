@@ -1,0 +1,89 @@
+.my-notifications .mn-grid {
+  border-collapse: collapse;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  align-self: flex-start;
+}
+
+.my-notifications .mn-grid th,
+.my-notifications .mn-grid td {
+  padding: var(--space-2) var(--space-4);
+  border-bottom: 1px solid var(--border);
+  text-align: center;
+  font-size: var(--text-md);
+}
+
+.my-notifications .mn-grid th[scope="row"] {
+  text-align: left;
+  font-weight: var(--weight-strong);
+}
+
+.my-notifications .mn-quiet {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  padding: var(--space-3) var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.my-notifications .mn-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--space-4);
+}
+
+.my-notifications .mn-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  font-size: var(--text-sm);
+  color: var(--muted);
+}
+
+.my-notifications .mn-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.my-notifications input[type="text"],
+.my-notifications select {
+  font: inherit;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: var(--space-1) var(--space-2);
+}
+
+.my-notifications .mn-save {
+  font: inherit;
+  font-weight: var(--weight-strong);
+  color: var(--surface);
+  background: var(--accent);
+  border: 0;
+  border-radius: var(--radius);
+  padding: var(--space-2) var(--space-4);
+  cursor: pointer;
+}
+
+.my-notifications .mn-save:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.my-notifications .mn-error {
+  color: var(--critical);
+}
+
+.my-notifications .mn-saved {
+  color: var(--valid);
+}
+
+.my-notifications .mn-note {
+  color: var(--warning);
+}

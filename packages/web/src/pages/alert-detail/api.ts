@@ -1,0 +1,117 @@
+/** Minimal local types (packages/web does not depend on @alerting/shared). Tolerant of field-name drift. */
+export type Lifecycle = "open" | "acknowledged" | "resolved";
+
+export interface Alert {
+  id: string;
+  title?: string;
+  severity?: string;
+  source?: string;
+  environment?: string;
+  dedupKey?: string;
+  body?: string;
+  count?: number;
+  firstSeen?: string;
+  lastSeen?: string;
+  /** Lifecycle in the newer spec; older shape used `state`. */
+  status?: string;
+  state?: string;
+  common?: Record<string, unknown>;
+  /** The stored event, if the API embeds it. */
+  event?: { raw?: unknown; parsed?: unknown } | Record<string, unknown>;
+  parsed?: unknown;
+  raw?: unknown;
+  fields?: Array<{ label: string; value: string }>;
+  [key: string]: unknown;
+}
+
+export interface RunbookRun {
+  alertId?: string;
+  runbookId: string;
+  steps: Array<{ index: number; state: string; result?: string; at?: string }>;
+}
+
+export interface AuditEntry {
+  id?: string;
+  at: string;
+  actor: string;
+  action: string;
+  result?: string;
+  detail?: string;
+}
+
+export class ApiError extends Error {
+  constructor(
+    readonly status: number,
+    message: string,
+  ) {
+    super(message);
+  }
+}
+
+async function request<T>(method: string, url: string, body?: unknown): Promise<T> {
+  const res = await fetch(url, {
+    method,
+    headers: body === undefined ? undefined : { "content-type": "application/json" },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+  if (!res.ok) {
+    let msg = `Request failed (${res.status})`;
+    try {
+      const data = (await res.json()) as { error?: unknown; message?: unknown };
+      const m = data.error ?? data.message;
+      if (typeof m === "string" && m) msg = m;
+    } catch {
+      /* keep default message */
+    }
+    throw new ApiError(res.status, msg);
+  }
+  return (await res.json()) as T;
+}
+
+const base = (id: string) => `/api/alerts/${encodeURIComponent(id)}`;
+
+export const getAlert = (id: string) => request<Alert>("GET", base(id));
+export const ackAlert = (id: string) => request<Alert>("POST", `${base(id)}/ack`);
+export const resolveAlert = (id: string) => request<Alert>("POST", `${base(id)}/resolve`);
+export const sendSuggestion = (id: string, text: string) => request<unknown>("POST", `${base(id)}/suggestions`, { text });
+
+/** Never throws: missing routes (404) and failures both yield an empty list. */
+async function listOrEmpty<T>(url: string): Promise<T[]> {
+  try {
+    const data = await request<unknown>("GET", url);
+    return Array.isArray(data) ? (data as T[]) : [];
+  } catch {
+    return [];
+  }
+}
+export const getRunbookRuns = (id: string) => listOrEmpty<RunbookRun>(`${base(id)}/runbook-runs`);
+export const getAudit = (id: string) => listOrEmpty<AuditEntry>(`${base(id)}/audit`);
+
+const isLifecycle = (v: unknown): v is Lifecycle => v === "open" || v === "acknowledged" || v === "resolved";
+
+export function lifecycleOf(a: Alert): Lifecycle {
+  if (isLifecycle(a.status)) return a.status;
+  if (isLifecycle(a.state)) return a.state;
+  return "open";
+}
+
+export function sourceStatusOf(a: Alert): string | undefined {
+  const c = a.common ?? {};
+  const v = c.sourceStatus ?? (isLifecycle(c.status) ? undefined : c.status);
+  if (typeof v === "string" && v) return v;
+  if (typeof a.status === "string" && !isLifecycle(a.status) && a.status) return a.status;
+  return undefined;
+}
+
+/** Where the raw event lives: embedded event.parsed / event.raw / event itself, else top-level parsed/raw. */
+export function eventOf(a: Alert): Record<string, unknown> | null {
+  const obj = (v: unknown): Record<string, unknown> | null =>
+    typeof v === "object" && v !== null && !Array.isArray(v) ? (v as Record<string, unknown>) : null;
+  const ev = obj(a.event);
+  if (ev) {
+    const inner = obj(ev.parsed) ?? obj(ev.raw);
+    if (inner) return inner;
+    if (!("sourceId" in ev && "receivedAt" in ev)) return ev;
+  }
+  return obj(a.parsed) ?? obj(a.raw);
+}
