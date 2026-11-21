@@ -1,7 +1,7 @@
 import { FileUp, FileCode2, LayoutTemplate, ListChecks } from "lucide-react";
 import { useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { CreateChooser, type CreateOption } from "../../components/CreateChooser";
+import { ChooserTabs, CreateChooser, type CreateOption } from "../../components/CreateChooser";
 import { importYaml } from "./api";
 import { emptyDraft, newWhoDraft, type RuleDraft } from "./helpers";
 import { RuleEditorPage } from "./RuleEditorPage";
@@ -85,15 +85,22 @@ export function NewRulePage() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  if (mode === "editor") {
-    const ex = EXAMPLES.find((e) => e.id === exampleId);
-    return <RuleEditorPage key={exampleId ?? "blank"} initial={ex ? exampleDraft(ex) : undefined} />;
-  }
-
   const choose = (id: string) => {
     setError(null);
     setParams(id === "editor" ? { mode: "editor" } : { mode: id }, { replace: id !== "editor" });
   };
+  if (mode === "editor") {
+    const ex = EXAMPLES.find((e) => e.id === exampleId);
+    return (
+      <RuleEditorPage
+        key={exampleId ?? "blank"}
+        initial={ex ? exampleDraft(ex) : undefined}
+        tabs={<ChooserTabs options={OPTIONS} selected={ex ? "example" : "editor"} onSelect={choose} />}
+      />
+    );
+  }
+
+
 
   async function doImport(text: string) {
     setError(null);

@@ -346,7 +346,7 @@ function Summary({ draft, dir }: { draft: RuleDraft; dir: Directory }) {
   );
 }
 
-export function RuleEditorPage({ initial }: { initial?: RuleDraft } = {}) {
+export function RuleEditorPage({ initial, tabs }: { initial?: RuleDraft; tabs?: React.ReactNode } = {}) {
   const { id } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
@@ -471,6 +471,7 @@ export function RuleEditorPage({ initial }: { initial?: RuleDraft } = {}) {
           </p>
         </div>
       </header>
+      {tabs}
 
       <div className="re-layout">
         <div className="re-steps">
