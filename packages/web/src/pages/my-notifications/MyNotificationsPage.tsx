@@ -1,5 +1,5 @@
 import { useCurrentPerson } from "../../account";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { BellRing, Mail, MessageSquare, Monitor, Moon, Route, Smartphone, type LucideIcon } from "lucide-react";
 import type { ChannelId, Severity } from "../../../../shared/src/types/common";
@@ -64,6 +64,7 @@ const snapshot = (grid: Grid, quiet: QuietForm) => JSON.stringify({ grid, quiet 
 
 export function MyNotificationsPage() {
   const tz = useMemo(browserTimezone, []);
+  const tzId = useId();
   const [people, setPeople] = useState<Person[] | undefined>();
   const [peopleError, setPeopleError] = useState<string | undefined>();
   const [storedId, setPersonId] = useState<string | undefined>(() => parseStoredProfile(localStorage.getItem(PROFILE_KEY)));
@@ -433,16 +434,17 @@ export function MyNotificationsPage() {
                     <span>To</span>
                     <input type="time" value={quiet.to} onChange={(e) => patchQuiet({ to: e.target.value })} />
                   </label>
-                  <label className="np-field np-tz">
-                    <span>Timezone</span>
-                    <select value={quiet.timezone} onChange={(e) => patchQuiet({ timezone: e.target.value })}>
+                  {/* Label outside the select: a wrapping label's text would include every option. */}
+                  <div className="np-field np-tz">
+                    <label htmlFor={tzId}>Timezone</label>
+                    <select id={tzId} value={quiet.timezone} onChange={(e) => patchQuiet({ timezone: e.target.value })}>
                       {zoneList.map((z) => (
                         <option key={z} value={z}>
                           {z.replaceAll("_", " ")}
                         </option>
                       ))}
                     </select>
-                  </label>
+                  </div>
                 </div>
 
                 <div className="np-timeline" aria-hidden="true">
