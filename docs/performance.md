@@ -35,6 +35,8 @@ Each event has a unique sequence number and a send timestamp (`Date.now()` in th
 
 The exact wording is in the `measurement` field of each JSON file.
 
+Every run deletes the Redis dedup keys and Postgres alert and event rows it created (only ids prefixed `lt-tmp-`), so repeated runs do not fill the dev databases; `--keep-data` keeps them, `node scripts/loadtest/run.mjs --cleanup-only` purges leftovers. See the loadtest README.
+
 ## Results
 
 Current code (commit `dd583dd`, includes the engine dedup/throttle from #61), local mode, 5000 ev/s target for 60 s, 0 rejected, 0 HTTP errors. Both configurations are **overloaded** at this rate: the drain did not finish within the 60 s drain cap, so only 1 of 3 planned windows ran for each (the rest were skipped) and the numbers below are a single window. Backlog and lost are defined in the [loadtest README](../scripts/loadtest/README.md): `backlogAtEnd` is what is still queued in the streams at the end of the drain (late, not lost), `lost = max(0, unprocessedAtEnd - backlogAtEnd)`, and `processedPerSec` is alerts observed per second over send window plus drain, i.e. the sustainable rate.

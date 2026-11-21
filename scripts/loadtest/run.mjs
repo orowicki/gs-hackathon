@@ -8,6 +8,7 @@ import { pathToFileURL } from "node:url";
 import { createConfigStore } from "@alerting/config";
 import { Redis } from "ioredis";
 import { writeChart } from "./chart.mjs";
+import { TMP_PREFIX, purgeLoadtestData } from "./cleanup.mjs";
 import { aggregateRuns, evaluateTargets, perSecondSeries, summarize } from "./stats.mjs";
 
 const STREAM_EVENTS = "alerting:events";
@@ -18,7 +19,6 @@ const GROUP_PARSE = "parse";
 const GROUP_ENGINE = "engine";
 const PREFLIGHT_THRESHOLD = 100;
 // Temporary entities carry this prefix plus the run id; stale ones from crashed runs are deleted at start.
-const TMP_PREFIX = "lt-tmp-";
 const ids = (runId) => ({ source: `${TMP_PREFIX}${runId}`, person: `${TMP_PREFIX}bot-${runId}`, rule: `${TMP_PREFIX}rule-${runId}` });
 export const WORKERS_NOTE =
   "The api process runs an in-process ingest parse worker, so N workers means N engines and N+1 parse consumers (N standalone ingest workers plus the api's own).";
@@ -34,7 +34,7 @@ export const MEASUREMENT =
   "lost = events accepted (HTTP 202) with no alert observed after the drain.";
 
 export function parseArgs(argv, env = process.env, now = new Date()) {
-  const o = { rate: 5000, duration: 60, workers: 1, smoke: false, chart: true, repeat: undefined, preflightTimeout: 600 };
+  const o = { rate: 5000, duration: 60, workers: 1, smoke: false, chart: true, keepData: false, cleanupOnly: false, repeat: undefined, preflightTimeout: 600 };
   const num = (flag, v) => {
     const n = Number(v);
     if (!Number.isFinite(n) || n <= 0) throw new Error(`${flag} needs a positive number`);
@@ -55,6 +55,8 @@ export function parseArgs(argv, env = process.env, now = new Date()) {
     else if (a === "--config-dir") next(); // accepted and ignored (config goes straight into the store)
     else if (a === "--out") o.out = next();
     else if (a === "--smoke") o.smoke = true;
+    else if (a === "--keep-data") o.keepData = true;
+    else if (a === "--cleanup-only") o.cleanupOnly = true;
     else if (a === "--preflight-timeout") o.preflightTimeout = num(a, next());
     else if (a === "--repeat") o.repeat = Math.floor(num(a, next()));
     else if (a === "--no-chart") o.chart = false;
@@ -102,13 +104,24 @@ function entities(runId) {
   };
 }
 
+/** Remove temporary config entries (ids created by this script) left over from crashed earlier runs. */
+async function purgeStaleConfig(store) {
+  let n = 0;
+  for (const kind of ["rule", "source", "person"]) {
+    for (const x of await store.list(kind)) {
+      if (String(x.id).startsWith(TMP_PREFIX)) {
+        await store.delete(kind, x.id);
+        n++;
+      }
+    }
+  }
+  return n;
+}
+
 /** Upsert the temporary source, person and rule into the config store; returns an async cleanup. */
 async function installConfig(store, runId) {
   const e = entities(runId);
-  // remove leftovers of crashed earlier runs (only ids this script creates)
-  for (const kind of ["rule", "source", "person"]) {
-    for (const x of await store.list(kind)) if (String(x.id).startsWith(TMP_PREFIX)) await store.delete(kind, x.id);
-  }
+  await purgeStaleConfig(store);
   const undo = async () => {
     for (const [kind, entity] of [["rule", e.rule], ["source", e.source], ["person", e.person]]) {
       try {
@@ -365,20 +378,37 @@ async function main() {
   }
   let cleanup = async () => {};
   let store;
+  let probeConn;
   const cleanExit = async (code) => {
     await cleanup();
+    probeConn?.disconnect();
     await store?.close().catch(() => {});
     process.exit(code);
   };
   process.on("SIGINT", () => cleanExit(130));
   process.on("SIGTERM", () => cleanExit(143));
 
+  if (opts.cleanupOnly) {
+    const redis = new Redis(opts.redis, { maxRetriesPerRequest: 3 });
+    const st = createConfigStore({ databaseUrl: opts.databaseUrl, redisUrl: opts.redis });
+    try {
+      console.error(`loadtest: removed ${await purgeStaleConfig(st)} stale config entries`);
+      await purgeLoadtestData({ redis, databaseUrl: opts.databaseUrl });
+    } catch (e) {
+      console.error(`loadtest cleanup failed: ${e.message}`);
+      process.exit(1);
+    } finally {
+      redis.disconnect();
+      await st.close().catch(() => {});
+    }
+    process.exit(0);
+  }
+
   const collector = createCollector(opts.redis, runId);
   const sourceId = ids(runId).source;
   const post = makePoster(opts.baseUrl, sourceId, 16);
   let result;
   let phase = "setup";
-  let probeConn;
   try {
     probeConn = new Redis(opts.redis, { maxRetriesPerRequest: 3 });
     probeConn.on("error", () => {});
@@ -387,7 +417,12 @@ async function main() {
     if (waited > 2000) console.error(`loadtest: preflight waited ${Math.round(waited / 1000)} s for the existing backlog`);
     phase = "setup";
     store = createConfigStore({ databaseUrl: opts.databaseUrl, redisUrl: opts.redis });
-    cleanup = await installConfig(store, runId);
+    if (!opts.keepData) await purgeLoadtestData({ redis: probeConn, databaseUrl: opts.databaseUrl });
+    const undoConfig = await installConfig(store, runId);
+    cleanup = async () => {
+      await undoConfig();
+      if (!opts.keepData) await purgeLoadtestData({ redis: probeConn, databaseUrl: opts.databaseUrl }).catch((e) => console.error(`loadtest: data purge failed: ${e.message}`));
+    };
     await collector.start();
 
     // wait for source + rule to be live: probes (seq < 0) until one produces an alert
@@ -421,15 +456,14 @@ async function main() {
     }
     result = aggregateRuns(runs, opts.repeat);
   } catch (e) {
-    probeConn?.disconnect();
     console.error(`loadtest ${phase} failed: ${e.stack ?? e.message}`);
     await collector.stop();
     await cleanExit(1);
     return;
   }
-  probeConn?.disconnect();
   await collector.stop();
   await cleanup();
+  probeConn?.disconnect();
   await store.close().catch(() => {});
 
   mkdirSync(dirname(resolve(opts.out)), { recursive: true });

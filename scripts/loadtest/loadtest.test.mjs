@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { PG_STATEMENTS, REDIS_PATTERNS, purgeRedisPattern } from "./cleanup.mjs";
 import { renderChart } from "./chart.mjs";
 import { buildBatch, groupBacklog, parseArgs, parseGroups } from "./run.mjs";
 import { aggregateRuns, evaluateTargets, median, histogram, percentile, perSecondSeries, summarize } from "./stats.mjs";
@@ -146,5 +147,27 @@ describe("backlog and overload", () => {
     expect(a.targets.met).toBe(false);
     expect(evaluateTargets(summarize([1]), 0, true, 3).met).toBe(false);
     expect(parseArgs(["--preflight-timeout", "30"], {}).preflightTimeout).toBe(30);
+  });
+});
+
+describe("cleanup", () => {
+  it("purgeRedisPattern scans and unlinks in batches", async () => {
+    const pages = [["5", Array.from({ length: 2500 }, (_, i) => `k${i}`)], ["0", ["x", "y"]]];
+    const unlinked = [];
+    const redis = {
+      scan: async () => pages.shift(),
+      unlink: async (...keys) => {
+        unlinked.push(keys.length);
+        return keys.length;
+      },
+    };
+    expect(await purgeRedisPattern(redis, "p*", 1000)).toBe(2502);
+    expect(unlinked).toEqual([1000, 1000, 500, 2]);
+  });
+  it("only targets lt-tmp- data", () => {
+    for (const p of REDIS_PATTERNS) expect(p).toContain("lt-tmp-*");
+    for (const [, sql] of PG_STATEMENTS) expect(sql).toContain("LIKE $1");
+    expect(PG_STATEMENTS.map(([n]) => n)).toEqual(["alert_audit", "suggestions", "alerts", "events"]);
+    expect(parseArgs(["--keep-data", "--cleanup-only"], {})).toMatchObject({ keepData: true, cleanupOnly: true });
   });
 });
