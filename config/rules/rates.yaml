@@ -2,7 +2,7 @@
 id: rates-trade-rejected
 name: Team Rates
 enabled: true
-when: 'alert.schema matches trade.rejected.* AND payload.desk = rates AND payload.notional > 10000000'
+when: '(alert.type matches trade.rejected.* OR alert.schema matches trade.rejected.*) AND payload.desk = rates AND payload.notional > 10000000'
 who:
   - recipients:
       - { type: group, id: rates-desk }
