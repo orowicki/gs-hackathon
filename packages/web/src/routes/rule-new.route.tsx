@@ -1,7 +1,7 @@
 import type { RouteDef } from "./types";
-import { RuleEditorPage } from "../pages/rules/RuleEditorPage";
+import { NewRulePage } from "../pages/rules/NewRulePage";
 
 export default {
   path: "/rules/new",
-  element: <RuleEditorPage />,
+  element: <NewRulePage />,
 } satisfies RouteDef;

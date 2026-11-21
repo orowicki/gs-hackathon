@@ -183,3 +183,453 @@ button.primary:disabled {
   font-weight: var(--weight-strong);
   color: var(--text-strong);
 }
+
+/* ---- Page header ------------------------------------------------------------------ */
+.page-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-4);
+  margin-bottom: var(--space-2);
+}
+
+.page-intro {
+  margin: var(--space-1) 0 0;
+  color: var(--muted);
+  font-size: var(--text-md);
+  max-width: 70ch;
+}
+
+.page-actions {
+  display: flex;
+  gap: var(--space-2);
+  flex: none;
+}
+
+.callout {
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border);
+  border-left-width: 3px;
+  border-radius: var(--radius);
+  background: var(--surface);
+  font-size: var(--text-md);
+}
+
+.callout.error {
+  border-left-color: var(--critical);
+  color: var(--text);
+}
+
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-5);
+  background: var(--surface);
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-lg);
+  color: var(--muted);
+}
+
+.empty-state p {
+  margin: 0;
+}
+
+/* ---- "How do you want to create it?" -------------------------------------------- */
+.chooser {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.chooser-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--space-3);
+}
+
+.choice {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  grid-template-rows: auto 1fr;
+  align-content: start;
+  column-gap: var(--space-3);
+  row-gap: var(--space-1);
+  align-items: start;
+  padding: var(--space-4);
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color var(--motion-duration) var(--motion-ease),
+    background var(--motion-duration) var(--motion-ease);
+}
+
+.choice:hover {
+  border-color: var(--border-strong);
+  background: var(--surface-2);
+}
+
+.choice.selected {
+  border-color: var(--accent-bg);
+  box-shadow: inset 0 0 0 1px var(--accent-bg);
+}
+
+.choice-icon {
+  grid-row: span 2;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-lg);
+  background: var(--surface-2);
+  color: var(--brand);
+}
+
+.choice-icon svg {
+  width: 20px;
+  height: 20px;
+}
+
+.choice-title {
+  color: var(--text-strong);
+  font-weight: var(--weight-strong);
+  font-size: var(--text-md);
+}
+
+.choice-text {
+  color: var(--muted);
+  font-size: var(--text-sm);
+  line-height: 1.45;
+}
+
+.chooser-panel {
+  padding: var(--space-4);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+/* ---- Form building blocks --------------------------------------------------------- */
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: var(--text-sm);
+  font-weight: var(--weight-strong);
+  color: var(--text);
+}
+
+.field > input,
+.field > textarea,
+.field > select {
+  font-weight: var(--weight-regular);
+}
+
+.field-label {
+  font-size: var(--text-sm);
+  font-weight: var(--weight-strong);
+}
+
+input.mono,
+.code-input {
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+}
+
+.code-input {
+  min-height: 220px;
+  width: 100%;
+  resize: vertical;
+  tab-size: 2;
+}
+
+.code-block {
+  margin: 0;
+  padding: var(--space-3);
+  overflow: auto;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+}
+
+/* Toggle switch built on a real checkbox (keyboard and screen readers keep working). */
+.switch {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-md);
+  font-weight: var(--weight-regular);
+  cursor: pointer;
+}
+
+.switch input {
+  position: absolute;
+  opacity: 0;
+  width: 32px;
+  height: 18px;
+  margin: 0;
+}
+
+.switch-track {
+  position: relative;
+  width: 32px;
+  height: 18px;
+  border-radius: 9px;
+  background: var(--border-strong);
+  transition: background var(--motion-duration) var(--motion-ease);
+}
+
+.switch-track::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #fff;
+  transition: transform var(--motion-duration) var(--motion-ease);
+}
+
+.switch input:checked + .switch-track {
+  background: var(--accent-bg);
+}
+
+.switch input:checked + .switch-track::after {
+  transform: translateX(14px);
+}
+
+.switch input:focus-visible + .switch-track {
+  outline: 2px solid var(--accent-bg);
+  outline-offset: 2px;
+}
+
+/* Small segmented control (radio group of buttons). */
+.segmented-sm {
+  display: inline-flex;
+  flex-wrap: wrap;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  overflow: hidden;
+  align-self: flex-start;
+}
+
+.seg {
+  height: 28px;
+  padding: 0 var(--space-3);
+  background: var(--bg);
+  color: var(--muted);
+  border: 0;
+  border-right: 1px solid var(--border-strong);
+  font: inherit;
+  font-size: var(--text-sm);
+  cursor: pointer;
+}
+
+.seg:last-child {
+  border-right: 0;
+}
+
+.seg:hover {
+  color: var(--text-strong);
+}
+
+.seg.on {
+  background: var(--surface-2);
+  color: var(--text-strong);
+  font-weight: var(--weight-strong);
+  box-shadow: inset 0 -2px 0 var(--accent-bg);
+}
+
+.seg.on.sev-critical { box-shadow: inset 0 -2px 0 var(--critical); }
+.seg.on.sev-error { box-shadow: inset 0 -2px 0 var(--error); }
+.seg.on.sev-warning { box-shadow: inset 0 -2px 0 var(--warning); }
+.seg.on.sev-info { box-shadow: inset 0 -2px 0 var(--info); }
+
+/* Chips (people, groups) with a remove button, plus an inline "add" control. */
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  min-height: var(--control-h);
+  padding: 3px;
+  background: var(--bg);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 24px;
+  padding: 0 4px 0 8px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text-strong);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-regular);
+}
+
+.chip-kind {
+  color: var(--muted);
+  font-size: var(--text-xs);
+}
+
+.chip-x {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius);
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.chip-x:hover {
+  background: var(--border);
+  color: var(--text-strong);
+}
+
+.chips .chip-add {
+  flex: 1;
+  min-width: 180px;
+  min-height: 24px;
+  height: 24px;
+  border: 0;
+  background: transparent;
+  font-size: var(--text-sm);
+}
+
+.chips .chip-add:focus-visible {
+  outline: none;
+}
+
+.chips:focus-within {
+  border-color: var(--accent-bg);
+  outline: 2px solid var(--accent-bg);
+  outline-offset: 1px;
+}
+
+/* Toggle buttons (channels). */
+.toggles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.toggle {
+  height: 28px;
+  padding: 0 var(--space-3);
+  background: var(--bg);
+  color: var(--muted);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  font: inherit;
+  font-size: var(--text-sm);
+  cursor: pointer;
+}
+
+.toggle:hover {
+  color: var(--text-strong);
+}
+
+.toggle.on {
+  background: var(--info-tint);
+  border-color: var(--accent-bg);
+  color: var(--text-strong);
+}
+
+/* File picker as a drop area (the real <input type=file> covers it). */
+.dropzone {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-5);
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-lg);
+  background: var(--bg);
+  color: var(--text-strong);
+  font-weight: var(--weight-strong);
+  cursor: pointer;
+}
+
+.dropzone:hover {
+  border-color: var(--accent-bg);
+}
+
+.dropzone input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.dropzone .muted {
+  font-weight: var(--weight-regular);
+  font-size: var(--text-sm);
+}
+
+/* Sticky bar at the bottom of an editor: messages left, actions right. */
+.action-bar {
+  position: sticky;
+  bottom: 0;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: var(--space-4) calc(-1 * var(--space-5)) calc(-1 * var(--space-5));
+  padding: var(--space-3) var(--space-5);
+  background: var(--sidebar);
+  border-top: 1px solid var(--border);
+}
+
+.action-bar-msgs {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.action-bar-msgs p {
+  margin: 0;
+}
+
+.action-bar .error {
+  color: var(--critical);
+  font-size: var(--text-sm);
+}
+
+.action-bar .saved {
+  color: var(--valid);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-strong);
+}
+
+@media (max-width: 1100px) {
+  .chooser-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
