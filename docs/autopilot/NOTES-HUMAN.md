@@ -15,3 +15,7 @@
 > If you need a person to set something up (a service, a secret, an env var, a tool, a
   permission, a firewall domain), don't work around it and don't park it in a PR review:
   stop and ask a question (ap:decision) that says exactly what to set up, then wait.
+> Never wait with sleep/poll loops (`sleep`, `until ...; do sleep`, watching files or
+  output). To run subagents in parallel, start them all as foreground Agent calls in ONE
+  message: they run concurrently and you get every result when they finish. Same for
+  tests and builds: run them in the foreground with a timeout.
