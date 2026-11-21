@@ -19,7 +19,7 @@ List alerts (filter, state, limit, before)
 | `filter` | query | string | no | Filter expression text (takes precedence over `tree`) |
 | `tree` | query | string | no | Filter tree as a JSON-encoded string |
 | `state` | query | [AlertState](#schema-alertstate) | no | Only alerts in this state |
-| `limit` | query | integer | no | Page size (default 50, max 200; out-of-range values are clamped) |
+| `limit` | query | integer | no | Page size (default 50); clamped to 1..200, a non-numeric value falls back to the default |
 | `before` | query | string | no | Opaque cursor from the x-next-before response header of the previous page (alerts) |
 
 **Responses**
@@ -141,7 +141,7 @@ Global audit log (filter by query: alertId, actor, action, before, limit)
 | `actor` | query | string | no | Only entries by this actor |
 | `action` | query | string | no | Only this action |
 | `before` | query | string | no | Opaque cursor from the x-next-before response header of the previous page (audit entries) or an ISO timestamp |
-| `limit` | query | integer | no | Page size (default 50, max 200; out-of-range values are clamped) |
+| `limit` | query | integer | no | Page size (default 50); clamped to 1..200, a non-numeric value falls back to the default |
 
 **Responses**
 
@@ -197,6 +197,8 @@ Retry a dead letter now
 
 ### GET `/api/events`
 
+**NOT IMPLEMENTED YET** (issue #108): the server currently answers 404.
+
 List stored events (filter, limit, before)
 
 **Parameters**
@@ -204,7 +206,7 @@ List stored events (filter, limit, before)
 | name | in | type | required | description |
 | --- | --- | --- | --- | --- |
 | `filter` | query | string | no | Filter expression text |
-| `limit` | query | integer | no | Page size (default 50, max 200; out-of-range values are clamped) |
+| `limit` | query | integer | no | Page size (default 50); clamped to 1..200, a non-numeric value falls back to the default |
 | `before` | query | string | no | Opaque cursor from the x-next-before response header of the previous page (events) |
 
 **Responses**
@@ -222,7 +224,7 @@ Most recent events (for autocomplete and previews)
 
 | name | in | type | required | description |
 | --- | --- | --- | --- | --- |
-| `limit` | query | integer | no | Page size (default 50, max 1000; out-of-range values are clamped) |
+| `limit` | query | integer | no | Page size (default 50); clamped to 1..1000, a non-numeric value falls back to the default |
 
 **Responses**
 
@@ -1575,6 +1577,8 @@ Example `metricBreach` (Prometheus style metric breach):
 
 ### POST `/api/schemas/test`
 
+**NOT IMPLEMENTED YET** (issue #108): the server currently answers 404.
+
 Try a schema/mapping against a pasted sample; returns the mapped common fields
 
 **Request body** (required)
@@ -1878,6 +1882,8 @@ Example `redisStream` (Redis stream source):
 
 ### POST `/api/sources/test`
 
+**NOT IMPLEMENTED YET** (issue #108): the server currently answers 404.
+
 Try a parser on a sample line; returns the parsed fields
 
 **Request body** (required)
@@ -1993,6 +1999,8 @@ Delete a Source
 | 503 | `application/json` | [Error](#schema-error) | Dependency or component not configured |
 
 ### GET `/api/sources/{id}/preview`
+
+**NOT IMPLEMENTED YET** (issue #108): the server currently answers 404.
 
 Live preview of incoming raw and parsed messages (SSE)
 

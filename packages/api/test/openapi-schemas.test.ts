@@ -151,6 +151,53 @@ describe("openapi document", () => {
     expect(isObj(doc.components) && isObj(doc.components.schemas) && "Error" in doc.components.schemas).toBe(true);
   });
 
+  it("every component schema and every request/response schema compiles as JSON Schema 2020-12", () => {
+    const ajv = newAjv();
+    ajv.addSchema({ $id: DOC_ID, ...doc });
+    const failures: string[] = [];
+    const esc = (s: string) => s.replace(/~/g, "~0").replace(/\//g, "~1");
+    const pointers: string[] = [];
+    const schemas = isObj(doc.components) && isObj(doc.components.schemas) ? doc.components.schemas : {};
+    for (const name of Object.keys(schemas)) pointers.push(`#/components/schemas/${encodeURIComponent(esc(name))}`);
+    for (const { method, path, op } of operations(doc)) {
+      const base = `#/paths/${encodeURIComponent(esc(path))}/${method}`;
+      const rbc = isObj(op.requestBody) && isObj(op.requestBody.content) ? op.requestBody.content : {};
+      for (const mt of Object.keys(rbc)) pointers.push(`${base}/requestBody/content/${encodeURIComponent(esc(mt))}/schema`);
+      const responses = isObj(op.responses) ? op.responses : {};
+      for (const [status, r] of Object.entries(responses)) {
+        const content = isObj(r) && isObj(r.content) ? r.content : {};
+        for (const mt of Object.keys(content)) {
+          pointers.push(`${base}/responses/${status}/content/${encodeURIComponent(esc(mt))}/schema`);
+        }
+      }
+      for (const [i, p] of (Array.isArray(op.parameters) ? op.parameters : []).entries()) {
+        if (isObj(p) && isObj(p.schema)) pointers.push(`${base}/parameters/${i}/schema`);
+      }
+    }
+    expect(pointers.length).toBeGreaterThan(Object.keys(schemas).length);
+    for (const pointer of pointers) {
+      try {
+        ajv.compile({ $ref: `${DOC_ID}${pointer}` });
+      } catch (e) {
+        failures.push(`${pointer}: ${(e as Error).message}`);
+      }
+    }
+    expect(failures).toEqual([]);
+  });
+
+  it("the operations marked x-not-implemented are exactly the four without a handler (update when #108 lands)", () => {
+    const marked = operations(doc)
+      .filter(({ op }) => op["x-not-implemented"] === true)
+      .map(({ method, path, op }) => {
+        expect(String(op.description).startsWith("Not implemented yet (issue #108)"), `${method} ${path}`).toBe(true);
+        return `${method.toUpperCase()} ${path}`;
+      })
+      .sort();
+    expect(marked).toEqual(
+      ["GET /api/events", "GET /api/sources/{id}/preview", "POST /api/schemas/test", "POST /api/sources/test"].sort(),
+    );
+  });
+
   it("docs/api.md is up to date", () => {
     const current = readFileSync(new URL("../../../docs/api.md", import.meta.url), "utf8");
     expect(current === renderApiReference(doc), "docs/api.md is out of date: run `just docs-api`").toBe(true);
@@ -163,6 +210,14 @@ describe("openapi document", () => {
 // ---------------------------------------------------------------------------------------------------------
 
 const hasInfra = Boolean(process.env.DATABASE_URL && process.env.REDIS_URL);
+
+describe("handler conformance prerequisites", () => {
+  // The CI workflow provides Postgres and Redis; never let the conformance suite skip silently there.
+  it.runIf(Boolean(process.env.CI))("DATABASE_URL and REDIS_URL are set in CI", () => {
+    expect(hasInfra, "CI must provide DATABASE_URL and REDIS_URL so the handler conformance tests run").toBe(true);
+  });
+});
+
 const rootUrl = new URL("../../../", import.meta.url);
 
 describe.skipIf(!hasInfra)("handler conformance", () => {

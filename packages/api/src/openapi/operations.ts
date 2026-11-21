@@ -37,7 +37,12 @@ export interface OperationSpec {
   errors: number[];
   /** Non-Error responses for a failure status (e.g. /health 503). */
   failures?: ResponseSpec[];
+  /** Route is listed in ROUTES but has no handler yet (the server answers 404). */
+  notImplemented?: boolean;
 }
+
+/** Prefix of the description of operations that are documented but not served yet. */
+export const NOT_IMPLEMENTED_NOTE = "Not implemented yet (issue #108): the server currently answers 404.";
 
 const ref = (name: string): Schema => ({ $ref: `#/components/schemas/${name}` });
 const list = (name: string): Schema => ({ type: "array", items: ref(name) });
@@ -75,8 +80,9 @@ const q = (name: string, schema: Schema, description: string, required = false):
   required,
 });
 
+/** Handlers never answer 400 for `limit`: non-numeric values fall back to the default, others are clamped. */
 const limitParam = (def: number, max: number): ParamSpec =>
-  q("limit", { type: "integer", minimum: 1, maximum: max, default: def }, `Page size (default ${def}, max ${max}; out-of-range values are clamped)`);
+  q("limit", { type: "integer", default: def }, `Page size (default ${def}); clamped to 1..${max}, a non-numeric value falls back to the default`);
 
 /** Config store routes can answer 503 when the store is not wired. */
 const CFG = [503];
@@ -136,6 +142,7 @@ export const operationSpecs: Record<string, OperationSpec> = {
     errors: [400, 404, 413, 500],
   },
   "GET /api/sources/{id}/preview": {
+    notImplemented: true,
     success: {
       status: 200,
       description: "Server-sent events: each `data:` line is JSON with the raw and parsed message",
@@ -155,11 +162,13 @@ export const operationSpecs: Record<string, OperationSpec> = {
   ...prefs("group", "/api/groups"),
 
   "POST /api/schemas/test": {
+    notImplemented: true,
     request: body("SchemaTestRequest"),
     success: json(200, "Whether the sample matched and the mapped common fields", ref("SchemaTestResponse")),
     errors: [400],
   },
   "POST /api/sources/test": {
+    notImplemented: true,
     request: body("SourceTestRequest"),
     success: json(200, "The parsed fields", ref("SourceTestResponse")),
     errors: [400],
@@ -178,6 +187,7 @@ export const operationSpecs: Record<string, OperationSpec> = {
     errors: [400, 404, 413, ...CFG],
   },
   "GET /api/events": {
+    notImplemented: true,
     query: [
       q("filter", { type: "string" }, "Filter expression text"),
       limitParam(50, 200),

@@ -75,8 +75,9 @@ function renderExample(mediaType: string, ex: unknown): string[] {
 
 function renderOperation(method: string, path: string, op: Json): string[] {
   const out: string[] = [`### ${method.toUpperCase()} \`${path}\``, ""];
+  if (op["x-not-implemented"] === true) out.push("**NOT IMPLEMENTED YET** (issue #108): the server currently answers 404.", "");
   if (op.summary) out.push(str(op.summary), "");
-  if (op.description) out.push(str(op.description), "");
+  if (op.description && op["x-not-implemented"] !== true) out.push(str(op.description), "");
 
   const params = Array.isArray(op.parameters) ? (op.parameters as unknown[]).map(obj) : [];
   if (params.length) {

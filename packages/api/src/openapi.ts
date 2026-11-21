@@ -1,7 +1,7 @@
 import { ROUTES, type RouteDef } from "@alerting/shared";
 import { componentSchemas } from "./openapi/components.js";
 import { operationExamples } from "./openapi/examples.js";
-import { operationSpecs, type OperationSpec, type ResponseSpec } from "./openapi/operations.js";
+import { NOT_IMPLEMENTED_NOTE, operationSpecs, type OperationSpec, type ResponseSpec } from "./openapi/operations.js";
 
 type Json = Record<string, unknown>;
 
@@ -70,6 +70,10 @@ function operation(r: RouteDef, spec: OperationSpec, key: string): Json {
   }
 
   const op: Json = { operationId: operationId(r), summary: r.summary, tags: [r.tag], responses };
+  if (spec.notImplemented) {
+    op.description = NOT_IMPLEMENTED_NOTE;
+    op["x-not-implemented"] = true;
+  }
   if (parameters.length) op.parameters = parameters;
   if (spec.request) {
     const examples = operationExamples[key] ?? {};
