@@ -188,6 +188,8 @@ export const componentSchemas: Record<string, object> = {
     },
     ["id", "name", "role", "canCreateRules"],
   ),
+  AccountCreate: obj({ name: str(), role: optStr() }, ["name"]),
+  SessionCreate: obj({ personId: str() }, ["personId"]),
   Group: obj({ id: str(), name: str(), memberIds: arr(str()) }, ["id", "name", "memberIds"]),
   RecipientRef: obj({ type: strEnum(["person", "group"]), id: str() }, ["type", "id"]),
   PreferenceRule: obj({ when: ref("FilterNode"), channels: channels() }, ["when", "channels"]),

@@ -22,6 +22,7 @@ import {
 import { validateRunbook } from "@alerting/runbooks";
 import type { Preference, Runbook, StarredFilter } from "@alerting/shared";
 import { send } from "../../http.js";
+import { lookupFailed, ruleWriteForbidden } from "../accounts/actor.js";
 
 export interface ConfigDeps {
   config?: ConfigStore;
@@ -112,6 +113,29 @@ function isObj(x: unknown): x is Record<string, unknown> {
   return typeof x === "object" && x !== null && !Array.isArray(x);
 }
 
+/** Accounts whose person has canCreateRules false may not create or edit rules (no account: allowed). */
+function checkRuleWrite(kind: Kind, req: http.IncomingMessage): void {
+  if (kind !== "rule") return;
+  if (lookupFailed(req)) throw new HttpError(503, "account lookup failed; try again");
+  if (ruleWriteForbidden(req)) throw new HttpError(403, "this account may not create or edit rules");
+}
+
+/** An account without canCreateRules may not grant or change that permission on any person. */
+async function checkPersonPermission(
+  store: ConfigStore,
+  kind: Kind,
+  req: http.IncomingMessage,
+  body: unknown,
+  id?: string,
+): Promise<void> {
+  if (kind !== "person") return;
+  if (lookupFailed(req)) throw new HttpError(503, "account lookup failed; try again");
+  if (!ruleWriteForbidden(req) || !isObj(body)) return;
+  const old = id === undefined ? undefined : ((await store.get("person", id)) as { canCreateRules?: boolean } | undefined);
+  const changes = old === undefined ? body.canCreateRules === true : (old.canCreateRules === true) !== (body.canCreateRules === true);
+  if (changes) throw new HttpError(403, "this account may not change canCreateRules");
+}
+
 function validateEntity(kind: Kind, body: unknown): string {
   if (!isObj(body)) throw bad(`request body must be a JSON object (a ${kind})`);
   let id: string;
@@ -147,10 +171,12 @@ async function handleCrud(
   if (id === undefined) {
     if (method === "GET") return send(res, 200, await store.list(kind)), true;
     if (method === "POST") {
+      checkRuleWrite(kind, req);
       const text = await readText(req, res);
       if (text === undefined) return true;
       const body = parseJson(text);
       const bodyId = validateEntity(kind, body);
+      await checkPersonPermission(store, kind, req, body);
       if ((await store.get(kind, bodyId)) !== undefined) {
         throw new HttpError(409, `${kind} already exists: ${bodyId}`);
       }
@@ -165,12 +191,14 @@ async function handleCrud(
     return send(res, 200, e), true;
   }
   if (method === "PUT") {
+    checkRuleWrite(kind, req);
     const text = await readText(req, res);
     if (text === undefined) return true;
     const body = parseJson(text);
     const bodyId = validateEntity(kind, body);
     if (bodyId !== id) throw bad(`id in the body (${bodyId}) does not match id in the path (${id})`);
     if ((await store.get(kind, id)) === undefined) throw new HttpError(404, `${kind} not found: ${id}`);
+    await checkPersonPermission(store, kind, req, body, id);
     let entity = body as Record<string, unknown>;
     if (kind === "person" && entity.starredFilters === undefined) {
       // Starred filters live on the person; a replace without them must not wipe them.
@@ -261,6 +289,7 @@ async function handleYaml(
     return sendYaml(res, await exportYaml(store, kind, id)), true;
   }
   if (req.method !== "POST") return false;
+  checkRuleWrite(kind, req);
   const text = await readText(req, res);
   if (text === undefined) return true;
   let value: unknown;

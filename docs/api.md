@@ -6,6 +6,81 @@ This page is generated from the OpenAPI document served at `/api/openapi.json`. 
 
 OpenAPI 3.1.0, API version 0.0.0.
 
+## accounts
+
+### POST `/api/accounts`
+
+Create an account (a Person without rule-creation permission)
+
+**Request body** (required)
+
+Media type `application/json`: [AccountCreate](#schema-accountcreate)
+
+Example `newcomer` (A new account):
+
+```json
+{
+  "name": "Piotr Lis",
+  "role": "Pricing engineer"
+}
+```
+
+**Responses**
+
+| status | media type | schema | description |
+| --- | --- | --- | --- |
+| 201 | `application/json` | [Person](#schema-person) | The created Person (canCreateRules false) |
+| 400 | `application/json` | [Error](#schema-error) | Bad request (invalid id, body, filter or parameter) |
+| 413 | `application/json` | [Error](#schema-error) | Payload too large |
+| 503 | `application/json` | [Error](#schema-error) | Dependency or component not configured |
+
+### GET `/api/session`
+
+The signed-in person (session cookie or X-Account header)
+
+**Responses**
+
+| status | media type | schema | description |
+| --- | --- | --- | --- |
+| 200 | `application/json` | [Person](#schema-person) | The signed-in person (cookie, or X-Account: <personId> header for API clients) |
+| 401 | `application/json` | [Error](#schema-error) | Not signed in |
+
+### POST `/api/session`
+
+Sign in as a person (no password); sets the session cookie
+
+**Request body** (required)
+
+Media type `application/json`: [SessionCreate](#schema-sessioncreate)
+
+Example `anna` (Sign in as Anna):
+
+```json
+{
+  "personId": "anna"
+}
+```
+
+**Responses**
+
+| status | media type | schema | description |
+| --- | --- | --- | --- |
+| 200 | `application/json` | [Person](#schema-person) | The person; the session cookie alerting_session is set (HttpOnly, SameSite=Lax, Path=/) |
+| 400 | `application/json` | [Error](#schema-error) | Bad request (invalid id, body, filter or parameter) |
+| 404 | `application/json` | [Error](#schema-error) | Not found |
+| 413 | `application/json` | [Error](#schema-error) | Payload too large |
+| 503 | `application/json` | [Error](#schema-error) | Dependency or component not configured |
+
+### DELETE `/api/session`
+
+Sign out (ends the session, clears the cookie)
+
+**Responses**
+
+| status | media type | schema | description |
+| --- | --- | --- | --- |
+| 204 |  |  | Signed out; the cookie is cleared |
+
 ## alerts
 
 ### GET `/api/alerts`
@@ -2553,6 +2628,15 @@ Export a source as YAML
 
 ## Schemas
 
+<a id="schema-accountcreate"></a>
+
+### AccountCreate
+
+| name | type | required | description |
+| --- | --- | --- | --- |
+| `name` | string | yes |  |
+| `role` | string \| null | no |  |
+
 <a id="schema-alert"></a>
 
 ### Alert
@@ -3021,6 +3105,14 @@ Type: { action: "http", name?: string, method: string, url: string, headers?: ma
 | --- | --- | --- | --- |
 | `matched` | boolean | yes |  |
 | `common` | [CommonFields](#schema-commonfields) | yes |  |
+
+<a id="schema-sessioncreate"></a>
+
+### SessionCreate
+
+| name | type | required | description |
+| --- | --- | --- | --- |
+| `personId` | string | yes |  |
 
 <a id="schema-severity"></a>
 

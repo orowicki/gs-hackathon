@@ -135,6 +135,7 @@ const server = createServer({
   runbooks: runbookRegistry ? createRunbookRoutes({ runner, registry: runbookRegistry, loadAlert: runtime.loadAlert, loadEvent: runtime.loadEvent }) : undefined,
   delivery,
   config,
+  pool,
   subscribeUiPush(onMessage) {
     return uiHub.subscribe(onMessage);
   },
