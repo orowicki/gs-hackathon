@@ -9,8 +9,8 @@
     "node": ">=20"
   },
   "scripts": {
-    "build": "tsc -b packages/shared packages/filter packages/api",
-    "lint": "eslint . && tsc -b packages/shared packages/filter packages/api && tsc -p packages/api/tsconfig.test.json && tsc -p packages/filter/tsconfig.test.json && tsc -p packages/shared/test/tsconfig.json",
+    "build": "tsc -b packages/*",
+    "lint": "eslint . && tsc -b packages/* && npm run typecheck --workspaces --if-present",
     "test": "vitest run"
   },
   "devDependencies": {
