@@ -1,14 +1,19 @@
 import { SEVERITIES, type EventStatus, type Severity } from "@alerting/shared";
 
+const CANONICAL_DECIMAL = /^-?(0|[1-9]\d*)(\.\d+)?$/;
+
 /**
- * Numeric strings become numbers ("12.5" -> 12.5); everything else is returned unchanged.
- * Use it on raw parsed values before filter comparison if numeric semantics are wanted.
- * Common string fields (title, source, ...) are never passed through it.
+ * Canonical numeric strings become numbers ("12.5" -> 12.5); everything else is unchanged.
+ * Canonical: optional `-`, no leading zeros (except `0` / `0.x`), no `+`, no exponent, no
+ * whitespace, finite, integers within the safe-integer range. So "007", "+1", "1e3", " 5" and
+ * long digit strings (ids) stay strings.
  */
 export function normaliseValue(v: unknown): unknown {
-  if (typeof v === "string" && v.trim() !== "") {
+  if (typeof v === "string" && CANONICAL_DECIMAL.test(v)) {
     const n = Number(v);
-    if (Number.isFinite(n)) return n;
+    if (!Number.isFinite(n) || Object.is(n, -0)) return v;
+    if (!v.includes(".") && !Number.isSafeInteger(n)) return v;
+    return n;
   }
   return v;
 }
@@ -22,13 +27,23 @@ export function normaliseDeep(v: unknown): unknown {
   return normaliseValue(v);
 }
 
+const EPOCH_STRING = /^\d{9,}(\.\d+)?$/;
+const DIGITS = /^-?\d+(\.\d+)?$/;
+
 /**
- * ISO string, epoch seconds or epoch ms (number or numeric string) -> ISO `toISOString()`.
- * Numbers below 1e11 are seconds, otherwise milliseconds. Unparseable -> undefined.
+ * ISO string, epoch seconds or epoch ms -> ISO `toISOString()`. Numbers below 1e11 are seconds,
+ * otherwise milliseconds. Numeric strings count as epoch only with >= 9 digits (so "2026" or
+ * "20261023" are omitted, never 1970 dates). Unparseable -> undefined.
  */
 export function normaliseTimestamp(v: unknown): string | undefined {
   let d: Date;
-  const n = typeof v === "number" ? v : typeof v === "string" && /^\s*-?\d+(\.\d+)?\s*$/.test(v) ? Number(v) : undefined;
+  let n: number | undefined;
+  if (typeof v === "number") n = v;
+  else if (typeof v === "string") {
+    const t = v.trim();
+    if (EPOCH_STRING.test(t)) n = Number(t);
+    else if (DIGITS.test(t)) return undefined;
+  }
   if (n !== undefined) {
     if (!Number.isFinite(n)) return undefined;
     d = new Date(Math.abs(n) < 1e11 ? n * 1000 : n);

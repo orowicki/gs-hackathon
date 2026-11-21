@@ -138,6 +138,26 @@ describe("mapCommonFields", () => {
     const c = mapCommonFields({ t: ms / 1000 }, mk("s", "", { occurredAt: { kind: "path", path: "t" } }));
     expect(c.occurredAt).toBe(iso);
   });
+  it("occurredAt: short digit strings are omitted, not 1970", () => {
+    for (const v of ["2026", "20261023", "12345678", "1.5"]) expect(normaliseTimestamp(v)).toBeUndefined();
+    expect(normaliseTimestamp("1700000000")).toBe("2023-11-14T22:13:20.000Z");
+    expect(normaliseTimestamp("1700000000000")).toBe("2023-11-14T22:13:20.000Z");
+  });
+  it("occurredAt honours valueMap", () => {
+    const c = mapCommonFields(
+      { t: "never" },
+      mk("s", "", { occurredAt: { kind: "path", path: "t", valueMap: { never: "2026-10-23T09:13:00Z" } } }),
+    );
+    expect(c.occurredAt).toBe("2026-10-23T09:13:00.000Z");
+  });
+  it("normaliseValue only converts canonical decimals", () => {
+    for (const v of ["007", "+1", "1e3", " 5", "5 ", "-0", "0x10", "12345678901234567890", "1.", ".5", "NaN"]) {
+      expect(normaliseValue(v)).toBe(v);
+    }
+    expect(normaliseValue("0")).toBe(0);
+    expect(normaliseValue("-3")).toBe(-3);
+    expect(normaliseValue("0.25")).toBe(0.25);
+  });
   it("normaliseValue", () => {
     expect(normaliseValue("12.5")).toBe(12.5);
     expect(normaliseValue("abc")).toBe("abc");
@@ -161,8 +181,31 @@ describe("matching", () => {
   });
   it("unmatched: schemaId null, common empty, raw filter still true", () => {
     const ev = { labels: { severity: "critical" }, amount: "1500000" };
-    expect(classifyEvent(ev, [mk("a", "nope = 1")])).toEqual({ schemaId: null, common: {} });
+    expect(classifyEvent(ev, [mk("a", "nope = 1")])).toEqual({ schemaId: null, common: {}, parsed: { labels: { severity: "critical" }, amount: 1500000 } });
     expect(evaluate(parse("labels.severity = critical AND amount > 1000000"), { event: ev })).toBe(true);
+  });
+});
+
+describe("automatic normalisation", () => {
+  it("unmatched event is returned normalised and numeric filters work", () => {
+    const r = classifyEvent({ n: "42", id: "007" }, []);
+    expect(r.schemaId).toBeNull();
+    expect((r.parsed as { n: unknown; id: unknown }).n).toBe(42);
+    expect((r.parsed as { id: unknown }).id).toBe("007");
+    expect(evaluate(parse("n > 40"), { event: r.parsed })).toBe(true);
+  });
+  it("schema match on numeric comparison over a numeric-string field", () => {
+    const r = classifyEvent({ amount: "1500000", name: "x" }, [
+      mk("a", "amount > 1000000", { title: { kind: "template", template: "{{name}}-{{amount}}" } }),
+    ]);
+    expect(r.schemaId).toBe("a");
+    expect(r.common.title).toBe("x-1500000");
+    expect(typeof r.common.title).toBe("string");
+  });
+  it("string literal equality still works against a normalised number", () => {
+    const r = classifyEvent({ code: "42" }, []);
+    expect(evaluate(parse('code = "42"'), { event: r.parsed })).toBe(true);
+    expect(evaluate(parse("code = 42"), { event: r.parsed })).toBe(true);
   });
 });
 
@@ -210,7 +253,7 @@ describe("registry live reload", () => {
     await store.upsert("schema", mk("s1", "kind = k1", { severity: { kind: "path", path: "sev" } }));
     await store.upsert("schema", mk("bad", "kind ="));
     await new Promise((r) => setTimeout(r, 20));
-    expect(reg.classify(ev)).toEqual({ schemaId: "s1", common: { severity: "error" } });
+    expect(reg.classify(ev)).toEqual({ schemaId: "s1", common: { severity: "error" }, parsed: ev });
     expect(errs).toContain("bad");
     await store.upsert("schema", mk("s1", "kind = k1", { severity: { kind: "constant", value: "critical" } }));
     await new Promise((r) => setTimeout(r, 20));
@@ -218,6 +261,28 @@ describe("registry live reload", () => {
     await store.delete("schema", "s1");
     await new Promise((r) => setTimeout(r, 20));
     expect(reg.classify(ev).schemaId).toBeNull();
+    reg.close();
+  });
+});
+
+describe("registry initial load failure", () => {
+  it("ready rejects, then the next change event retries", async () => {
+    const store = fakeStore();
+    let fail = true;
+    const list = store.list.bind(store);
+    store.list = (async (k: Kind) => {
+      if (fail) throw new Error("db down");
+      return list(k);
+    }) as typeof store.list;
+    const errs: string[] = [];
+    const reg = createSchemaRegistry(store, { onError: (e) => errs.push(e.message) });
+    await expect(reg.ready).rejects.toThrow("db down");
+    expect(errs).toContain("db down");
+    expect(reg.schemas()).toEqual([]);
+    fail = false;
+    await store.upsert("schema", mk("s1", "kind = k1"));
+    await new Promise((r) => setTimeout(r, 20));
+    expect(reg.classify({ kind: "k1" }).schemaId).toBe("s1");
     reg.close();
   });
 });

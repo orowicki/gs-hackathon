@@ -22,7 +22,8 @@ function valid(s: unknown): s is Schema {
 /**
  * Live view of the stored schemas. Loads on start, then re-lists on every `schema` change event,
  * so new/changed/deleted schemas apply to the next event without a restart. Invalid entries are
- * skipped and reported via `onError`.
+ * skipped and reported via `onError`. If the initial load fails, `ready` rejects (and `onError`
+ * is called) but the subscription stays, so the next `schema` change event retries the load.
  */
 export function createSchemaRegistry(
   store: Pick<ConfigStore, "list" | "onChange">,
@@ -40,8 +41,8 @@ export function createSchemaRegistry(
   let unsub: (() => void) | undefined;
   let chain: Promise<void> = Promise.resolve();
 
-  const reload = async () => {
-    try {
+  const reload = async (): Promise<void> => {
+    {
       const all = await store.list("schema");
       const ok: Schema[] = [];
       for (const s of all) {
@@ -58,18 +59,29 @@ export function createSchemaRegistry(
         ok.push(s);
       }
       if (!closed) current = ok;
-    } catch (e) {
-      report(e);
     }
   };
-  const queue = () => (chain = chain.then(reload));
+  // Later reload failures keep the previous schemas and are reported; the next change retries.
+  const queue = () =>
+    (chain = chain.then(reload).catch((e) => {
+      report(e);
+    }));
 
   const ready = (async () => {
     const u = await store.onChange("schema", () => void queue());
     if (closed) u();
     else unsub = u;
-    await queue();
+    let failure: unknown;
+    let failed = false;
+    chain = chain.then(reload).catch((e) => {
+      failed = true;
+      failure = e;
+      report(e);
+    });
+    await chain;
+    if (failed) throw failure;
   })();
+  ready.catch(() => {}); // rejection is observable via `ready`; avoid an unhandled-rejection crash
 
   return {
     ready,

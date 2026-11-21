@@ -1,6 +1,7 @@
 import { evaluate, tryParse, validateTree, type FilterNode } from "@alerting/filter";
 import type { CommonFields, Schema } from "@alerting/shared";
 import { mapCommonFields } from "./map.js";
+import { normaliseDeep } from "./normalise.js";
 
 export type SchemaErrorHandler = (err: Error, schemaId: string) => void;
 
@@ -38,11 +39,17 @@ export function matchSchema(parsed: unknown, schemas: readonly Schema[], onError
 export interface Classification {
   schemaId: string | null;
   common: Partial<CommonFields>;
+  /** The event with canonical numeric strings converted to numbers; store this one. */
+  parsed: unknown;
 }
 
-/** Match + map. Unmatched: `{ schemaId: null, common: {} }` (raw fields stay usable by filters). */
-export function classifyEvent(parsed: unknown, schemas: readonly Schema[], onError?: SchemaErrorHandler): Classification {
+/**
+ * Normalise (`normaliseDeep`), match and map. Match filters and mapping run on the normalised
+ * event. Unmatched: `{ schemaId: null, common: {}, parsed }` (raw fields stay usable by filters).
+ */
+export function classifyEvent(raw: unknown, schemas: readonly Schema[], onError?: SchemaErrorHandler): Classification {
+  const parsed = normaliseDeep(raw);
   const s = matchSchema(parsed, schemas, onError);
-  if (!s) return { schemaId: null, common: {} };
-  return { schemaId: s.id, common: mapCommonFields(parsed, s) };
+  if (!s) return { schemaId: null, common: {}, parsed };
+  return { schemaId: s.id, common: mapCommonFields(parsed, s), parsed };
 }

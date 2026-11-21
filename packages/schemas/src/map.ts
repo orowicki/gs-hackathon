@@ -81,7 +81,7 @@ export function mapCommonFields(parsed: unknown, schema: Schema): Partial<Common
         break;
       }
       case "occurredAt": {
-        const t = normaliseTimestamp(m ? (raw(parsed, m) ?? m.default) : undefined);
+        const t = normaliseTimestamp(v);
         if (t) out.occurredAt = t;
         break;
       }
