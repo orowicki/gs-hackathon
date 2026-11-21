@@ -55,9 +55,8 @@ for (const scheme of ["light", "dark"] as const) {
       await expect(rows.first().getByRole("link", { name: "Open" })).toBeVisible();
       await expect(rows.first().getByText("Environment")).toBeVisible();
 
-      await page.getByRole("button", { name: "Settings" }).click();
-      await expect(page.getByRole("radiogroup", { name: "Profile" })).toBeVisible();
-      await expect(page.getByRole("radio").first()).toBeVisible();
+      await page.getByRole("button", { name: /^Account:/ }).click();
+      await expect(page.getByRole("button", { name: "Sign out" })).toBeVisible();
       await page.keyboard.press("Escape");
 
       await page.screenshot({ path: path.join(shots, `feed-${scheme}.png`) });

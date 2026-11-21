@@ -667,6 +667,7 @@ Example `pricingTeam` (Pricing team):
 | --- | --- | --- | --- |
 | 201 | `application/json` | [Group](#schema-group) | The created Group (echo of the request body) |
 | 400 | `application/json` | [Error](#schema-error) | Bad request (invalid id, body, filter or parameter) |
+| 403 | `application/json` | [Error](#schema-error) | The account is not allowed to do this |
 | 409 | `application/json` | [Error](#schema-error) | Conflict with the current state |
 | 413 | `application/json` | [Error](#schema-error) | Payload too large |
 | 503 | `application/json` | [Error](#schema-error) | Dependency or component not configured |
@@ -726,6 +727,7 @@ Example `ratesDesk` (Add a member (path id rates-desk)):
 | --- | --- | --- | --- |
 | 200 | `application/json` | [Group](#schema-group) | The replaced Group |
 | 400 | `application/json` | [Error](#schema-error) | Bad request (invalid id, body, filter or parameter) |
+| 403 | `application/json` | [Error](#schema-error) | The account is not allowed to do this |
 | 404 | `application/json` | [Error](#schema-error) | Not found |
 | 413 | `application/json` | [Error](#schema-error) | Payload too large |
 | 503 | `application/json` | [Error](#schema-error) | Dependency or component not configured |
@@ -746,6 +748,7 @@ Delete a Group
 | --- | --- | --- | --- |
 | 204 |  |  | Group deleted |
 | 400 | `application/json` | [Error](#schema-error) | Bad request (invalid id, body, filter or parameter) |
+| 403 | `application/json` | [Error](#schema-error) | The account is not allowed to do this |
 | 404 | `application/json` | [Error](#schema-error) | Not found |
 | 503 | `application/json` | [Error](#schema-error) | Dependency or component not configured |
 
@@ -877,6 +880,7 @@ Example `ewa` (Ewa):
 | --- | --- | --- | --- |
 | 201 | `application/json` | [Person](#schema-person) | The created Person (echo of the request body) |
 | 400 | `application/json` | [Error](#schema-error) | Bad request (invalid id, body, filter or parameter) |
+| 403 | `application/json` | [Error](#schema-error) | The account is not allowed to do this |
 | 409 | `application/json` | [Error](#schema-error) | Conflict with the current state |
 | 413 | `application/json` | [Error](#schema-error) | Payload too large |
 | 503 | `application/json` | [Error](#schema-error) | Dependency or component not configured |
@@ -934,6 +938,7 @@ Example `anna` (Change Anna's role (path id anna)):
 | --- | --- | --- | --- |
 | 200 | `application/json` | [Person](#schema-person) | The replaced Person |
 | 400 | `application/json` | [Error](#schema-error) | Bad request (invalid id, body, filter or parameter) |
+| 403 | `application/json` | [Error](#schema-error) | The account is not allowed to do this |
 | 404 | `application/json` | [Error](#schema-error) | Not found |
 | 413 | `application/json` | [Error](#schema-error) | Payload too large |
 | 503 | `application/json` | [Error](#schema-error) | Dependency or component not configured |
@@ -954,6 +959,7 @@ Delete a Person
 | --- | --- | --- | --- |
 | 204 |  |  | Person deleted |
 | 400 | `application/json` | [Error](#schema-error) | Bad request (invalid id, body, filter or parameter) |
+| 403 | `application/json` | [Error](#schema-error) | The account is not allowed to do this |
 | 404 | `application/json` | [Error](#schema-error) | Not found |
 | 503 | `application/json` | [Error](#schema-error) | Dependency or component not configured |
 
@@ -1246,6 +1252,7 @@ Example `annaCritical` (Anna personal rule (filter as JSON tree)):
 | --- | --- | --- | --- |
 | 201 | `application/json` | [Rule](#schema-rule) | The created Rule (echo of the request body) |
 | 400 | `application/json` | [Error](#schema-error) | Bad request (invalid id, body, filter or parameter) |
+| 403 | `application/json` | [Error](#schema-error) | The account is not allowed to do this |
 | 409 | `application/json` | [Error](#schema-error) | Conflict with the current state |
 | 413 | `application/json` | [Error](#schema-error) | Payload too large |
 | 503 | `application/json` | [Error](#schema-error) | Dependency or component not configured |
@@ -1326,6 +1333,7 @@ Example `rates` (Disable Team Rates (path id rates-trade-rejected)):
 | --- | --- | --- | --- |
 | 200 | `application/json` | [Rule](#schema-rule) | The replaced Rule |
 | 400 | `application/json` | [Error](#schema-error) | Bad request (invalid id, body, filter or parameter) |
+| 403 | `application/json` | [Error](#schema-error) | The account is not allowed to do this |
 | 404 | `application/json` | [Error](#schema-error) | Not found |
 | 413 | `application/json` | [Error](#schema-error) | Payload too large |
 | 503 | `application/json` | [Error](#schema-error) | Dependency or component not configured |
@@ -1346,6 +1354,7 @@ Delete a Rule
 | --- | --- | --- | --- |
 | 204 |  |  | Rule deleted |
 | 400 | `application/json` | [Error](#schema-error) | Bad request (invalid id, body, filter or parameter) |
+| 403 | `application/json` | [Error](#schema-error) | The account is not allowed to do this |
 | 404 | `application/json` | [Error](#schema-error) | Not found |
 | 503 | `application/json` | [Error](#schema-error) | Dependency or component not configured |
 

@@ -1,0 +1,162 @@
+/* Sign-in: one Grafana-style panel centred on the page background. */
+
+.signin {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: var(--space-5) 16px;
+  background: var(--bg);
+  box-sizing: border-box;
+}
+
+.signin-card {
+  width: 100%;
+  max-width: 440px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-5);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-sizing: border-box;
+}
+
+.signin-brand {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-weight: var(--weight-strong);
+  color: var(--text-strong);
+}
+
+.signin h1 { margin: var(--space-2) 0 0; font-size: 22px; color: var(--text-strong); }
+.signin h2 { margin: 0; font-size: var(--text-md); color: var(--text-strong); }
+.signin p { margin: 0; }
+.signin .small { font-size: var(--text-sm); }
+
+.signin-note {
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--text-sm);
+  color: var(--text);
+  background: var(--surface-2);
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius);
+}
+
+.signin-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.signin-list li + li { border-top: 1px solid var(--border); }
+
+.signin-person {
+  width: 100%;
+  display: grid;
+  grid-template-columns: 32px 1fr auto auto;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  font: inherit;
+  text-align: left;
+  color: var(--text);
+  background: var(--surface);
+  border: 0;
+  cursor: pointer;
+}
+.signin-person:hover:not(:disabled) { background: var(--surface-2); }
+.signin-person:hover:not(:disabled) .signin-go { color: var(--accent); }
+.signin-person:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.signin-person:disabled { cursor: default; opacity: 0.7; }
+
+.signin-avatar {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  font-size: 12px;
+  font-weight: var(--weight-strong);
+  color: var(--text-strong);
+  background: var(--surface-2);
+  border: 1px solid var(--border-strong);
+  border-radius: 50%;
+}
+
+.signin-text { display: flex; flex-direction: column; min-width: 0; font-size: var(--text-sm); }
+.signin-name { color: var(--text-strong); font-size: var(--text-md); font-weight: var(--weight-strong); }
+
+.signin-tag {
+  padding: 1px 6px;
+  font-size: 11px;
+  color: var(--accent);
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--border));
+  border-radius: var(--radius);
+  white-space: nowrap;
+}
+
+.signin-go { font-size: var(--text-sm); color: var(--muted); white-space: nowrap; }
+
+.signin-new {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 0;
+  font: inherit;
+  font-size: var(--text-sm);
+  color: var(--accent);
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+.signin-new:hover { text-decoration: underline; }
+
+.signin-create {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border);
+}
+
+.signin-create label { display: flex; flex-direction: column; gap: 4px; font-size: var(--text-sm); color: var(--text); }
+
+.signin-create input {
+  height: 32px;
+  padding: 0 var(--space-2);
+  font: inherit;
+  color: var(--text-strong);
+  background: var(--bg);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+}
+.signin-create input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+
+.signin-actions { display: flex; gap: var(--space-2); }
+
+.signin .btn {
+  height: 32px;
+  padding: 0 var(--space-3);
+  font: inherit;
+  font-size: var(--text-sm);
+  font-weight: var(--weight-strong);
+  color: var(--text-strong);
+  background: var(--surface-2);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  cursor: pointer;
+}
+.signin .btn.primary.solid { color: var(--on-accent); background: var(--accent-bg); border-color: var(--accent-bg); }
+.signin .btn:disabled { opacity: 0.5; cursor: default; }
+
+@media (max-width: 480px) {
+  .signin-person { grid-template-columns: 32px 1fr auto; }
+  .signin-tag { display: none; }
+}
+.signin-go { grid-column: 4; }
+@media (max-width: 480px) { .signin-go { grid-column: 3; } }
