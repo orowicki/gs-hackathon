@@ -22,6 +22,16 @@ describe("ntfy", () => {
     expect(c.actions[1]!.url).toBe("http://alerts.example/api/alerts/a2/runbook-steps/3/approve");
   });
 
+  it("sends X-Account of the recipient on Acknowledge and Approve, not on view actions", () => {
+    const b = buildNtfyBody(note(1, { approveStepIndex: 0, runbookUrl: "http://rb/1" }), o) as { actions: { label: string; headers?: Record<string, string> }[] };
+    expect(b.actions.map((a) => a.label)).toEqual(["Acknowledge", "Approve", "Runbook"]);
+    expect(b.actions[0]!.headers).toEqual({ "X-Account": "bob" });
+    expect(b.actions[1]!.headers).toEqual({ "X-Account": "bob" });
+    expect(b.actions[2]!.headers).toBeUndefined();
+    const e = buildNtfyBody(note(1, { recipientId: "" }), o) as typeof b;
+    expect(e.actions[0]!.headers).toBeUndefined();
+  });
+
   it("appends runbook link", () => {
     const b = buildNtfyBody(note(1, { body: "hi", runbookUrl: "http://rb/1" }), o) as { message: string; actions: { action: string }[] };
     expect(b.message).toBe("hi\nRunbook: http://rb/1");
