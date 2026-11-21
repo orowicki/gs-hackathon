@@ -15,10 +15,9 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v5
       - uses: extractions/setup-just@v2
-      # - uses: actions/setup-node@v4
-      #   with: { node-version: 22 }
-      # - run: npm ci
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - run: npm ci
       - run: just lint
       - run: just test
