@@ -13,6 +13,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY --from=ghcr.io/astral-sh/uv:0.9.5 /uv /uvx /usr/local/bin/
 RUN npm install -g @anthropic-ai/claude-code rust-just
 
+# Chromium for the web e2e tests (Playwright). Installed into the image because the
+# firewall blocks the browser download at runtime. Keep the version equal to
+# playwright in package-lock.json, or Playwright looks for a different browser build.
+ARG PLAYWRIGHT_VERSION=1.65.1
+ENV PLAYWRIGHT_BROWSERS_PATH=/opt/ms-playwright
+RUN npx -y playwright@${PLAYWRIGHT_VERSION} install --with-deps chromium \
+    && chmod -R a+rX /opt/ms-playwright \
+    && rm -rf /var/lib/apt/lists/* /root/.npm
+
 COPY init-firewall.sh /usr/local/bin/init-firewall.sh
 COPY start-services.sh /usr/local/bin/start-services.sh
 RUN chmod 755 /usr/local/bin/init-firewall.sh /usr/local/bin/start-services.sh \
