@@ -1,12 +1,12 @@
 # Config file formats
 
-Reference for the YAML files in `config/` (and for the same entities when created through the API). Every field list below is taken from the shared types (`packages/shared/src/types/`) and the loader (`packages/config/src/watcher.ts`, `store.ts`); every example is checked by `tests/docs/config-examples.test.ts` against the real loader and validators, so a wrong example fails `npm test`.
+Reference for the YAML files in `config/` (and for the same entities when created through the API). Every field list below is taken from the shared types (`packages/shared/src/types/`) and the loader (`packages/config/src/watcher.ts`, `store.ts`); examples are checked by `tests/docs/config-examples.test.ts`: they are parsed with the real loader (`fromYaml`, `entityId`), filters with the real filter parser, runbooks with `validateRunbook`, and the other kinds with field checks in the test that mirror the shared types. A wrong example fails `npm test`.
 
 ## How files are loaded
 
 - Layout: one entity per file; the directory is the kind (`config/sources/`, `schemas/`, `rules/`, `people/`, `groups/`, `runbooks/`). Preferences have no directory (see [Preferences](#preferences)).
 - Extensions: `.yaml` and `.yml` (case-insensitive). Other files, such as `.gitkeep` or `README.md`, are ignored.
-- File name: free. The entity id is the `id` field in the file; if it is missing, the file name without extension is used (not for preferences). The id must be a non-empty string. Two files with the same id: the last one read wins and the duplicate is reported.
+- File name: free. The entity id is the `id` field in the file; if it is missing, the file name without extension is used (not for preferences). The id must be a non-empty string. Two files with the same id: the duplicate is reported and the entity is overwritten by whichever file is read later (directory scan order), so avoid duplicate ids.
 - The app reads the directory from the `CONFIG_DIR` environment variable (default `./config`; compose mounts `./config` at `/app/config`). If the directory does not exist, live reload is disabled and an error is logged.
 - Seed vs live reload (`packages/api/src/config-watch.ts`, `watchConfigDir` in `@alerting/config`): on start, a file is loaded only if no entity with that id exists in the database yet, so edits made through the API survive restarts. After start, adding or editing a file upserts the entity (writes are debounced by about 100 ms), and deleting a file deletes the entity. Other processes are told through the config change channel.
 - An invalid YAML file or an invalid entity is logged with the file path and the reason, then skipped. It never stops the watcher. The watcher never writes to the files.
@@ -265,7 +265,7 @@ quietHours:
 
 Directory `config/runbooks/` (kind `runbook`). Two types, chosen by `type`.
 
-Common fields: `id` (string, required or file name), `name` (string, required), `type` (`text` or `automation`, required), `matches` (filter, optional, but without it the runbook is never suggested: always set it).
+Common fields: `id` (string, required or file name), `name` (string, required), `type` (`text` or `automation`, required), `matches` (filter, optional, but a missing or empty `matches` matches every alert, so the runbook is suggested for all of them: always set it. Only an unparseable `matches` is never suggested).
 
 | Type | Extra fields |
 |---|---|

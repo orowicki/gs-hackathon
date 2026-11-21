@@ -70,9 +70,9 @@ export interface Channel {
 
 Steps:
 
-1. Write a factory `createXChannel(opts): Channel`. Copy `ui.ts` (simplest), `ntfy.ts` (HTTP) or `email.ts` (SMTP, with error classification).
+1. Write a factory, e.g. `createXChannel(opts): Channel` (`X` is a placeholder for your channel name). Copy `ui.ts` (simplest), `ntfy.ts` (HTTP) or `email.ts` (SMTP, with error classification).
 2. Export it from `packages/delivery/src/index.ts`.
-3. Register it at startup in `packages/api/src/main.ts`: `registerChannel(createXChannel(...))`, next to the ui, ntfy and email lines. Read options from env there, and document new variables in the README configuration table.
+3. Register it at startup in `packages/api/src/main.ts`: `registerChannel(createXChannel(...))` (your factory), next to the ui, ntfy and email lines. Read options from env there, and document new variables in the README configuration table.
 4. Make people use it: add the channel id to `channels` in a person's preferences (see [config-formats.md](config-formats.md)) or to `force` in a rule.
 
 Test: copy `packages/delivery/test/ntfy.test.ts` (or `email.test.ts`; both need Redis). Run `npx vitest run packages/delivery`.
@@ -95,11 +95,11 @@ export interface ActionResult { ok: boolean; result: string } // result: short o
 
 Steps:
 
-1. Add a `fooAction(opts): ActionPlugin` factory in `actions.ts`, like `httpAction`, `escalateAction` and `waitAction`. Cast `step` to your step type.
-2. Add the step interface (`action: "foo"`) to `packages/shared/src/types/runbook.ts`, and add it to the `RunbookStep` union. Add a `case` to `stepDisplayName` in `actions.ts` (the default case prints the action name).
-3. Register it in `createDefaultActions()` in `actions.ts`: add `fooAction(...)` to the `createActionRegistry([...])` list. Pass extra deps via `DefaultActionDeps`, wired in `packages/api/src/main.ts` (`createDefaultActions({ notifyGroup })`).
+1. Add a factory, e.g. `fooAction(opts): ActionPlugin` (`foo` is a placeholder for your action name) in `actions.ts`, like `httpAction`, `escalateAction` and `waitAction`. Cast `step` to your step type.
+2. Add the step interface (e.g. `action: "foo"`, your action name) to `packages/shared/src/types/runbook.ts`, and add it to the `RunbookStep` union. Add a `case` to `stepDisplayName` in `actions.ts` (the default case prints the action name).
+3. Register it in `createDefaultActions()` in `actions.ts`: add your `fooAction(...)` to the `createActionRegistry([...])` list. Pass extra deps via `DefaultActionDeps`, wired in `packages/api/src/main.ts` (`createDefaultActions({ notifyGroup })`).
 4. Optional validation: `packages/runbooks/src/match.ts` checks the fields of known actions (`http`, `escalate`, `wait`). Unknown actions pass the generic check, so add a field check there for yours.
-5. Use it in a runbook: `steps: [{ action: foo, ... }]` (see `config/runbooks/`).
+5. Use it in a runbook: `steps: [{ action: foo, ... }]` (with your action name) (see `config/runbooks/`).
 
 Test: copy `packages/runbooks/test/actions.test.ts`. Run `npx vitest run packages/runbooks`.
 

@@ -53,7 +53,7 @@ The source of truth for names is `packages/shared/src/streams.ts`. All names sta
 | `alerting:events` | stream | parse worker | rule engine, group `engine` |
 | `alerting:alerts` | stream | rule engine (`AlertEvent` after each match) | no consumer today. `GROUP_FANOUT` is defined but unused. Runbook worker would read it (not started). |
 | `alerting:delivery:queue` | list | rule engine, throttle digests, runbook notifier | delivery worker |
-| `alerting:delivery:processing[:id]` | lists | delivery worker, one per worker, for crash recovery | delivery worker (reaper) |
+| `alerting:delivery:processing:<workerId>` (plus `...:alive` lease key) | lists | delivery worker, one list per worker, for crash recovery | delivery worker (reaper) |
 | `alerting:delivery:retry` | sorted set | delivery worker (retryable failures, score = due time) | delivery worker (moves due items back to the queue) |
 | `alerting:delivery:dead` | list | delivery worker (retries exhausted) | API (dead letters page and retry) |
 | `alerting:config:changed` | pub/sub | config store | processes that watch config |
@@ -64,7 +64,7 @@ The source of truth for names is `packages/shared/src/streams.ts`. All names sta
 | `alerting:events:recent` | list | parse worker (capped at 1000) | API, for "test against recent events" |
 | `alerting:ingest:failed` | list | parse worker (rows that Postgres rejects, capped at 1000) | nobody reads it in code |
 
-The raw and events streams are trimmed with `MAXLEN ~` on write. The streams.md contract describes a separate fan-out stage on `alerting:alerts`. The code does not do this. The engine pushes notifications to the delivery queue itself.
+The raw stream (`publisher.ts`) and the events stream (`worker.ts`) are each trimmed with `MAXLEN ~ 1000000` on write. The streams.md contract describes a separate fan-out stage on `alerting:alerts`. The code does not do this. The engine pushes notifications to the delivery queue itself.
 
 ## Postgres tables
 
@@ -109,7 +109,7 @@ What the code supports:
 
 - Parse workers: yes. They use consumer group `parse`, a unique consumer name per process (host and pid) and `XAUTOCLAIM` for entries stuck in another consumer's pending list. The API's own parse worker is one more consumer.
 - Engine: yes. It uses group `engine`, a consumer name with pid and a random suffix, and `XAUTOCLAIM` with a maximum delivery count. Dedup uses a per-key Redis lock, so several engines do not double-create an alert. Delivery is at least once, so a crash can repeat one event.
-- Delivery workers: yes in principle. Each worker has its own processing list and a heartbeat key. Other workers move the items of a dead worker back to the queue. In the current wiring the only delivery worker is in the API, so it scales only with API replicas. The compose file publishes port 3000 on `app` and sets no replicas for it, so running several API containers needs your own setup.
+- Delivery workers: yes in principle. Each worker has its own processing list and an `:alive` lease key (refreshed every 5 s, TTL 15 s). Other workers move the items of a dead worker back to the queue. In the current wiring the only delivery worker is in the API, so it scales only with API replicas. The compose file publishes port 3000 on `app` and sets no replicas for it, so running several API containers needs your own setup.
 - Compose scaling: `WORKERS=N` scales the `worker` container (ingest parse worker plus engine).
 
 What does not scale, or is not covered:
