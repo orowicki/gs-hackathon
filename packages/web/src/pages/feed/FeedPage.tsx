@@ -8,6 +8,7 @@ import { SettingsMenu } from "../../components/SettingsPanel";
 import { withFilter } from "../../filterUrl";
 import { rangeNode, rangeOf, setRange, withoutRange, type TimeRange } from "../../timeRange";
 import { TimeRangePicker } from "../../components/time-range/TimeRangePicker";
+import { SortPicker } from "../../components/SortPicker";
 import { AlertList, SkeletonRows } from "./AlertList";
 import { createSource, isDemoSource } from "./data";
 import type { FeedSource } from "./data";
@@ -27,10 +28,14 @@ import {
   toggleTab,
   upsertAlert,
   valuesFor,
+  FEED_SORTS,
+  parseSort,
+  sortBy,
+  type FeedSort,
   type FeedTab,
 } from "./helpers";
 import { ProfilePicker, StarredList } from "./ProfilePicker";
-import { StatPanels } from "./StatPanels";
+import { StatPanels, type SummaryCounts } from "./StatPanels";
 
 const PROFILE_KEY = "alerting.profile";
 const STARRED_KEY = "alerting.starred.";
@@ -58,6 +63,7 @@ export function FeedPage() {
   const navigate = useNavigate();
   const q = params.get("q") ?? "";
   const tab = parseTab(params.get("tab"));
+  const sort = parseSort(params.get("sort"));
   const input = useRef<HTMLInputElement>(null);
   const scroller = useRef<HTMLElement>(null);
 
@@ -93,8 +99,28 @@ export function FeedPage() {
   // `now` ticks, so alerts drop out of a relative range as time passes.
   const matching = useMemo(() => filterAlerts(alerts ?? [], activeTree), [alerts, activeTree, now]);
   const inRange = useMemo(() => filterAlerts(alerts ?? [], rangeNode(range)), [alerts, range, now]);
+
+  // Exact panel counts from the server (GET /api/alerts/summary) for the chosen time range,
+  // not limited to the alerts loaded here. Refetched (debounced) as live updates arrive.
+  const [summary, setSummary] = useState<SummaryCounts | null>(null);
+  const rangeText = setRange("", range);
+  useEffect(() => {
+    if (!source || isDemoSource(source)) return setSummary(null);
+    let live = true;
+    const t = setTimeout(() => {
+      // An empty filter means no filter, so the query string can always be there.
+      fetch(`/api/alerts/summary?filter=${encodeURIComponent(rangeText)}`)
+        .then((r) => (r.ok ? (r.json() as Promise<SummaryCounts>) : null))
+        .then((c) => live && setSummary(c && typeof c.open === "number" ? c : null))
+        .catch(() => live && setSummary(null));
+    }, 400);
+    return () => {
+      live = false;
+      clearTimeout(t);
+    };
+  }, [source, rangeText, alerts]);
   const statusInFilter = mentionsStatus(activeTree);
-  const visible = useMemo(() => tabAlerts(matching, tab, activeTree), [matching, tab, activeTree]);
+  const visible = useMemo(() => sortBy(tabAlerts(matching, tab, activeTree), sort), [matching, tab, activeTree, sort]);
   const tabCounts = useMemo(
     () => Object.fromEntries(FEED_TABS.map((t) => [t.id, matching.filter((a) => a.state === t.state).length])) as Record<FeedTab, number>,
     [matching],
@@ -373,6 +399,21 @@ export function FeedPage() {
             applyText(text);
           }}
         />
+        <SortPicker<FeedSort>
+          value={sort}
+          options={FEED_SORTS}
+          onChange={(v) =>
+            setParams(
+              (p) => {
+                const n = new URLSearchParams(p);
+                if (v === "lastSeen") n.delete("sort");
+                else n.set("sort", v);
+                return n;
+              },
+              { replace: true },
+            )
+          }
+        />
         {canCreate && (
           <button type="button" className="icon-btn square" title="New rule" aria-label="New rule" onClick={() => navigate("/rules/new")}>
             <Icon as={Plus} />
@@ -382,6 +423,7 @@ export function FeedPage() {
       {alerts && alerts.length > 0 && (
         <StatPanels
           alerts={inRange}
+          counts={summary}
           filter={withoutRange(q)}
           onFilter={(picked) => {
             // Panels set the whole filter; keep the chosen time range on it.

@@ -155,3 +155,26 @@ export function tabAlerts(alerts: readonly Alert[], tab: FeedTab, tree: FilterNo
   const state = FEED_TABS.find((t) => t.id === tab)!.state;
   return alerts.filter((a) => a.state === state);
 }
+
+/** The feed's sort orders: the same keys as GET /api/alerts?sort=, always descending. */
+export const FEED_SORTS = [
+  { id: "lastSeen", label: "Latest activity" },
+  { id: "severity", label: "Most severe" },
+  { id: "count", label: "Most repeated" },
+  { id: "firstSeen", label: "Newest first seen" },
+] as const;
+export type FeedSort = (typeof FEED_SORTS)[number]["id"];
+
+export function parseSort(v: string | null): FeedSort {
+  return FEED_SORTS.some((s) => s.id === v) ? (v as FeedSort) : "lastSeen";
+}
+
+const SEV_RANK: Record<string, number> = { critical: 4, error: 3, warning: 2, info: 1 };
+
+/** Sorts a copy; ties fall back to latest activity so the order is stable as alerts arrive. */
+export function sortBy(list: readonly Alert[], sort: FeedSort): Alert[] {
+  if (sort === "lastSeen") return [...list].sort(byNewest);
+  const key = (a: Alert): number =>
+    sort === "severity" ? (SEV_RANK[a.severity] ?? 0) : sort === "count" ? a.count : Date.parse(a.firstSeen);
+  return [...list].sort((a, b) => key(b) - key(a) || byNewest(a, b));
+}

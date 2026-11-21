@@ -101,7 +101,7 @@ export function ConnectClaudePage() {
                 <h2>Give the agent the API description</h2>
                 <p>Every endpoint is documented with request and response schemas and examples.</p>
                 <CopyBox label="OpenAPI document" text={`${api}/api/openapi.json`} />
-                <a className="cc-link" href="/api/openapi.json" target="_blank" rel="noreferrer">
+                <a className="cc-link" href={`${api}/api/openapi.json`} target="_blank" rel="noreferrer">
                   Open the OpenAPI document
                 </a>
               </li>
