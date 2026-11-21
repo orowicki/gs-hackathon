@@ -498,3 +498,56 @@
 .swatch.on {
   box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--text-strong);
 }
+
+/* ---- Template input with {{ autocomplete ---------------------------------------- */
+.tpl {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-weight: var(--weight-regular);
+}
+
+.tpl-list {
+  position: absolute;
+  top: calc(var(--control-h) + 2px);
+  left: 0;
+  z-index: 20;
+  min-width: 260px;
+  max-height: 260px;
+  overflow-y: auto;
+  margin: 0;
+  padding: 4px;
+  list-style: none;
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+
+.tpl textarea + .tpl-list {
+  top: calc(100% - 18px);
+}
+
+.tpl-opt {
+  padding: 4px 8px;
+  border-radius: var(--radius);
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.tpl-opt.on,
+.tpl-opt:hover {
+  background: var(--surface-2);
+  color: var(--text-strong);
+}
+
+.tpl kbd {
+  padding: 0 4px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+}
