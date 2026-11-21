@@ -32,8 +32,9 @@ export function CreateChooser({
   /** Content for the selected option (paste box, file picker, examples...). */
   children?: ReactNode;
 }) {
+  const idle = !hasContent(children);
   return (
-    <div className="chooser">
+    <div className={idle ? "chooser idle" : "chooser"}>
       <header className="page-header">
         <div>
           <h1>{title}</h1>
