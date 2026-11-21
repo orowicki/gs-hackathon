@@ -61,7 +61,7 @@ export const ROUTES: RouteDef[] = [
   { method: "POST", path: "/api/alerts/{id}/ack", summary: "Acknowledge an alert", tag: "alerts", response: "Alert" },
   { method: "POST", path: "/api/alerts/{id}/resolve", summary: "Resolve an alert", tag: "alerts", response: "Alert" },
   { method: "GET", path: "/api/alerts/{id}/audit", summary: "Audit log of an alert", tag: "alerts", response: "AuditEntry[]" },
-  { method: "POST", path: "/api/alerts/{id}/runbook-steps/{stepIndex}/approve", summary: "Approve a runbook step awaiting approval", tag: "runbooks", response: "AuditEntry" },
+  { method: "POST", path: "/api/alerts/{id}/runbook-steps/{stepIndex}/approve", summary: "Approve a runbook step awaiting approval", tag: "runbooks", response: "RunbookRun" },
 
   { method: "POST", path: "/api/alerts/{id}/suggestions", summary: "Suggest a change (attached to the alert's rule)", tag: "suggestions", request: "{ text: string }", response: "Suggestion" },
   { method: "POST", path: "/api/rules/{id}/suggestions", summary: "Suggest a change to a rule", tag: "suggestions", request: "{ text: string }", response: "Suggestion" },
@@ -72,6 +72,7 @@ export const ROUTES: RouteDef[] = [
   { method: "GET", path: "/api/channels", summary: "Channel status", tag: "channels", response: "ChannelStatus[]" },
   { method: "GET", path: "/api/dead-letters", summary: "List dead-lettered notifications", tag: "channels", response: "DeadLetter[]" },
   { method: "POST", path: "/api/dead-letters/{id}/retry", summary: "Retry a dead letter now", tag: "channels", response: "Notification" },
+  { method: "GET", path: "/api/source-types", summary: "Registered source plugin types with their config JSON Schemas, plus the parser config schema", tag: "sources", response: "{ sourceTypes: { type: string; configSchema: JsonSchemaObject }[]; parserConfigSchema: JsonSchemaObject }" },
 
   { method: "GET", path: "/api/schemas/{id}/export", summary: "Export a schema as YAML", tag: "yaml", response: "application/yaml" },
   { method: "POST", path: "/api/schemas/import", summary: "Import a schema from YAML", tag: "yaml", request: "application/yaml", response: "Schema" },

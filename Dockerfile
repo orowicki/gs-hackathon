@@ -1,41 +1,31 @@
+# Packages are never listed by name here: every packages/* is picked up, so adding a
+# package needs no Dockerfile change.
+
+# Only the package.json files, so `npm ci` stays cached until a manifest changes.
+FROM node:20-alpine AS manifests
+WORKDIR /app
+COPY packages packages
+RUN find packages -mindepth 2 -maxdepth 2 ! -name package.json -exec rm -rf {} +
+
 FROM node:20-alpine AS build
 WORKDIR /app
 COPY package.json package-lock.json tsconfig.base.json ./
-COPY packages/shared/package.json packages/shared/
-COPY packages/delivery/package.json packages/delivery/
-COPY packages/api/package.json packages/api/
-COPY packages/web/package.json packages/web/
-COPY packages/config/package.json packages/config/
-COPY packages/ingest/package.json packages/ingest/
-COPY packages/filter/package.json packages/filter/
-COPY packages/engine/package.json packages/engine/
+COPY --from=manifests /app/packages packages
 RUN npm ci
 COPY packages packages
+# The web app's mock data source imports sample alerts from the repo-root fixtures/.
+COPY fixtures fixtures
 RUN npm run build
+# Keep built output and runtime files (migrations etc.); drop sources, tests and dev node_modules.
+RUN find packages -mindepth 2 -maxdepth 2 \( -name node_modules -o -name src -o -name test -o -name e2e -o -name 'tsconfig*.json' \) -exec rm -rf {} +
 
 FROM node:20-alpine
 WORKDIR /app
 ENV NODE_ENV=production
 COPY package.json package-lock.json ./
-COPY packages/shared/package.json packages/shared/
-COPY packages/delivery/package.json packages/delivery/
-COPY packages/api/package.json packages/api/
-COPY packages/web/package.json packages/web/
-COPY packages/config/package.json packages/config/
-COPY packages/ingest/package.json packages/ingest/
-COPY packages/filter/package.json packages/filter/
-COPY packages/engine/package.json packages/engine/
+COPY --from=manifests /app/packages packages
 RUN npm ci --omit=dev
-COPY --from=build /app/packages/shared/dist packages/shared/dist
-COPY --from=build /app/packages/delivery/dist packages/delivery/dist
-COPY --from=build /app/packages/api/dist packages/api/dist
-COPY --from=build /app/packages/web/dist packages/web/dist
-COPY --from=build /app/packages/config/dist packages/config/dist
-COPY --from=build /app/packages/config/migrations packages/config/migrations
-COPY --from=build /app/packages/ingest/dist packages/ingest/dist
-COPY --from=build /app/packages/ingest/migrations packages/ingest/migrations
-COPY --from=build /app/packages/filter/dist packages/filter/dist
-COPY --from=build /app/packages/engine/dist packages/engine/dist
+COPY --from=build /app/packages packages
 ENV WEB_DIST=/app/packages/web/dist
 EXPOSE 3000
 CMD ["node", "packages/api/dist/main.js"]

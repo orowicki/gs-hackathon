@@ -16,7 +16,8 @@
     "ioredis": "^5.4.1",
     "pg": "^8.12.0",
     "@alerting/ingest": "*",
-    "@alerting/config": "*"
+    "@alerting/config": "*",
+    "@alerting/runbooks": "*"
   },
   "devDependencies": {
     "@types/pg": "^8.11.6"

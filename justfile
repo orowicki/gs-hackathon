@@ -20,12 +20,26 @@ up:
     set -u
     docker compose up -d --build || exit 1
     for i in $(seq 1 60); do
-      if out=$(curl -fsS http://localhost:3000/health 2>/dev/null); then echo "healthy: $out"; exit 0; fi
+      if out=$(curl -fsS http://localhost:3000/health 2>/dev/null); then echo "healthy: $out"; break; fi
       sleep 2
     done
-    echo "not healthy after 120 s" >&2
-    docker compose ps >&2
-    exit 1
+    if [ -z "${out:-}" ]; then
+      echo "not healthy after 120 s" >&2
+      docker compose ps >&2
+      exit 1
+    fi
+    # Seed demo data (only creates what is missing; safe to run on every `just up`).
+    if ! node -e 'const [a,b]=process.versions.node.split(".").map(Number);process.exit(a>22||(a===22&&b>=6)?0:1)'; then
+      echo "Node 22.6+ is required on the host for seeding (found $(node -v)); the stack is up, rerun 'just up' after upgrading" >&2
+      exit 1
+    fi
+    [ -d node_modules/yaml ] || npm ci --no-audit --no-fund || exit 1
+    node --experimental-strip-types --no-warnings scripts/seed/seed.ts || { echo "seeding failed" >&2; exit 1; }
+    echo "ready: http://localhost:3000 (run 'just demo' for sample traffic)"
+
+# Send demo events through all three sources, e.g. `just demo --once` or `just demo --rate 5 --duration 30`
+demo *args:
+    node --experimental-strip-types --no-warnings scripts/demo/demo.ts {{args}}
 
 # Stop the stack
 down:

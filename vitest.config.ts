@@ -5,6 +5,8 @@ export default defineConfig({
   test: {
     projects: [
       "packages/*",
+      "scripts/seed",
+      "scripts/demo",
       { test: { name: "loadtest", include: ["scripts/loadtest/**/*.test.mjs"] } },
     ],
   },
