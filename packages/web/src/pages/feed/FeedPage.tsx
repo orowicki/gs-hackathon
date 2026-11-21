@@ -6,6 +6,8 @@ import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { Icon } from "../../components/Icon";
 import { SettingsMenu } from "../../components/SettingsPanel";
 import { withFilter } from "../../filterUrl";
+import { parseRange, withRange, withRangeTree, type TimeRange } from "../../timeRange";
+import { TimeRangePicker } from "../../components/time-range/TimeRangePicker";
 import { AlertList, SkeletonRows } from "./AlertList";
 import { createSource, isDemoSource } from "./data";
 import type { FeedSource } from "./data";
@@ -54,6 +56,7 @@ export function FeedPage() {
   const navigate = useNavigate();
   const q = params.get("q") ?? "";
   const tab = parseTab(params.get("tab"));
+  const range = parseRange(params.get("range"));
   const input = useRef<HTMLInputElement>(null);
   const scroller = useRef<HTMLElement>(null);
 
@@ -77,14 +80,18 @@ export function FeedPage() {
   }, [applied]);
   // Keep showing the last valid result when the applied text is invalid.
   const [lastTree, setLastTree] = useState<FilterNode | null>(tree);
-  const activeTree = parseFilter(applied).ok ? tree : lastTree;
+  const userTree = parseFilter(applied).ok ? tree : lastTree;
+  // The time range picker adds `alert.lastSeen >= now-<range>` to whatever the user typed.
+  const activeTree = useMemo(() => withRangeTree(userTree, range), [userTree, range]);
   const applyText = useCallback((text: string) => {
     setApplied(text);
     const r = parseFilter(text);
     if (r.ok) setLastTree(r.tree);
   }, []);
 
-  const matching = useMemo(() => filterAlerts(alerts ?? [], activeTree), [alerts, activeTree]);
+  // `now` ticks, so alerts drop out of a relative range as time passes.
+  const matching = useMemo(() => filterAlerts(alerts ?? [], activeTree), [alerts, activeTree, now]);
+  const inRange = useMemo(() => filterAlerts(alerts ?? [], withRangeTree(null, range)), [alerts, range, now]);
   const statusInFilter = mentionsStatus(activeTree);
   const visible = useMemo(() => tabAlerts(matching, tab, activeTree), [matching, tab, activeTree]);
   const tabCounts = useMemo(
@@ -340,6 +347,10 @@ export function FeedPage() {
           onToggleStar={toggleStar}
           inputRef={input}
         />
+        <TimeRangePicker
+          value={range}
+          onChange={(r: TimeRange) => setParams((p) => withRange(p, r), { replace: true })}
+        />
         {canCreate && (
           <button type="button" className="icon-btn square" title="New rule" aria-label="New rule" onClick={() => navigate("/rules/new")}>
             <Icon as={Plus} />
@@ -348,7 +359,7 @@ export function FeedPage() {
       </header>
       {alerts && alerts.length > 0 && (
         <StatPanels
-          alerts={alerts}
+          alerts={inRange}
           filter={q}
           onFilter={(text) => {
             setParams((p) => {

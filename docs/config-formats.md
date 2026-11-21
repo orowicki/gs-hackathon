@@ -20,6 +20,7 @@ Used by `when`, `condition`, `match`, `matches` and preference `when`. A filter 
 - Operators: `=  !=  >  >=  <  <=  contains  in  matches`; combine with `AND`, `OR`, `NOT` and parentheses (NOT binds tighter than AND, then OR).
 - `matches` is a glob (`*` any characters, `?` one character); `contains` is a substring (or list membership); `in` takes a list: `alert.environment in [prod, staging]`.
 - Severity compares by rank: `alert.severity >= warning` also matches `error` and `critical`.
+- Dates: `>`, `>=`, `<`, `<=` compare as times when the value is `now`, `now-<n><unit>` (units `s m h d w`, e.g. `now-24h`, `now-7d`) or an ISO date (`2026-11-21`, `"2026-11-21T09:00:00Z"`). The field may hold an ISO string or an epoch in seconds or ms. `alert.lastSeen` / `alert.firstSeen` (alerts only, not in a rule's `when`) and `alert.occurredAt` are the time fields: `alert.lastSeen >= now-24h` is "seen in the last day".
 - A missing field makes every operator false except `!=`.
 - Examples: `alert.severity = critical AND alert.source matches payments-*`, `type = WORKFLOW_FAILED AND NOT environment = test`.
 

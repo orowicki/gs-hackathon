@@ -23,6 +23,8 @@ export function alertContext(alert: Alert): { alert: Record<string, unknown>; ev
       status: alert.state,
       state: alert.state,
       count: alert.count,
+      firstSeen: alert.firstSeen,
+      lastSeen: alert.lastSeen,
       ruleId: alert.ruleId,
       schema: alert.schemaId,
     },

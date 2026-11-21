@@ -4,3 +4,4 @@ export { print } from "./print.js";
 export { evaluate } from "./evaluate.js";
 export { validateTree } from "./validate.js";
 export { suggestContext, type SuggestContext } from "./suggest.js";
+export { parseTimeValue, toEpochMs, RELATIVE_TIME_RE } from "./time.js";
