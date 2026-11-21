@@ -1,0 +1,46 @@
+.rules-page {
+  max-width: 880px;
+  margin: 0 auto;
+  padding: var(--space-4);
+  color: var(--text);
+}
+.rules-page h1 { margin: 0; font-size: var(--text-lg); font-weight: var(--weight-strong); }
+.rules-page h2 { margin: var(--space-4) 0 var(--space-2); font-size: var(--text-md); font-weight: var(--weight-strong); }
+.rules-page .bar { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); margin-bottom: var(--space-3); }
+.rules-page .actions { display: flex; gap: var(--space-2); flex-wrap: wrap; align-items: center; }
+.rules-page ul.plain { list-style: none; margin: 0; padding: 0; }
+.rules-page li.row, .rules-page .who-row, .rules-page section.step {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: var(--space-2) var(--space-3);
+  margin-bottom: var(--space-2);
+  background: var(--surface);
+}
+.rules-page li.row { display: flex; justify-content: space-between; gap: var(--space-3); align-items: baseline; }
+.rules-page .muted { color: var(--muted); font-size: var(--text-sm); }
+.rules-page label { display: flex; flex-direction: column; gap: var(--space-1); margin-bottom: var(--space-2); font-size: var(--text-sm); }
+.rules-page label.inline { flex-direction: row; align-items: center; }
+.rules-page input[type="text"], .rules-page textarea, .rules-page select {
+  font: inherit;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: var(--space-1) var(--space-2);
+}
+.rules-page textarea { min-height: 6em; font-family: var(--font-mono, monospace); }
+.rules-page button, .rules-page .btn {
+  font: inherit;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: var(--space-1) var(--space-3);
+  cursor: pointer;
+  text-decoration: none;
+}
+.rules-page button:disabled { opacity: 0.5; cursor: default; }
+.rules-page .error { color: var(--error); font-size: var(--text-sm); }
+.rules-page .result { font-size: var(--text-sm); }
+.rules-page .warn { color: var(--warning); }
+.rules-page pre { overflow: auto; border: 1px solid var(--border); padding: var(--space-2); }
