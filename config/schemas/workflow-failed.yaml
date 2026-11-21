@@ -1,0 +1,14 @@
+id: schema-workflow-failed
+name: Workflow failed
+match: type = WORKFLOW_FAILED
+mapping:
+  severity: { kind: path, path: severity, valueMap: { ERROR: error, WARN: warning, CRITICAL: critical }, default: error }
+  title: { kind: template, template: "{{workflowName}} failed at {{step}}" }
+  source: { kind: path, path: workflowName }
+  environment: { kind: path, path: environment }
+  dedupKey: { kind: template, template: "{{workflowName}}-{{step}}" }
+  sourceStatus: { kind: constant, value: firing }
+  occurredAt: { kind: path, path: timestamp }
+  type: { kind: path, path: type }
+  message: { kind: path, path: error.message }
+  entity: { kind: path, path: workflowId }

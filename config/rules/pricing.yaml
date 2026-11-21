@@ -1,0 +1,16 @@
+# Team Pricing: pricing-engine-* at warning or above, ui only.
+# The spec also asks to group these into one alert per instrument every 5 minutes;
+# grouping is out of scope for this rule (dedup/grouping is handled elsewhere).
+id: pricing-engine-warnings
+name: Team Pricing
+enabled: true
+when: 'alert.source matches pricing-engine-* AND alert.severity >= warning'
+who:
+  - recipients:
+      - { type: group, id: pricing-team }
+    force: [ui]
+looks:
+  titleTemplate: '{{alert.title}}'
+  fields: [alert.source, alert.severity]
+createdAt: '2026-11-01T00:00:00Z'
+updatedAt: '2026-11-01T00:00:00Z'

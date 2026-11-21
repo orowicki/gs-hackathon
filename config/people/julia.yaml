@@ -1,0 +1,5 @@
+id: julia
+name: Julia Wisniewska
+role: Settlements engineer
+canCreateRules: true
+ntfyTopic: alerting-julia

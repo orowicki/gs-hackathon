@@ -13,6 +13,27 @@ jobs:
   checks:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    # Real services so integration tests run instead of skipping.
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: alerting
+          POSTGRES_PASSWORD: alerting
+          POSTGRES_DB: alerting
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U alerting" --health-interval 5s
+          --health-timeout 3s --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping" --health-interval 5s
+          --health-timeout 3s --health-retries 10
+    env:
+      DATABASE_URL: postgres://alerting:alerting@localhost:5432/alerting
+      REDIS_URL: redis://localhost:6379
     steps:
       - uses: actions/checkout@v4
       - uses: extractions/setup-just@v2
