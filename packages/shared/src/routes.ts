@@ -72,6 +72,7 @@ export const ROUTES: RouteDef[] = [
   { method: "GET", path: "/api/channels", summary: "Channel status", tag: "channels", response: "ChannelStatus[]" },
   { method: "GET", path: "/api/dead-letters", summary: "List dead-lettered notifications", tag: "channels", response: "DeadLetter[]" },
   { method: "POST", path: "/api/dead-letters/{id}/retry", summary: "Retry a dead letter now", tag: "channels", response: "Notification" },
+  { method: "GET", path: "/api/source-types", summary: "Registered source plugin types with their config JSON Schemas, plus the parser config schema", tag: "sources", response: "{ sourceTypes: { type: string; configSchema: JsonSchemaObject }[]; parserConfigSchema: JsonSchemaObject }" },
 
   { method: "GET", path: "/api/schemas/{id}/export", summary: "Export a schema as YAML", tag: "yaml", response: "application/yaml" },
   { method: "POST", path: "/api/schemas/import", summary: "Import a schema from YAML", tag: "yaml", request: "application/yaml", response: "Schema" },
