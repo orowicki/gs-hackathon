@@ -123,9 +123,9 @@
   font-size: var(--text-sm);
 }
 
-/* Main star: filled in Grafana's favourite yellow when the current filter is starred. */
+/* Main star: filled in the accent blue when the current filter is starred (same as the list). */
 .star-btn.on {
-  color: var(--warning);
+  color: var(--accent);
 }
 
 .star-btn.on svg {

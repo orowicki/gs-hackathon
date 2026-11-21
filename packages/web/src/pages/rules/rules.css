@@ -408,6 +408,7 @@
 
 .alert-preview-body {
   padding: var(--space-3) var(--space-3) var(--space-3) calc(var(--space-3) + 76px);
+  min-width: 0;
   border-top: 1px solid var(--border);
   font-size: var(--text-sm);
 }
@@ -417,28 +418,41 @@
   color: var(--text-strong);
 }
 
-.alert-preview-body dl {
+/* Facts flow into two columns; long field names wrap instead of overflowing. */
+.alert-preview-facts {
   margin: 0;
   display: grid;
-  gap: 2px;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  column-gap: var(--space-5);
+  row-gap: 4px;
 }
 
-.alert-preview-body dl div {
+.alert-preview-facts div {
   display: grid;
-  grid-template-columns: 140px 1fr;
-  gap: var(--space-3);
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  align-items: baseline;
+  gap: var(--space-2);
+  min-width: 0;
 }
 
-.alert-preview-body dt {
+.alert-preview-facts dt {
   color: var(--muted);
   font-family: var(--font-mono);
   font-size: var(--text-xs);
-  align-self: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.alert-preview-body dd {
+.alert-preview-facts dd {
   margin: 0;
   color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+.alert-preview-more {
+  margin-top: var(--space-2);
+  font-size: var(--text-sm);
 }
 
 .var-chips {
