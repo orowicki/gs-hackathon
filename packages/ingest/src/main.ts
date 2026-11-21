@@ -20,6 +20,7 @@ try {
   await migrate(pool);
 } catch (err) {
   console.error("ingest: config migrate failed:", (err as Error).message);
+  process.exit(1);
 }
 const store = createConfigStore({ pool, redis });
 const mapping = startSchemaMapping(store);

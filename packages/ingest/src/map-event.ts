@@ -35,7 +35,11 @@ export function createSchemaMapEvent(
 
 export interface SchemaMapping {
   mapEvent: MapEvent;
-  /** Resolves when the initial schema load finished; never rejects (the registry keeps retrying). */
+  /**
+   * Resolves after the first successful schema load, so starting the worker afterwards never maps
+   * against an empty registry. A failed load is logged and retried (new registry, 1s doubling to 30s)
+   * until it succeeds or `close()` is called (then it resolves too).
+   */
   ready: Promise<void>;
   close(): void;
 }
@@ -47,12 +51,32 @@ export function startSchemaMapping(
 ): SchemaMapping {
   const onError =
     opts.onError ?? ((err: Error) => (opts.logger ?? console).error(`schema mapping: ${err.message}`));
-  const registry = createSchemaRegistry(store, { onError });
+  let closed = false;
+  let registry: SchemaRegistry = createSchemaRegistry(store, { onError });
+  const mapEvent = createSchemaMapEvent({ classify: (p) => registry.classify(p) }, { onError });
+  const ready = (async () => {
+    let delay = 1000;
+    for (;;) {
+      try {
+        await registry.ready;
+        return;
+      } catch {
+        // already reported through onError by the registry
+      }
+      registry.close();
+      if (closed) return;
+      await new Promise((r) => setTimeout(r, delay));
+      delay = Math.min(delay * 2, 30000);
+      if (closed) return;
+      registry = createSchemaRegistry(store, { onError });
+    }
+  })();
   return {
-    mapEvent: createSchemaMapEvent(registry, { onError }),
-    ready: registry.ready.catch(() => {
-      /* reported via onError; the registry retries */
-    }),
-    close: () => registry.close(),
+    mapEvent,
+    ready,
+    close() {
+      closed = true;
+      registry.close();
+    },
   };
 }

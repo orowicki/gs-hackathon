@@ -7,6 +7,8 @@ import {
   createSchemaMapEvent,
   handleHttpIngest,
   startIngestService,
+  startParseWorker,
+  toRawMessage,
   startSchemaMapping,
   type IngestService,
   type SchemaMapping,
@@ -96,7 +98,7 @@ describe.skipIf(!enabled)("schema mapping in the ingest service (needs DATABASE_
     await Promise.allSettled([redis?.quit(), pool?.end()]);
   });
 
-  // Other test files run parse workers on the same shared stream/group, which may consume an event
+  // Smoke test of the full service. Other test files run parse workers on the same shared stream/group, which may consume an event
   // without mapping; so send a few events and require that at least one of ours was mapped.
   it("stores schema_id and common fields on the event row", async () => {
     let row: { schema_id: string | null; common: Record<string, unknown> } | undefined;
@@ -113,5 +115,40 @@ describe.skipIf(!enabled)("schema mapping in the ingest service (needs DATABASE_
     }
     expect(row?.schema_id).toBe(schemaId);
     expect(row?.common).toMatchObject({ severity: "critical", title: `T ${run}` });
+  });
+
+  it("maps every event (isolated stream and group)", async () => {
+    const stream = `test:${run}:raw`;
+    const group = `${run}-g`;
+    const worker = startParseWorker({
+      redis,
+      pool,
+      getParser: () => ({ type: "json" }),
+      mapEvent: mapping.mapEvent,
+      stream,
+      group,
+      blockMs: 200,
+    });
+    const strictSource = `${run}-strict`;
+    try {
+      for (let n = 0; n < 3; n++) {
+        const msg = toRawMessage(strictSource, JSON.stringify({ marker: run, n, ts: "2026-01-01T00:00:00Z" }));
+        await redis.xadd(stream, "*", "data", JSON.stringify(msg));
+      }
+      let rows: { schema_id: string | null; common: Record<string, unknown> }[] = [];
+      for (let i = 0; i < 50 && rows.length < 3; i++) {
+        rows = (await pool.query("SELECT schema_id, common FROM events WHERE source_id = $1", [strictSource])).rows;
+        if (rows.length < 3) await new Promise((r) => setTimeout(r, 100));
+      }
+      expect(rows).toHaveLength(3);
+      for (const r of rows) {
+        expect(r.schema_id).toBe(schemaId);
+        expect(r.common).toMatchObject({ severity: "critical", title: `T ${run}` });
+      }
+    } finally {
+      await worker.stop();
+      await pool.query("DELETE FROM events WHERE source_id = $1", [strictSource]);
+      await redis.del(stream);
+    }
   });
 });
