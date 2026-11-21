@@ -57,7 +57,12 @@ registerChannel(
   }),
 );
 registerChannel(createEmailChannel(emailConfigFromEnv()));
-const delivery = createDeliveryQueue(deliveryRedis);
+const posInt = (v: string | undefined, d: number): number => (v !== undefined && /^[1-9]\d*$/.test(v.trim()) ? Number(v) : d);
+// Delivery throughput: parallel worker loops, each moving/acking BATCH_SIZE notifications per Redis round trip.
+const delivery = createDeliveryQueue(deliveryRedis, {
+  concurrency: posInt(process.env.DELIVERY_CONCURRENCY, 4),
+  batchSize: posInt(process.env.DELIVERY_BATCH_SIZE, 50),
+});
 let stopping = false;
 async function startWorker(): Promise<void> {
   while (!stopping) {

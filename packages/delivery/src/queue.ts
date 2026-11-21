@@ -34,7 +34,10 @@ export interface DeliveryQueueOptions extends BackoffOptions {
   maxAttempts?: number;
   /** Channel-unavailable failures retry (not counting toward maxAttempts) until this long after the first one (default 24 h). */
   maxOutageMs?: number;
+  /** Parallel worker loops (default 1, capped at 32). */
   concurrency?: number;
+  /** Items each loop moves, sends and acknowledges per round trip (default 1 = one item at a time). */
+  batchSize?: number;
   /** Poll interval when busy (ms); backs off to ~500 ms when idle. */
   pollMs?: number;
   /** Worker heartbeat refresh interval (default 5 s) and lease TTL (default 15 s). */
@@ -58,6 +61,14 @@ export interface DeliveryQueue {
 
 const WORKERS_SET = `${QUEUE_DELIVERY_PROCESSING}:workers`;
 const IDLE_MAX_MS = 500;
+/** Atomically move up to ARGV[1] items from the tail of KEYS[1] to the head of KEYS[2]; returns them in pop order. */
+const POP_BATCH_LUA = `local out = {}
+for i = 1, tonumber(ARGV[1]) do
+  local v = redis.call('RPOPLPUSH', KEYS[1], KEYS[2])
+  if not v then break end
+  out[#out + 1] = v
+end
+return out`;
 
 /** Throws if any command inside an exec()'d MULTI failed; returns the raw results. */
 function execAll(res: [Error | null, unknown][] | null): unknown[] {
@@ -68,11 +79,15 @@ function execAll(res: [Error | null, unknown][] | null): unknown[] {
   });
 }
 
+type ChainableMulti = ReturnType<Redis["multi"]>;
+type SendResult = Awaited<ReturnType<ChannelRegistry["send"]>>;
+
 export function createDeliveryQueue(redis: Redis, opts: DeliveryQueueOptions = {}): DeliveryQueue {
   const registry = opts.registry ?? defaultRegistry;
   const maxAttempts = opts.maxAttempts ?? 5;
   const maxOutageMs = opts.maxOutageMs ?? 24 * 3600_000;
-  const concurrency = Math.max(1, Math.min(opts.concurrency ?? 1, 4));
+  const concurrency = Math.max(1, Math.min(opts.concurrency ?? 1, 32));
+  const batchSize = Math.max(1, Math.floor(opts.batchSize ?? 1));
   const pollMs = opts.pollMs ?? 50;
   const heartbeatMs = opts.heartbeatMs ?? 5000;
   const leaseMs = opts.leaseMs ?? 15_000;
@@ -145,30 +160,36 @@ export function createDeliveryQueue(redis: Redis, opts: DeliveryQueueOptions = {
     }
   }
 
-  async function handle(raw: string): Promise<void> {
-    let n: QueuedNotification;
+  /** Parse a queued payload; null when it is corrupt. */
+  function parsePayload(raw: string): QueuedNotification | null {
     try {
-      n = JSON.parse(raw) as QueuedNotification;
+      const n = JSON.parse(raw) as QueuedNotification;
       if (!n || typeof n !== "object" || typeof n.channel !== "string") throw new Error("shape");
+      return n;
     } catch {
-      const placeholder: Notification = {
-        id: `corrupt-${now()}-${corruptSeq++}`,
-        alertId: "",
-        recipientId: "",
-        channel: "unknown",
-        severity: "error",
-        title: raw.slice(0, 200),
-        clickUrl: "/",
-        attempt: 0,
-        createdAt: new Date(now()).toISOString(),
-      };
-      const dl: DeadLetter = { id: placeholder.id, notification: placeholder, error: "unparseable payload", failedAt: new Date(now()).toISOString() };
-      execAll(await redis.multi().lpush(LIST_DEAD_LETTERS, JSON.stringify(dl)).lrem(myList, 1, raw).exec());
-      await announceDeadLetters();
-      return;
+      return null;
     }
-    const result = await registry.send(n);
-    const m = redis.multi();
+  }
+
+  /** Add the dead-letter for an unparseable payload plus its removal from processing onto `m`. */
+  function addCorrupt(m: ChainableMulti, raw: string): void {
+    const placeholder: Notification = {
+      id: `corrupt-${now()}-${corruptSeq++}`,
+      alertId: "",
+      recipientId: "",
+      channel: "unknown",
+      severity: "error",
+      title: raw.slice(0, 200),
+      clickUrl: "/",
+      attempt: 0,
+      createdAt: new Date(now()).toISOString(),
+    };
+    const dl: DeadLetter = { id: placeholder.id, notification: placeholder, error: "unparseable payload", failedAt: new Date(now()).toISOString() };
+    m.lpush(LIST_DEAD_LETTERS, JSON.stringify(dl)).lrem(myList, 1, raw);
+  }
+
+  /** Add the outcome commands of a send (retry zadd / dead letter) and the lrem of `raw` onto `m`; true if dead-lettered. */
+  function addOutcome(m: ChainableMulti, n: QueuedNotification, raw: string, result: SendResult): boolean {
     let dead = false;
     if (result.status === "delivered") {
       lastResult.set(n.channel, { healthy: true });
@@ -195,7 +216,59 @@ export function createDeliveryQueue(redis: Redis, opts: DeliveryQueueOptions = {
       }
     }
     m.lrem(myList, 1, raw);
+    return dead;
+  }
+
+  async function handle(raw: string): Promise<void> {
+    const n = parsePayload(raw);
+    const m = redis.multi();
+    if (!n) {
+      addCorrupt(m, raw);
+      execAll(await m.exec());
+      await announceDeadLetters();
+      return;
+    }
+    const dead = addOutcome(m, n, raw, await registry.send(n));
     execAll(await m.exec());
+    if (dead) await announceDeadLetters();
+  }
+
+  /** Send a batch (already moved to myList) in pop order, then acknowledge all outcomes in one MULTI. */
+  async function handleBatch(raws: string[]): Promise<void> {
+    const parsed = raws.map(parsePayload);
+    const failed = new Set<number>(); // sends that threw: rescued, not acked
+    const results = await Promise.all(
+      raws.map(async (_, i) => {
+        const n = parsed[i];
+        if (!n) return null;
+        try {
+          return await registry.send(n);
+        } catch {
+          failed.add(i);
+          return null;
+        }
+      }),
+    );
+    const m = redis.multi();
+    let dead = false;
+    const acked: string[] = [];
+    raws.forEach((raw, i) => {
+      const n = parsed[i];
+      if (failed.has(i)) return;
+      acked.push(raw);
+      if (!n) {
+        addCorrupt(m, raw);
+        dead = true;
+      } else if (addOutcome(m, n, raw, results[i] as SendResult)) dead = true;
+    });
+    try {
+      if (acked.length > 0) execAll(await m.exec());
+    } catch {
+      for (const raw of acked) await rescue(raw);
+      return;
+    } finally {
+      for (const i of failed) await rescue(raws[i] as string);
+    }
     if (dead) await announceDeadLetters();
   }
 
@@ -232,6 +305,26 @@ export function createDeliveryQueue(redis: Redis, opts: DeliveryQueueOptions = {
       }
       idle = moved > 0 ? pollMs : Math.min(IDLE_MAX_MS, idle * 2);
       await sleep(idle);
+    }
+  }
+
+  async function batchLoop(): Promise<void> {
+    let idle = pollMs;
+    while (running) {
+      let raws: string[] = [];
+      try {
+        raws = (await redis.eval(POP_BATCH_LUA, 2, QUEUE_DELIVERY, myList, batchSize)) as string[];
+        if (raws.length === 0) {
+          await sleep(idle);
+          idle = Math.min(IDLE_MAX_MS, idle * 2);
+          continue;
+        }
+        idle = pollMs;
+        await handleBatch(raws);
+      } catch {
+        for (const raw of raws) await rescue(raw);
+        await sleep(pollMs);
+      }
     }
   }
 
@@ -340,7 +433,7 @@ export function createDeliveryQueue(redis: Redis, opts: DeliveryQueueOptions = {
       lastReap = Date.now();
       heartbeat = setInterval(() => void beat().catch(() => undefined), heartbeatMs);
       heartbeat.unref();
-      loops = [moverLoop(), ...Array.from({ length: concurrency }, () => loop())];
+      loops = [moverLoop(), ...Array.from({ length: concurrency }, () => (batchSize > 1 ? batchLoop() : loop()))];
     },
     async stop() {
       running = false;

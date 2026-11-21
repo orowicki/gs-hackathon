@@ -23,6 +23,8 @@ const CHANNEL_UI_PUSH = "alerting:ui:push";
 const STREAM_RAW = "alerting:events:raw";
 const GROUP_PARSE = "parse";
 const GROUP_ENGINE = "engine";
+const QUEUE_DELIVERY = "alerting:delivery:queue";
+const QUEUE_DELIVERY_PROCESSING = "alerting:delivery:processing";
 const PREFLIGHT_THRESHOLD = 100;
 // Temporary entities carry this prefix plus the run id; stale ones from crashed runs are deleted at start.
 const ids = (runId) => ({
@@ -42,7 +44,9 @@ export const MEASUREMENT =
   "notification = Notification.createdAt (enqueue time in the engine) minus send time, read from the ui-channel " +
   "{type:notification} push; null when no delivery worker is running. Send time is taken just before the HTTP batch is written, " +
   "so it includes HTTP, XADD, parse worker, Postgres insert, engine and pub/sub. Latency covers events whose alert was observed; " +
-  "lost = events accepted (HTTP 202) with no alert observed after the drain.";
+  "lost = events accepted (HTTP 202) with no alert observed after the drain (parse + engine backlog excluded). " +
+  "backlog.delivery = notifications still in the delivery queue plus the per-worker processing lists (retry zset excluded: scheduled future work); " +
+  "it is counted in backlogAtEnd and a delivery backlog above the threshold marks the window overloaded, but never in lost (it counts notifications, not events).";
 
 export function parseArgs(argv, env = process.env, now = new Date()) {
   const o = {
@@ -311,13 +315,26 @@ async function streamBacklog(conn, stream, group) {
   return groupBacklog(g, added);
 }
 
-/** Queued events in the parse group (raw stream) and the engine group (events stream). */
+/** Queued events in the parse and engine groups, plus queued notifications in the delivery queue. */
 export async function readBacklog(conn) {
-  const [parse, engine] = await Promise.all([
+  const [parse, engine, delivery] = await Promise.all([
     streamBacklog(conn, STREAM_RAW, GROUP_PARSE),
     streamBacklog(conn, STREAM_EVENTS, GROUP_ENGINE),
+    deliveryBacklog(conn),
   ]);
-  return { parse, engine, total: parse + engine };
+  return { parse, engine, delivery, total: parse + engine + delivery };
+}
+
+/** Notifications queued for delivery: main queue + every worker's processing list + legacy list (not the retry zset). */
+async function deliveryBacklog(conn) {
+  const workers = await conn.smembers(`${QUEUE_DELIVERY_PROCESSING}:workers`);
+  const keys = [
+    QUEUE_DELIVERY,
+    QUEUE_DELIVERY_PROCESSING,
+    ...workers.map((w) => `${QUEUE_DELIVERY_PROCESSING}:${w}`),
+  ];
+  const lens = await Promise.all(keys.map((k) => conn.llen(k)));
+  return lens.reduce((a, b) => a + b, 0);
 }
 
 /** Wait until both groups are (nearly) idle; throws after timeoutMs. Never touches the streams. */
@@ -326,17 +343,21 @@ async function waitForIdle(conn, timeoutMs, label) {
   let lastLog = 0;
   for (;;) {
     const b = await readBacklog(conn);
-    if (b.parse <= PREFLIGHT_THRESHOLD && b.engine <= PREFLIGHT_THRESHOLD)
+    if (
+      b.parse <= PREFLIGHT_THRESHOLD &&
+      b.engine <= PREFLIGHT_THRESHOLD &&
+      b.delivery <= PREFLIGHT_THRESHOLD
+    )
       return Date.now() - start;
     if (Date.now() - start > timeoutMs) {
       throw new Error(
-        `${label}: pipeline did not become idle within ${Math.round(timeoutMs / 1000)} s (parse backlog ${b.parse}, engine backlog ${b.engine}). ` +
+        `${label}: pipeline did not become idle within ${Math.round(timeoutMs / 1000)} s (parse backlog ${b.parse}, engine backlog ${b.engine}, delivery backlog ${b.delivery}). ` +
           "Wait for the workers to catch up or raise --preflight-timeout; streams are left untouched.",
       );
     }
     if (Date.now() - lastLog >= 10_000) {
       console.error(
-        `loadtest: ${label}: waiting for backlog to drain (parse ${b.parse}, engine ${b.engine})`,
+        `loadtest: ${label}: waiting for backlog to drain (parse ${b.parse}, engine ${b.engine}, delivery ${b.delivery})`,
       );
       lastLog = Date.now();
     }
@@ -780,15 +801,18 @@ async function measure(opts, runId, post, collector, seqBase = 0, probeConn) {
   const sendEnd = Date.now();
   while (inflight > 0 && Date.now() < sendEnd + 15_000) await sleep(20);
 
-  // drain: all accepted seqs seen, or no progress for 10 s, cap 60 s
+  // drain: all accepted seqs seen and the delivery backlog <= threshold, or no progress for 10 s, cap 60 s
   const drainStart = Date.now();
   let lastProgress = drainStart;
   let lastCount = -1;
+  let lastDelivery = Infinity;
   for (;;) {
     const seen = collector.seen() - seenBase;
-    if (seen >= okSeqs.length) break;
-    if (seen !== lastCount) {
+    const delivery = await deliveryBacklog(probeConn);
+    if (seen >= okSeqs.length && delivery <= PREFLIGHT_THRESHOLD) break;
+    if (seen !== lastCount || delivery < lastDelivery) {
       lastCount = seen;
+      lastDelivery = delivery;
       lastProgress = Date.now();
     }
     if (Date.now() - lastProgress > 10_000 || Date.now() - drainStart > 60_000)
@@ -796,8 +820,10 @@ async function measure(opts, runId, post, collector, seqBase = 0, probeConn) {
     await sleep(1000);
   }
   await sleep(500); // let trailing pushes arrive
-  const drained = collector.seen() - seenBase >= okSeqs.length;
   const backlog = await readBacklog(probeConn);
+  const drained =
+    collector.seen() - seenBase >= okSeqs.length &&
+    backlog.delivery <= PREFLIGHT_THRESHOLD;
 
   const { bySeq, pushMs, notifMs, streamMs } = collector.resolve();
   const e2e = [];
@@ -830,8 +856,8 @@ async function measure(opts, runId, post, collector, seqBase = 0, probeConn) {
   const e2eSummary = summarize(e2e.length ? e2e : stream);
   const unprocessedAtEnd = okSeqs.length - alertsSeen;
   const backlogAtEnd = backlog.total;
-  // events still queued in the parse/engine groups are not lost, only late
-  const lost = Math.max(0, unprocessedAtEnd - backlogAtEnd);
+  // events still queued in the parse/engine groups are not lost, only late (delivery counts notifications, not events)
+  const lost = Math.max(0, unprocessedAtEnd - backlog.parse - backlog.engine);
   const e2eCoverage =
     alertsSeen > 0 && e2e.length > 0
       ? Math.round((e2e.length / alertsSeen) * 10000) / 10000
