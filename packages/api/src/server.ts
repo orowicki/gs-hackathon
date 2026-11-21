@@ -1,9 +1,12 @@
 import http from "node:http";
 import { buildOpenApi } from "./openapi.js";
+import { serveStatic } from "./static.js";
 
 export interface Deps {
   checkPostgres(): Promise<boolean>;
   checkRedis(): Promise<boolean>;
+  /** Directory with the built web app; defaults to env WEB_DIST. */
+  webDist?: string;
 }
 
 const CHECK_TIMEOUT_MS = 2000;
@@ -45,6 +48,16 @@ export function createServer(deps: Deps): http.Server {
     }
     if (req.method === "GET" && path === "/api/openapi.json") {
       send(res, 200, buildOpenApi());
+      return;
+    }
+    const webDist = deps.webDist ?? process.env.WEB_DIST;
+    if (
+      webDist &&
+      (req.method === "GET" || req.method === "HEAD") &&
+      path !== "/api" &&
+      !path.startsWith("/api/") &&
+      serveStatic(req, res, webDist)
+    ) {
       return;
     }
     send(res, 404, { error: "not found" });

@@ -5,9 +5,10 @@ default:
 lint:
     npm run lint
 
-# Tests
+# Tests (unit + web smoke test with screenshots)
 test:
     npm test
+    npm run test:e2e -w @alerting/web
 
 # Auto-format / autofix
 fmt:
