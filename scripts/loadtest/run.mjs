@@ -10,7 +10,12 @@ import { Redis } from "ioredis";
 import pg from "pg";
 import { writeChart } from "./chart.mjs";
 import { TMP_PREFIX, purgeLoadtestData } from "./cleanup.mjs";
-import { aggregateRuns, evaluateTargets, perSecondSeries, summarize } from "./stats.mjs";
+import {
+  aggregateRuns,
+  evaluateTargets,
+  perSecondSeries,
+  summarize,
+} from "./stats.mjs";
 
 const STREAM_EVENTS = "alerting:events";
 const STREAM_ALERTS = "alerting:alerts";
@@ -20,7 +25,12 @@ const GROUP_PARSE = "parse";
 const GROUP_ENGINE = "engine";
 const PREFLIGHT_THRESHOLD = 100;
 // Temporary entities carry this prefix plus the run id; stale ones from crashed runs are deleted at start.
-const ids = (runId) => ({ source: `${TMP_PREFIX}${runId}`, person: `${TMP_PREFIX}bot-${runId}`, rule: `${TMP_PREFIX}rule-${runId}`, schema: `${TMP_PREFIX}schema-${runId}` });
+const ids = (runId) => ({
+  source: `${TMP_PREFIX}${runId}`,
+  person: `${TMP_PREFIX}bot-${runId}`,
+  rule: `${TMP_PREFIX}rule-${runId}`,
+  schema: `${TMP_PREFIX}schema-${runId}`,
+});
 export const WORKERS_NOTE =
   "The api process runs an in-process ingest parse worker, so N workers means N engines and N+1 parse consumers (N standalone ingest workers plus the api's own).";
 
@@ -35,10 +45,21 @@ export const MEASUREMENT =
   "lost = events accepted (HTTP 202) with no alert observed after the drain.";
 
 export function parseArgs(argv, env = process.env, now = new Date()) {
-  const o = { rate: 5000, duration: 60, workers: 1, smoke: false, chart: true, keepData: false, cleanupOnly: false, repeat: undefined, preflightTimeout: 600 };
+  const o = {
+    rate: 5000,
+    duration: 60,
+    workers: 1,
+    smoke: false,
+    chart: true,
+    keepData: false,
+    cleanupOnly: false,
+    repeat: undefined,
+    preflightTimeout: 600,
+  };
   const num = (flag, v) => {
     const n = Number(v);
-    if (!Number.isFinite(n) || n <= 0) throw new Error(`${flag} needs a positive number`);
+    if (!Number.isFinite(n) || n <= 0)
+      throw new Error(`${flag} needs a positive number`);
     return n;
   };
   for (let i = 0; i < argv.length; i++) {
@@ -53,7 +74,8 @@ export function parseArgs(argv, env = process.env, now = new Date()) {
     else if (a === "--base-url") o.baseUrl = next();
     else if (a === "--redis") o.redis = next();
     else if (a === "--database-url") o.databaseUrl = next();
-    else if (a === "--config-dir") next(); // accepted and ignored (config goes straight into the store)
+    else if (a === "--config-dir")
+      next(); // accepted and ignored (config goes straight into the store)
     else if (a === "--out") o.out = next();
     else if (a === "--smoke") o.smoke = true;
     else if (a === "--keep-data") o.keepData = true;
@@ -80,7 +102,14 @@ export function parseArgs(argv, env = process.env, now = new Date()) {
 /** Identical events (one dedup key): the temporary schema maps them all to the same common.dedupKey. */
 export function buildRepeatBatch(runId, firstSeq, count, ts) {
   const out = [];
-  for (let i = 0; i < count; i++) out.push({ run: `${runId}rk`, repeat: true, seq: firstSeq + i, ts, message: `loadtest ${runId} repeat` });
+  for (let i = 0; i < count; i++)
+    out.push({
+      run: `${runId}rk`,
+      repeat: true,
+      seq: firstSeq + i,
+      ts,
+      message: `loadtest ${runId} repeat`,
+    });
   return out;
 }
 
@@ -98,15 +127,30 @@ function entities(runId) {
   const { source: SOURCE_ID, person: PERSON_ID, rule: RULE_ID } = ids(runId);
   const stamp = "2026-11-01T00:00:00Z";
   return {
-    source: { id: SOURCE_ID, name: "Load test (temporary)", type: "http", enabled: true, parser: { type: "json" }, config: {} },
+    source: {
+      id: SOURCE_ID,
+      name: "Load test (temporary)",
+      type: "http",
+      enabled: true,
+      parser: { type: "json" },
+      config: {},
+    },
     // only matches the repeat-keys events; gives them one constant dedupKey so the engine folds them into one alert
     schema: {
       id: ids(runId).schema,
       name: `Load test repeat keys (temporary, ${runId})`,
       match: `run matches "${runId}rk*"`,
-      mapping: { dedupKey: { kind: "constant", value: `${TMP_PREFIX}rk-${runId}` }, title: { kind: "constant", value: "loadtest repeat" } },
+      mapping: {
+        dedupKey: { kind: "constant", value: `${TMP_PREFIX}rk-${runId}` },
+        title: { kind: "constant", value: "loadtest repeat" },
+      },
     },
-    person: { id: PERSON_ID, name: "Load test bot", role: "temporary", canCreateRules: false },
+    person: {
+      id: PERSON_ID,
+      name: "Load test bot",
+      role: "temporary",
+      canCreateRules: false,
+    },
     rule: {
       id: RULE_ID,
       name: `Load test (temporary, ${runId})`,
@@ -139,11 +183,18 @@ async function installConfig(store, runId, withSchema = false) {
   const e = entities(runId);
   await purgeStaleConfig(store);
   const undo = async () => {
-    for (const [kind, entity] of [["rule", e.rule], ["source", e.source], ["person", e.person], ["schema", e.schema]]) {
+    for (const [kind, entity] of [
+      ["rule", e.rule],
+      ["source", e.source],
+      ["person", e.person],
+      ["schema", e.schema],
+    ]) {
       try {
         await store.delete(kind, entity.id);
       } catch (err) {
-        console.error(`loadtest: could not delete ${kind} ${entity.id}: ${err.message}`);
+        console.error(
+          `loadtest: could not delete ${kind} ${entity.id}: ${err.message}`,
+        );
       }
     }
   };
@@ -171,7 +222,10 @@ function makePoster(baseUrl, sourceId, maxSockets) {
           port: url.port || 80,
           path: `/ingest/${sourceId}`,
           method: "POST",
-          headers: { "content-type": "application/json", "content-length": Buffer.byteLength(body) },
+          headers: {
+            "content-type": "application/json",
+            "content-length": Buffer.byteLength(body),
+          },
           timeout: 15000,
         },
         (res) => {
@@ -180,7 +234,9 @@ function makePoster(baseUrl, sourceId, maxSockets) {
           res.on("end", () => {
             let accepted;
             try {
-              accepted = JSON.parse(Buffer.concat(chunks).toString("utf8")).accepted;
+              accepted = JSON.parse(
+                Buffer.concat(chunks).toString("utf8"),
+              ).accepted;
             } catch {
               /* ignore */
             }
@@ -202,7 +258,11 @@ export function parseGroups(reply) {
   for (const g of reply ?? []) {
     const o = {};
     for (let i = 0; i + 1 < g.length; i += 2) o[g[i]] = g[i + 1];
-    out[o.name] = { lag: o.lag ?? null, pending: Number(o.pending ?? 0), entriesRead: o["entries-read"] ?? null };
+    out[o.name] = {
+      lag: o.lag ?? null,
+      pending: Number(o.pending ?? 0),
+      entriesRead: o["entries-read"] ?? null,
+    };
   }
   return out;
 }
@@ -213,7 +273,10 @@ export function groupBacklog(group, entriesAdded) {
   let lag = group.lag;
   if (lag === null || lag === undefined) {
     // Redis could not compute the lag (stream was trimmed or deleted entries): estimate from the counters
-    lag = group.entriesRead !== null && entriesAdded !== null ? Math.max(0, entriesAdded - group.entriesRead) : 0;
+    lag =
+      group.entriesRead !== null && entriesAdded !== null
+        ? Math.max(0, entriesAdded - group.entriesRead)
+        : 0;
   }
   return Number(lag) + group.pending;
 }
@@ -251,7 +314,8 @@ async function waitForIdle(conn, timeoutMs, label) {
   let lastLog = 0;
   for (;;) {
     const b = await readBacklog(conn);
-    if (b.parse <= PREFLIGHT_THRESHOLD && b.engine <= PREFLIGHT_THRESHOLD) return Date.now() - start;
+    if (b.parse <= PREFLIGHT_THRESHOLD && b.engine <= PREFLIGHT_THRESHOLD)
+      return Date.now() - start;
     if (Date.now() - start > timeoutMs) {
       throw new Error(
         `${label}: pipeline did not become idle within ${Math.round(timeoutMs / 1000)} s (parse backlog ${b.parse}, engine backlog ${b.engine}). ` +
@@ -259,7 +323,9 @@ async function waitForIdle(conn, timeoutMs, label) {
       );
     }
     if (Date.now() - lastLog >= 10_000) {
-      console.error(`loadtest: ${label}: waiting for backlog to drain (parse ${b.parse}, engine ${b.engine})`);
+      console.error(
+        `loadtest: ${label}: waiting for backlog to drain (parse ${b.parse}, engine ${b.engine})`,
+      );
       lastLog = Date.now();
     }
     await sleep(1000);
@@ -277,7 +343,12 @@ function createCollector(redisUrl, runId) {
   let seenCount = 0;
   const tally = (eventId) => {
     const seq = eventSeq.get(eventId);
-    if (seq !== undefined && seq >= 0 && alertStreamByEvent.has(eventId) && !counted.has(eventId)) {
+    if (
+      seq !== undefined &&
+      seq >= 0 &&
+      alertStreamByEvent.has(eventId) &&
+      !counted.has(eventId)
+    ) {
       counted.add(eventId);
       seenCount++;
     }
@@ -322,10 +393,12 @@ function createCollector(redisUrl, runId) {
       const now = Date.now();
       try {
         const m = JSON.parse(msg);
-        if (m.type === "alert" && !pushMs.has(m.alertId)) pushMs.set(m.alertId, now);
+        if (m.type === "alert" && !pushMs.has(m.alertId))
+          pushMs.set(m.alertId, now);
         else if (m.type === "notification" && m.notification) {
           const t = Date.parse(m.notification.createdAt);
-          if (!notifMs.has(m.notification.alertId) && Number.isFinite(t)) notifMs.set(m.notification.alertId, t);
+          if (!notifMs.has(m.notification.alertId) && Number.isFinite(t))
+            notifMs.set(m.notification.alertId, t);
         }
       } catch {
         /* ignore */
@@ -340,7 +413,11 @@ function createCollector(redisUrl, runId) {
     const al = mk();
     loops.push(
       readStream(ev, STREAM_EVENTS, (eid, e) => {
-        if (typeof e?.parsed?.run === "string" && e.parsed.run.startsWith(runId) && typeof e.parsed.seq === "number") {
+        if (
+          typeof e?.parsed?.run === "string" &&
+          e.parsed.run.startsWith(runId) &&
+          typeof e.parsed.seq === "number"
+        ) {
           eventSeq.set(e.id ?? eid, e.parsed.seq);
           tally(e.id ?? eid);
         }
@@ -357,7 +434,8 @@ function createCollector(redisUrl, runId) {
   return {
     start,
     seen: () => seenCount,
-    probeSeen: () => [...alertEvent.values()].some((eid) => (eventSeq.get(eid) ?? 0) < 0),
+    probeSeen: () =>
+      [...alertEvent.values()].some((eid) => (eventSeq.get(eid) ?? 0) < 0),
     /** seq -> {alertId, ...} resolved lazily at the end */
     resolve() {
       const bySeq = new Map(); // seq -> alertId
@@ -407,9 +485,14 @@ async function main() {
 
   if (opts.cleanupOnly) {
     const redis = new Redis(opts.redis, { maxRetriesPerRequest: 3 });
-    const st = createConfigStore({ databaseUrl: opts.databaseUrl, redisUrl: opts.redis });
+    const st = createConfigStore({
+      databaseUrl: opts.databaseUrl,
+      redisUrl: opts.redis,
+    });
     try {
-      console.error(`loadtest: removed ${await purgeStaleConfig(st)} stale config entries`);
+      console.error(
+        `loadtest: removed ${await purgeStaleConfig(st)} stale config entries`,
+      );
       await purgeLoadtestData({ redis, databaseUrl: opts.databaseUrl });
     } catch (e) {
       console.error(`loadtest cleanup failed: ${e.message}`);
@@ -430,15 +513,35 @@ async function main() {
     probeConn = new Redis(opts.redis, { maxRetriesPerRequest: 3 });
     probeConn.on("error", () => {});
     phase = "preflight";
-    const waited = await waitForIdle(probeConn, opts.preflightTimeout * 1000, "preflight");
-    if (waited > 2000) console.error(`loadtest: preflight waited ${Math.round(waited / 1000)} s for the existing backlog`);
+    const waited = await waitForIdle(
+      probeConn,
+      opts.preflightTimeout * 1000,
+      "preflight",
+    );
+    if (waited > 2000)
+      console.error(
+        `loadtest: preflight waited ${Math.round(waited / 1000)} s for the existing backlog`,
+      );
     phase = "setup";
-    store = createConfigStore({ databaseUrl: opts.databaseUrl, redisUrl: opts.redis });
-    if (!opts.keepData) await purgeLoadtestData({ redis: probeConn, databaseUrl: opts.databaseUrl });
+    store = createConfigStore({
+      databaseUrl: opts.databaseUrl,
+      redisUrl: opts.redis,
+    });
+    if (!opts.keepData)
+      await purgeLoadtestData({
+        redis: probeConn,
+        databaseUrl: opts.databaseUrl,
+      });
     const undoConfig = await installConfig(store, runId, !!opts.repeatKeys);
     cleanup = async () => {
       await undoConfig();
-      if (!opts.keepData) await purgeLoadtestData({ redis: probeConn, databaseUrl: opts.databaseUrl }).catch((e) => console.error(`loadtest: data purge failed: ${e.message}`));
+      if (!opts.keepData)
+        await purgeLoadtestData({
+          redis: probeConn,
+          databaseUrl: opts.databaseUrl,
+        }).catch((e) =>
+          console.error(`loadtest: data purge failed: ${e.message}`),
+        );
     };
     await collector.start();
 
@@ -446,8 +549,13 @@ async function main() {
     const deadline = Date.now() + 30_000;
     let probeSeq = -1;
     for (;;) {
-      if (Date.now() > deadline) throw new Error("source/rule did not become live within 30 s (are the app, ingest worker and engine running on the same database and Redis?)");
-      const r = await post(JSON.stringify(buildBatch(runId, probeSeq--, 1, Date.now())));
+      if (Date.now() > deadline)
+        throw new Error(
+          "source/rule did not become live within 30 s (are the app, ingest worker and engine running on the same database and Redis?)",
+        );
+      const r = await post(
+        JSON.stringify(buildBatch(runId, probeSeq--, 1, Date.now())),
+      );
       if (r.status === 202 && collector.probeSeen()) break;
       await sleep(r.status === 202 ? 250 : 500);
     }
@@ -458,10 +566,21 @@ async function main() {
     let seqBase = 0;
     for (let k = 1; k <= opts.repeat; k++) {
       phase = "preflight";
-      await waitForIdle(probeConn, opts.preflightTimeout * 1000, `window ${k}/${opts.repeat} preflight`);
+      await waitForIdle(
+        probeConn,
+        opts.preflightTimeout * 1000,
+        `window ${k}/${opts.repeat} preflight`,
+      );
       phase = "measurement";
       console.error(`loadtest: measurement window ${k}/${opts.repeat}`);
-      const r = await measure(opts, `${runId}w${k}`, post, collector, seqBase, probeConn);
+      const r = await measure(
+        opts,
+        `${runId}w${k}`,
+        post,
+        collector,
+        seqBase,
+        probeConn,
+      );
       seqBase += r.sent;
       runs.push(r);
       if (r.overloaded) {
@@ -474,10 +593,17 @@ async function main() {
     result = aggregateRuns(runs, opts.repeat);
     if (opts.repeatKeys) {
       phase = "repeat-keys";
-      await waitForIdle(probeConn, opts.preflightTimeout * 1000, "repeat-keys preflight");
+      await waitForIdle(
+        probeConn,
+        opts.preflightTimeout * 1000,
+        "repeat-keys preflight",
+      );
       result.repeatKeys = await runRepeatKeys(opts, runId, post);
-      console.error(`loadtest: repeat-keys ${JSON.stringify(result.repeatKeys)}`);
-      if (!result.repeatKeys.ok) result.targets = { ...result.targets, met: false };
+      console.error(
+        `loadtest: repeat-keys ${JSON.stringify(result.repeatKeys)}`,
+      );
+      if (!result.repeatKeys.ok)
+        result.targets = { ...result.targets, met: false };
     }
   } catch (e) {
     console.error(`loadtest ${phase} failed: ${e.stack ?? e.message}`);
@@ -492,7 +618,8 @@ async function main() {
 
   mkdirSync(dirname(resolve(opts.out)), { recursive: true });
   writeFileSync(opts.out, JSON.stringify(result, null, 2) + "\n");
-  if (opts.chart) writeChart(opts.out.replace(/\.json$/, "") + ".html", [opts.out]);
+  if (opts.chart)
+    writeChart(opts.out.replace(/\.json$/, "") + ".html", [opts.out]);
   const e = result.latencyMs.e2e;
   console.log(
     `sent=${result.sent} accepted=${result.accepted} alertsSeen=${result.alertsSeen} p50=${e.p50}ms p99=${e.p99}ms lost=${result.lost} backlogAtEnd=${result.backlogAtEnd} overloaded=${result.overloaded} targetsMet=${result.targets.met} -> ${opts.out}`,
@@ -504,20 +631,56 @@ async function main() {
  * Send `opts.repeatKeys` identical events (one dedup key) and check Postgres: exactly one alert with
  * count == events. Events go in batches of 50 so the stream order is the send order.
  */
+/**
+ * Schema propagation is async (config change -> every ingest worker). Send single repeat events until
+ * an alert with the schema's constant dedup key shows up in Postgres, which proves the schema is live.
+ * Returns how many probe events that took (they are part of the alert's count).
+ */
+async function waitForSchema(pool, ruleId, key, runId, post) {
+  const deadline = Date.now() + 30_000;
+  let probes = 0;
+  for (;;) {
+    const r = await post(
+      JSON.stringify(buildRepeatBatch(runId, -1 - probes, 1, Date.now())),
+    );
+    if (r.status === 202 && Number.isFinite(r.accepted) && r.accepted >= 1)
+      probes++;
+    await sleep(500);
+    const q = await pool.query(
+      "SELECT 1 FROM alerts WHERE rule_id = $1 AND dedup_key = $2",
+      [ruleId, key],
+    );
+    if (q.rowCount > 0) return probes;
+    if (Date.now() > deadline)
+      throw new Error("repeat-keys: temporary schema not live within 30 s");
+  }
+}
+
 async function runRepeatKeys(opts, runId, post) {
   const events = opts.repeatKeys;
   const ruleId = ids(runId).rule;
   const key = `${TMP_PREFIX}rk-${runId}`;
-  await sleep(1000); // let the schema reach the ingest workers
+  const pool = new pg.Pool({ connectionString: opts.databaseUrl, max: 1 });
+  let probes = 0;
   let accepted = 0;
-  for (let sent = 0; sent < events; ) {
+  try {
+    probes = await waitForSchema(pool, ruleId, key, runId, post);
+  } catch (err) {
+    await pool.end();
+    throw err;
+  }
+  for (let sent = 0; sent < events;) {
     const n = Math.min(50, events - sent);
-    const r = await post(JSON.stringify(buildRepeatBatch(runId, sent, n, Date.now())));
-    if (r.status !== 202) throw new Error(`repeat-keys: ingest answered ${r.status}`);
-    accepted += Number.isFinite(r.accepted) ? Math.min(r.accepted, n) : n;
+    const r = await post(
+      JSON.stringify(buildRepeatBatch(runId, sent, n, Date.now())),
+    );
+    if (r.status !== 202)
+      throw new Error(`repeat-keys: ingest answered ${r.status}`);
+    if (!Number.isFinite(r.accepted))
+      throw new Error("repeat-keys: ingest response has no accepted count");
+    accepted += Math.min(r.accepted, n);
     sent += n;
   }
-  const pool = new pg.Pool({ connectionString: opts.databaseUrl, max: 1 });
   let alerts = 0;
   let count = 0;
   try {
@@ -529,13 +692,20 @@ async function runRepeatKeys(opts, runId, post) {
       );
       alerts = r.rows[0].alerts;
       count = r.rows[0].count;
-      if (count >= accepted || Date.now() > deadline) break;
+      if (count >= accepted + probes || Date.now() > deadline) break;
       await sleep(250);
     }
   } finally {
     await pool.end();
   }
-  return { events, accepted, alerts, count, ok: accepted === events && alerts === 1 && count === events };
+  return {
+    events,
+    probes,
+    accepted,
+    alerts,
+    count,
+    ok: accepted === events && alerts === 1 && count === events + probes,
+  };
 }
 
 async function measure(opts, runId, post, collector, seqBase = 0, probeConn) {
@@ -569,8 +739,12 @@ async function measure(opts, runId, post, collector, seqBase = 0, probeConn) {
       inflight--;
       const n =
         r.status === 202
-          ? Number.isFinite(r.accepted) ? Math.min(r.accepted, count) : count
-          : Number.isFinite(r.accepted) ? Math.min(r.accepted, count) : 0;
+          ? Number.isFinite(r.accepted)
+            ? Math.min(r.accepted, count)
+            : count
+          : Number.isFinite(r.accepted)
+            ? Math.min(r.accepted, count)
+            : 0;
       accepted += n;
       for (let i = 0; i < n; i++) okSeqs.push(first + i);
       if (r.status === 0) httpErrors += count - n;
@@ -582,7 +756,13 @@ async function measure(opts, runId, post, collector, seqBase = 0, probeConn) {
   while (Date.now() < endMs) {
     const elapsed = (Date.now() - startMs) / 1000;
     const owed = Math.floor(opts.rate * elapsed) - sent;
-    if (owed > 0 && inflight < maxInflight) fire(Math.min(owed, Math.max(1, Math.ceil(opts.rate * batchMs * 4 / 1000))));
+    if (owed > 0 && inflight < maxInflight)
+      fire(
+        Math.min(
+          owed,
+          Math.max(1, Math.ceil((opts.rate * batchMs * 4) / 1000)),
+        ),
+      );
     await sleep(batchMs);
   }
   const sendEnd = Date.now();
@@ -599,7 +779,8 @@ async function measure(opts, runId, post, collector, seqBase = 0, probeConn) {
       lastCount = seen;
       lastProgress = Date.now();
     }
-    if (Date.now() - lastProgress > 10_000 || Date.now() - drainStart > 60_000) break;
+    if (Date.now() - lastProgress > 10_000 || Date.now() - drainStart > 60_000)
+      break;
     await sleep(1000);
   }
   await sleep(500); // let trailing pushes arrive
@@ -627,7 +808,9 @@ async function measure(opts, runId, post, collector, seqBase = 0, probeConn) {
     const n = notifMs.get(alertId);
     if (n !== undefined) notif.push(n - ts);
   }
-  if (processedTimes.length === 0) for (const s of okSeqs) if (streamMs.has(s)) processedTimes.push(streamMs.get(s));
+  if (processedTimes.length === 0)
+    for (const s of okSeqs)
+      if (streamMs.has(s)) processedTimes.push(streamMs.get(s));
   let lastProcessed = processedTimes.length ? 0 : sendEnd;
   for (const t of processedTimes) if (t > lastProcessed) lastProcessed = t;
   const sendSecs = Math.max(0.001, (sendEnd - startMs) / 1000);
@@ -637,12 +820,20 @@ async function measure(opts, runId, post, collector, seqBase = 0, probeConn) {
   const backlogAtEnd = backlog.total;
   // events still queued in the parse/engine groups are not lost, only late
   const lost = Math.max(0, unprocessedAtEnd - backlogAtEnd);
-  const e2eCoverage = alertsSeen > 0 && e2e.length > 0 ? Math.round((e2e.length / alertsSeen) * 10000) / 10000 : 0;
+  const e2eCoverage =
+    alertsSeen > 0 && e2e.length > 0
+      ? Math.round((e2e.length / alertsSeen) * 10000) / 10000
+      : 0;
   const round = (v) => Math.round(v * 10) / 10;
 
   let commit = null;
   try {
-    commit = execSync("git rev-parse --short HEAD", { stdio: ["ignore", "pipe", "ignore"], timeout: 2000 }).toString().trim();
+    commit = execSync("git rev-parse --short HEAD", {
+      stdio: ["ignore", "pipe", "ignore"],
+      timeout: 2000,
+    })
+      .toString()
+      .trim();
   } catch {
     /* not a git checkout */
   }
@@ -650,7 +841,13 @@ async function measure(opts, runId, post, collector, seqBase = 0, probeConn) {
     date: new Date().toISOString(),
     commit,
     wallTimeSec: Math.round((Date.now() - startMs) / 10) / 100,
-    config: { rate: opts.rate, duration: opts.duration, workers: opts.workers, smoke: opts.smoke, note: WORKERS_NOTE },
+    config: {
+      rate: opts.rate,
+      duration: opts.duration,
+      workers: opts.workers,
+      smoke: opts.smoke,
+      note: WORKERS_NOTE,
+    },
     sent,
     accepted,
     rejected,
@@ -674,9 +871,15 @@ async function measure(opts, runId, post, collector, seqBase = 0, probeConn) {
       notification: notif.length ? summarize(notif) : null,
     },
     e2eCoverage,
-    targets: { ...evaluateTargets(e2eSummary, lost, e2eCoverage >= 1, backlogAtEnd), met: drained && evaluateTargets(e2eSummary, lost, e2eCoverage >= 1, backlogAtEnd).met },
+    targets: {
+      ...evaluateTargets(e2eSummary, lost, e2eCoverage >= 1, backlogAtEnd),
+      met:
+        drained &&
+        evaluateTargets(e2eSummary, lost, e2eCoverage >= 1, backlogAtEnd).met,
+    },
     measurement: MEASUREMENT,
   };
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) await main();
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href)
+  await main();
