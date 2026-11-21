@@ -19,6 +19,14 @@ export interface RedisStreamSourceConfig {
   stream: string;
   consumerGroup: string;
 }
+export interface KafkaSourceConfig {
+  /** Comma-separated bootstrap brokers as host:port. */
+  brokers: string;
+  topic: string;
+  groupId: string;
+  /** Read from the topic start when the group has no committed offset. Default false. */
+  fromBeginning?: boolean;
+}
 
 interface SourceBase {
   id: Id;
@@ -29,7 +37,8 @@ interface SourceBase {
 export type Source =
   | (SourceBase & { type: "http"; config: HttpSourceConfig })
   | (SourceBase & { type: "file_tail"; config: FileTailSourceConfig })
-  | (SourceBase & { type: "redis_stream"; config: RedisStreamSourceConfig });
+  | (SourceBase & { type: "redis_stream"; config: RedisStreamSourceConfig })
+  | (SourceBase & { type: "kafka"; config: KafkaSourceConfig });
 
 export type SourceType = Source["type"];
-export const SOURCE_TYPES: readonly SourceType[] = ["http", "file_tail", "redis_stream"];
+export const SOURCE_TYPES: readonly SourceType[] = ["http", "file_tail", "redis_stream", "kafka"];

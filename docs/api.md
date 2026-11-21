@@ -2210,6 +2210,25 @@ Example `redisStream` (Redis stream source):
 }
 ```
 
+Example `kafka` (Kafka source):
+
+```json
+{
+  "id": "demo-kafka",
+  "name": "Demo (Kafka topic)",
+  "enabled": true,
+  "parser": {
+    "type": "json"
+  },
+  "type": "kafka",
+  "config": {
+    "brokers": "localhost:9092",
+    "topic": "alerts",
+    "groupId": "alerting"
+  }
+}
+```
+
 **Responses**
 
 | status | media type | schema | description |
@@ -3183,7 +3202,7 @@ Type: "info" \| "warning" \| "error" \| "critical"
 
 ### Source
 
-Type: [SourceBase](#schema-sourcebase) & { type: "http", config: object } \| [SourceBase](#schema-sourcebase) & { type: "file_tail", config: { path: string } } \| [SourceBase](#schema-sourcebase) & { type: "redis_stream", config: { stream: string, consumerGroup: string } }
+Type: [SourceBase](#schema-sourcebase) & { type: "http", config: object } \| [SourceBase](#schema-sourcebase) & { type: "file_tail", config: { path: string } } \| [SourceBase](#schema-sourcebase) & { type: "redis_stream", config: { stream: string, consumerGroup: string } } \| [SourceBase](#schema-sourcebase) & { type: "kafka", config: { brokers: string, topic: string, groupId: string, fromBeginning?: boolean } }
 
 <a id="schema-sourcebase"></a>
 
@@ -3217,7 +3236,7 @@ Type: [SourceBase](#schema-sourcebase) & { type: "http", config: object } \| [So
 
 ### SourceType
 
-Type: "http" \| "file_tail" \| "redis_stream"
+Type: "http" \| "file_tail" \| "redis_stream" \| "kafka"
 
 <a id="schema-sourcetypeinfo"></a>
 

@@ -1,7 +1,7 @@
 // Pure event generation for the demo (no I/O). Shapes follow Appendix A.
 export type Rng = () => number;
 
-export type EventKind = "workflow" | "latency" | "payments" | "trade" | "resolved" | "junk";
+export type EventKind = "workflow" | "latency" | "payments" | "trade" | "resolved" | "junk" | "unknown";
 export interface DemoEvent {
   kind: EventKind;
   /** One line as sent to a source (JSON text, or junk for "junk"). */
@@ -100,6 +100,35 @@ export function unparseable(rng: Rng, now: Date): DemoEvent {
   return {
     kind: "junk",
     line: `${now.toISOString().slice(0, 19).replace("T", " ")} ${pick(rng, PRICING)} !!! cache stampede ??? {unterminated`,
+  };
+}
+
+const FEEDS = [
+  { feed: "fx-spot-eu", instruments: ["EURUSD", "EURGBP", "EURCHF"] },
+  { feed: "fx-spot-apac", instruments: ["USDJPY", "AUDUSD"] },
+  { feed: "rates-curves", instruments: ["EUR-6M", "USD-SOFR", "GBP-SONIA"] },
+];
+
+/**
+ * An event in a schema none of the seeded schemas recognise (a stale market-data feed), for showing
+ * how a new schema is added at runtime. Deliberately different from Appendix A: its own severity
+ * scale (SEV1-SEV3), an epoch-seconds timestamp and no title, so mapping it needs a value map,
+ * timestamp normalisation and a template. Matching: `eventName = md.feed.stale`.
+ */
+export function unknownSchemaEvent(rng: Rng, now: Date): DemoEvent {
+  const f = pick(rng, FEEDS);
+  return {
+    kind: "unknown",
+    line: JSON.stringify({
+      eventName: "md.feed.stale",
+      feed: f.feed,
+      instrument: pick(rng, f.instruments),
+      staleForSec: int(rng, 15, 240),
+      level: pick(rng, ["SEV1", "SEV2", "SEV2", "SEV3", "SEV3"]),
+      venue: pick(rng, ["LDN", "NYC", "SGP"]),
+      env: rng() < 0.85 ? "prod" : "uat",
+      detectedAt: Math.floor(now.getTime() / 1000),
+    }),
   };
 }
 
