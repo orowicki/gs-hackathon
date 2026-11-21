@@ -38,6 +38,10 @@ export function AppShell({ children }: { children: ReactNode }) {
         .filter((r) => r.crumb && r.path !== "*" && matchPath({ path: r.path, end: true }, pathname))
         .sort((a, b) => a.path.split(":").length - b.path.split(":").length)[0]
     : undefined;
+  // A page outside the sidebar (e.g. Notification preferences, from the account menu) names itself.
+  const standalone = current
+    ? undefined
+    : routes.find((r) => r.crumb && r.path !== "*" && matchPath({ path: r.path, end: true }, pathname));
   return (
     <div className="shell">
       <nav className="sidebar" aria-label="Main">
@@ -72,6 +76,15 @@ export function AppShell({ children }: { children: ReactNode }) {
         <header className="app-bar">
           <nav className="crumbs" aria-label="Breadcrumb">
             {section && <span className="crumb">{section.title}</span>}
+            {standalone && (
+              <>
+                <span className="crumb">Account</span>
+                <Icon as={ChevronRight} />
+                <span className="crumb current" aria-current="page">
+                  {standalone.crumb}
+                </span>
+              </>
+            )}
             {current && (
               <>
                 <Icon as={ChevronRight} />

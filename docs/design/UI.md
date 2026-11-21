@@ -11,10 +11,12 @@
 > "no sidebars, no stat cards" rule.
 
 1. **Two areas, always one click away.** A left sidebar (Grafana-style) with two sections:
-   **Alerts** (alert feed, my notifications) for people handling alerts, and **Configuration**
+   **Alerts** (alert feed) for people handling alerts, and **Configuration**
    (rules, sources, schemas, people & groups, channels) for setting the service up. Every page is
-   reachable from the sidebar; no page is hidden behind another page's button. Each page declares
-   its sidebar entry with `nav` in its `packages/web/src/routes/*.route.tsx` file.
+   reachable from the sidebar, except personal settings, which live in the account menu (top right):
+   **Notification preferences** (`/settings/notifications`). Each sidebar page declares its entry
+   with `nav` in its `packages/web/src/routes/*.route.tsx` file; a page outside the sidebar sets
+   `crumb` instead and shows as "Account › <crumb>" in the breadcrumb.
 2. **The filter is the main control on the feed.** Stat panels above the feed (open alerts, and open
    alerts per severity) give the overview and filter the feed when clicked. No charts or dashboards
    beyond these panels.
@@ -30,7 +32,7 @@
 |---|---|---|---|
 | `/` | Alert feed (landing page) | Alerts | everyone |
 | `/alerts/:id` | Alert detail | (under Alert feed) | everyone |
-| `/settings/notifications` | My notifications | Alerts | everyone |
+| `/settings/notifications` | Notification preferences | (account menu, not in the sidebar) | everyone |
 | `/rules`, `/rules/new`, `/rules/:id` | Rules list and editor | Configuration | everyone; editing only profiles with permission to create rules |
 | `/config/sources`, `/config/sources/:id` | Sources | Configuration | everyone |
 | `/config/schemas`, `/config/schemas/:id` | Schemas | Configuration | everyone |
@@ -269,7 +271,7 @@ Record answers here as they are decided:
   are the people in People & groups, chosen from a profile picker in the settings panel (no
   password). A `canCreateRules` flag on each person decides whether `+` is rendered.
 - ~~Where starred filters are stored.~~ **Decided:** backend, per profile.
-- ~~Content of the settings panel.~~ **Decided:** profile picker, My notifications, theme, starred
+- ~~Content of the settings panel.~~ **Decided:** profile picker, Notification preferences (now in the account menu), theme, starred
   filters, and a short **Configure** list linking to separate pages: `/config/sources`,
   `/config/schemas`, `/config/rules`, `/config/people`, `/config/channels`. These pages follow this
   file's visual style; they are the only additions to section 2's routes.
