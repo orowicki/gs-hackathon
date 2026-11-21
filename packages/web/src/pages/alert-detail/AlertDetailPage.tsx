@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import "./alert-detail.css";
 import {
@@ -17,18 +17,29 @@ import {
   type RunbookRun,
 } from "./api";
 import { EventFields, FieldRow, ValueText } from "./EventFields";
-import { formatDate, formatPrimitive, formatTimestamp, parseTimestamp } from "./format";
+import { formatDate, formatPrimitive, formatTimeValue, parseTimestamp } from "./format";
 
 const SEVERITY_LABEL: Record<string, string> = { critical: "CRIT", error: "ERROR", warning: "WARN", info: "INFO" };
+
+/** Tracks the id this component currently shows; false after the id changes or on unmount. */
+function useIsCurrent(id: string): (forId: string) => boolean {
+  const ref = useRef<string | null>(id);
+  useEffect(() => {
+    ref.current = id;
+    return () => {
+      ref.current = null;
+    };
+  }, [id]);
+  return (forId) => ref.current === forId;
+}
 
 function str(v: unknown): string | undefined {
   return typeof v === "string" && v !== "" ? v : typeof v === "number" ? String(v) : undefined;
 }
 
-function when(v: string | undefined): string | undefined {
-  if (!v) return undefined;
-  const d = parseTimestamp("at", v);
-  return d ? formatTimestamp(d) : v;
+function when(v: unknown): string | undefined {
+  if (v === undefined || v === null || v === "") return undefined;
+  return formatTimeValue("at", v) ?? str(v);
 }
 
 function BackLink() {
@@ -55,6 +66,7 @@ function Suggest({ id }: { id: string }) {
   const [text, setText] = useState("");
   const [state, setState] = useState<"idle" | "sending" | "sent">("idle");
   const [error, setError] = useState<string | null>(null);
+  const isCurrent = useIsCurrent(id);
 
   if (!open) {
     return (
@@ -71,10 +83,12 @@ function Suggest({ id }: { id: string }) {
     setError(null);
     try {
       await sendSuggestion(id, text.trim());
+      if (!isCurrent(id)) return;
       setText("");
       setOpen(false);
       setState("sent");
     } catch (e) {
+      if (!isCurrent(id)) return;
       setError(e instanceof Error ? e.message : "Could not send suggestion.");
       setState("idle");
     }
@@ -109,8 +123,8 @@ function Runbooks({ runs }: { runs: RunbookRun[] | null }) {
         <p className="muted">No runbook runs yet.</p>
       ) : (
         <ul className="plain">
-          {runs.map((r) => (
-            <li key={r.runbookId}>
+          {runs.map((r, i) => (
+            <li key={`${r.runbookId}-${i}`}>
               <span className="mono">{r.runbookId}</span>
               <ul className="plain nested-list">
                 {(r.steps ?? []).map((s) => (
@@ -139,8 +153,9 @@ function Audit({ entries }: { entries: AuditEntry[] | null }) {
           {entries.map((e, i) => {
             const d = parseTimestamp("at", e.at);
             return (
-              <li key={e.id ?? i}>
-                <span className="muted">{d ? formatDate(d) : e.at}</span> {e.actor} {e.action.replace(/_/g, " ")}
+              <li key={`${e.id ?? ""}-${i}`}>
+                <span className="muted">{d ? formatDate(d) : String(e.at ?? "—")}</span> {e.actor ?? "unknown"}{" "}
+                {(e.action ?? "").replace(/_/g, " ")}
                 {e.detail || e.result ? <span className="muted"> — {e.detail ?? e.result}</span> : null}
               </li>
             );
@@ -159,10 +174,13 @@ export function AlertDetailPage() {
   const [busy, setBusy] = useState(false);
   const [runs, setRuns] = useState<RunbookRun[] | null>(null);
   const [audit, setAudit] = useState<AuditEntry[] | null>(null);
+  const isCurrent = useIsCurrent(id);
 
   useEffect(() => {
     let live = true;
     setAlert(null);
+    setBusy(false);
+    setActionError(null);
     setLoadError(null);
     setRuns(null);
     setAudit(null);
@@ -186,12 +204,14 @@ export function AlertDetailPage() {
     setActionError(null);
     try {
       const updated = await fn(id);
+      if (!isCurrent(id)) return;
       setAlert((prev) => ({ ...(prev ?? {}), ...updated }));
-      void getAudit(id).then(setAudit);
+      void getAudit(id).then((a) => isCurrent(id) && setAudit(a));
     } catch (e) {
+      if (!isCurrent(id)) return;
       setActionError(e instanceof Error ? e.message : "Action failed.");
     } finally {
-      setBusy(false);
+      if (isCurrent(id)) setBusy(false);
     }
   };
 
@@ -286,7 +306,9 @@ export function AlertDetailPage() {
             <ValueText display={{ text: last ?? "—", mono: false, muted: !last }} />
           </FieldRow>
           <FieldRow label="State">
-            <ValueText display={{ text: state, mono: false, muted: false }} />
+            <span data-testid="alert-state">
+              <ValueText display={{ text: state, mono: false, muted: false }} />
+            </span>
           </FieldRow>
         </dl>
       </section>
@@ -302,7 +324,7 @@ export function AlertDetailPage() {
 
       <Runbooks runs={runs} />
       <Audit entries={audit} />
-      <Suggest id={id} />
+      <Suggest key={id} id={id} />
     </main>
   );
 }

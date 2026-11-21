@@ -71,11 +71,11 @@ for (const scheme of ["light", "dark"] as const) {
       await expect(page.getByRole("link", { name: /Back to alerts/ })).toHaveAttribute("href", "/");
 
       const fieldText = await page.locator(".event .fields").first().innerText();
-      expect(fieldText).not.toMatch(/[{}[\]",]/);
+      expect(fieldText).not.toMatch(/[{}[\]"]/);
 
       await page.getByRole("button", { name: "Acknowledge" }).click();
       await expect(page.getByRole("button", { name: "Acknowledge" })).toBeDisabled();
-      await expect(page.getByText("acknowledged", { exact: true })).toBeVisible();
+      await expect(page.getByTestId("alert-state")).toHaveText("acknowledged");
 
       await page.getByRole("button", { name: "Suggest a change" }).click();
       const send = page.getByRole("button", { name: "Send" });

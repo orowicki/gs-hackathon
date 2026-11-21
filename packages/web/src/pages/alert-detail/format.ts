@@ -21,6 +21,7 @@ export function humanize(key: string): string {
 }
 
 const TIME_KEY = /(^|[^a-z])(time|timestamp|date|datetime)$|(time|timestamp|date)$|[a-z]At$|^(at|since|until|expires|startsAt|endsAt)$/;
+const DATE_ONLY_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
 const ISO_RE = /^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:?\d{2})?$/;
 
 export function looksLikeTimeKey(key: string): boolean {
@@ -30,6 +31,11 @@ export function looksLikeTimeKey(key: string): boolean {
 /** Returns a Date for ISO strings, or for epoch s/ms numbers when the key looks like a time. Else null. */
 export function parseTimestamp(key: string, value: unknown): Date | null {
   if (typeof value === "string") {
+    const m = DATE_ONLY_RE.exec(value);
+    if (m) {
+      const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+      return d.getMonth() === Number(m[2]) - 1 ? d : null;
+    }
     if (!ISO_RE.test(value)) return null;
     const d = new Date(value.replace(" ", "T"));
     return Number.isNaN(d.getTime()) ? null : d;
@@ -68,6 +74,14 @@ export function formatTimestamp(d: Date, now: Date = new Date()): string {
   return `${formatDate(d)} (${relativeTime(d, now)})`;
 }
 
+/** Display string for a timestamp-like value (ISO, date-only, epoch s/ms for time keys), or null. */
+export function formatTimeValue(key: string, value: unknown, now: Date = new Date()): string | null {
+  const d = parseTimestamp(key, value);
+  if (!d) return null;
+  if (typeof value === "string" && DATE_ONLY_RE.test(value)) return `${d.getDate()} ${MONTHS[d.getMonth()]} ${d.getFullYear()}`;
+  return formatTimestamp(d, now);
+}
+
 export interface Display {
   text: string;
   mono: boolean;
@@ -76,7 +90,12 @@ export interface Display {
 
 const MONO_KEY = /(^|[a-z])(Id|Ids|Key|Uuid|Hash|Sha|Ref|Code|Type|Status)$|^(id|key|uuid|hash|sha|ref|code|type|status|dedupKey)$|_(id|key|code|uuid)$/;
 const CODE_VALUE = /^[A-Z0-9][A-Z0-9_\-:.]{2,}$/;
-const NO_SEPARATOR_KEY = /(id|code|year|port|zip|phone|version|pid)$/i;
+const NO_SEPARATOR_WORDS = new Set(["id", "code", "year", "port", "zip", "phone", "version", "pid"]);
+/** True when the last camelCase/snake word of the key is an identifier-like word (`workflowId`, not `valid`). */
+function noSeparator(key: string): boolean {
+  const last = key.replace(/([a-z0-9])([A-Z])/g, "$1 $2").split(/[\s_\-.]+/).pop() ?? "";
+  return NO_SEPARATOR_WORDS.has(last.toLowerCase());
+}
 
 export function isEmptyValue(v: unknown): boolean {
   return (
@@ -96,11 +115,11 @@ export function isPlainObject(v: unknown): v is Record<string, unknown> {
 export function formatPrimitive(key: string, value: unknown, now: Date = new Date()): Display {
   if (isEmptyValue(value)) return { text: "—", mono: false, muted: true };
   if (typeof value === "boolean") return { text: value ? "Yes" : "No", mono: false, muted: false };
-  const when = parseTimestamp(key, value);
-  if (when) return { text: formatTimestamp(when, now), mono: false, muted: false };
+  const when = formatTimeValue(key, value, now);
+  if (when) return { text: when, mono: false, muted: false };
   if (typeof value === "number") {
-    const plain = !Number.isFinite(value) || NO_SEPARATOR_KEY.test(key) || Math.abs(value) < 1000;
-    return { text: plain ? String(value) : value.toLocaleString("en-US"), mono: false, muted: false };
+    const plain = !Number.isFinite(value) || noSeparator(key) || Math.abs(value) < 1000;
+    return { text: plain ? String(value) : value.toLocaleString("en-US", { maximumFractionDigits: 20 }), mono: false, muted: false };
   }
   const s = String(value);
   return { text: s, mono: MONO_KEY.test(key) || CODE_VALUE.test(s), muted: false };

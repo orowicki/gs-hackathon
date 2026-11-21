@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatDate, formatPrimitive, formatTimestamp, humanize, objectNodes, parseTimestamp, relativeTime } from "./format";
+import { formatTimeValue, formatDate, formatPrimitive, formatTimestamp, humanize, objectNodes, parseTimestamp, relativeTime } from "./format";
 
 describe("humanize", () => {
   it("humanises keys", () => {
@@ -62,5 +62,24 @@ describe("objectNodes", () => {
     const alerts = nodes[4];
     expect(alerts.kind === "section" && alerts.children.map((c) => c.label)).toEqual(["Alert 1", "Alert 2"]);
     expect(nodes[5].kind === "field" && nodes[5].display.muted).toBe(true);
+  });
+});
+
+describe("number and time edge cases", () => {
+  it("keeps precision and separators", () => {
+    expect(formatPrimitive("ratio", 1234.56789).text).toBe("1,234.56789");
+    expect(formatPrimitive("amountPaid", 25000).text).toBe("25,000");
+    expect(formatPrimitive("valid", 25000).text).toBe("25,000");
+    expect(formatPrimitive("void", 25000).text).toBe("25,000");
+    expect(formatPrimitive("user_id", 25000).text).toBe("25000");
+    expect(formatPrimitive("workflowId", 25000).text).toBe("25000");
+  });
+  it("formats epoch numbers and date-only strings", () => {
+    const now = new Date(1_792_000_000_000 + 120_000);
+    expect(formatTimeValue("at", 1_792_000_000, now)).toMatch(/\(2 min ago\)$/);
+    expect(formatTimeValue("at", 1_792_000_000_000, now)).toMatch(/\(2 min ago\)$/);
+    expect(formatTimeValue("x", "2026-10-23")).toBe("23 Oct 2026");
+    expect(formatTimeValue("x", "2026-13-45")).toBeNull();
+    expect(formatTimeValue("x", "hello")).toBeNull();
   });
 });
