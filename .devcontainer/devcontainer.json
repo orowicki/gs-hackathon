@@ -8,6 +8,10 @@
     "--env-file", "${localEnv:HOME}/.config/autopilot/${localWorkspaceFolderBasename}.env"
   ],
   "remoteUser": "node",
+  "containerEnv": {
+    "DATABASE_URL": "postgres://alerting:alerting@localhost:5432/alerting",
+    "REDIS_URL": "redis://localhost:6379"
+  },
   "mounts": [
     "source=autopilot-claude-config,target=/home/node/.claude,type=volume",
     "source=autopilot-venv-${devcontainerId},target=/home/node/.venv,type=volume",
@@ -15,6 +19,6 @@
   ],
   "workspaceMount": "source=${localWorkspaceFolder},target=/workspace,type=bind,consistency=delegated",
   "workspaceFolder": "/workspace",
-  "postStartCommand": "sudo /usr/local/bin/init-firewall.sh && if [ -n \"${GH_TOKEN:-}\" ]; then gh auth setup-git && git config --global url.https://github.com/.insteadOf git@github.com: && echo \"git uses GH_TOKEN over HTTPS (SSH remotes rewritten)\"; fi",
+  "postStartCommand": "sudo /usr/local/bin/init-firewall.sh && /usr/local/bin/start-services.sh &&if [ -n \"${GH_TOKEN:-}\" ]; then gh auth setup-git && git config --global url.https://github.com/.insteadOf git@github.com: && echo \"git uses GH_TOKEN over HTTPS (SSH remotes rewritten)\"; fi",
   "waitFor": "postStartCommand"
 }
