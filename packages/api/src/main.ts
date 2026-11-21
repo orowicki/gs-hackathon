@@ -1,7 +1,14 @@
 import pg from "pg";
 import { Redis } from "ioredis";
 import { CHANNEL_UI_PUSH, type UiPush } from "@alerting/shared";
-import { createDeliveryQueue, createNtfyChannel, createUiChannel, registerChannel } from "@alerting/delivery";
+import {
+  createDeliveryQueue,
+  createEmailChannel,
+  createNtfyChannel,
+  createUiChannel,
+  emailConfigFromEnv,
+  registerChannel,
+} from "@alerting/delivery";
 import {
   createDefaultActions,
   createGroupNotifier,
@@ -13,6 +20,7 @@ import {
 } from "@alerting/runbooks";
 import { startIngestService, startSchemaMapping, type IngestService, type SchemaMapping } from "@alerting/ingest";
 import { createConfigStore, migrate, type ConfigStore } from "@alerting/config";
+import { startConfigWatch } from "./config-watch.js";
 import { createServer } from "./server.js";
 import { createUiPushHub } from "./stream/sse.js";
 import { createPgAlertStores, createPgEventLoader } from "./routes/alerts/store.js";
@@ -53,6 +61,7 @@ registerChannel(
     publicUrl: process.env.PUBLIC_URL ?? "http://localhost:3000",
   }),
 );
+registerChannel(createEmailChannel(emailConfigFromEnv()));
 const delivery = createDeliveryQueue(deliveryRedis);
 let stopping = false;
 async function startWorker(): Promise<void> {
@@ -105,6 +114,10 @@ if (process.env.DATABASE_URL) {
   });
   config = createConfigStore({ pool, redis: configRedis });
 }
+// Live YAML reload: files load on start only when the entity is missing (API edits survive), later changes apply.
+const configWatcher = config
+  ? startConfigWatch(config, process.env.CONFIG_DIR ?? "./config")
+  : undefined;
 
 // Runbooks: runs, approvals (audit goes to the alerts audit store). Lazy connections, so the API still starts when Postgres/Redis are down.
 const runbooksReady = migrateRunbooks(pool);
@@ -210,7 +223,7 @@ function shutdown(): void {
   stopping = true;
   server.close();
   server.closeAllConnections?.();
-  void Promise.allSettled([delivery.stop(), Promise.resolve(ingest?.stop()).finally(() => schemaMapping?.close()), runbookRegistry?.close(), config?.close()])
+  void Promise.allSettled([delivery.stop(), Promise.resolve(ingest?.stop()).finally(() => schemaMapping?.close()), runbookRegistry?.close(), Promise.race([configWatcher?.close(), new Promise((r) => setTimeout(r, 1500))]).finally(() => config?.close())])
     .then(() => Promise.allSettled([pool.end(), redis.quit(), configRedis?.quit(), deliveryRedis.quit(), subRedis.quit()])).then(() => process.exit(0));
 }
 process.on("SIGTERM", shutdown);

@@ -71,11 +71,17 @@ for (const scheme of ["light", "dark"] as const) {
       expect(saves[0]).toMatchObject({ id: "r1", dedupFields: ["source"] });
 
       await page.goto("/rules/new");
-      await page.getByLabel("Name").fill("Brand New");
+      await page.getByRole("radio", { name: /Build step by step/ }).click();
+      await page.getByLabel("Name", { exact: true }).fill("Brand New");
       await expect(page.getByLabel("Id", { exact: true })).toHaveValue("brand-new");
       await page.getByRole("button", { name: "Save rule" }).click();
       await expect.poll(() => saves.length).toBe(2);
       expect(saves[1]).toMatchObject({ id: "brand-new", name: "Brand New" });
+
+      await page.goto("/rules/new");
+      await page.getByRole("radio", { name: /Start from an example/ }).click();
+      await page.getByRole("button", { name: /Failed settlement workflows/ }).click();
+      await expect(page.getByLabel("Name", { exact: true })).toHaveValue("Failed settlement workflows");
 
       await page.goto("/rules/r1");
       await page.getByRole("button", { name: "Accept" }).click();

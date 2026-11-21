@@ -1,40 +1,66 @@
-/* Grafana-style theme: dark by default (like Grafana), light on request via
-   <html data-theme="light">. Every page reads these variables, so the whole app
-   changes from here. */
+/* Grafana visual language. Dark by default; light via <html data-theme="light">
+   (set by the theme switcher). Pages must use these variables, never raw colours. */
 :root {
   color-scheme: dark;
+
+  /* Surfaces: canvas < panel < raised (hover, table headers, inputs' focus ring) */
   --bg: #111217;
   --surface: #181b1f;
   --surface-2: #22252b;
   --sidebar: #181b1f;
   --border: #2c3036;
+  --border-strong: #3d4148;
+
+  /* Text */
   --text: #ccccdc;
-  --text-strong: #ffffff;
+  --text-strong: #e3e3ec;
   --muted: #9fa0ad;
-  --accent: #6e9fff;
-  --accent-bg: #3d71d9;
+  --faint: #6e6f7c;
+
+  /* Brand accent: Goldman Sachs blue. Links and focus use the sky blue; filled buttons
+     use a deeper shade of it so white text stays readable. */
+  --brand: #7399c6;
+  --accent: #8fb2dd;
+  --accent-bg: #3e6aa6;
+  --accent-bg-hover: #4a78b6;
+  --on-accent: #ffffff;
+
+  /* Severity (Grafana alerting colours) and validity */
   --critical: #f2495c;
   --error: #ff9830;
   --warning: #fade2a;
   --info: #5794f2;
   --valid: #73bf69;
-  --shadow: 0 8px 24px rgba(0, 0, 0, 0.6);
+  --critical-tint: rgba(242, 73, 92, 0.15);
+  --error-tint: rgba(255, 152, 48, 0.15);
+  --warning-tint: rgba(250, 222, 42, 0.12);
+  --info-tint: rgba(87, 148, 242, 0.15);
+  --valid-tint: rgba(115, 191, 105, 0.15);
 
-  --font-sans: "IBM Plex Sans", system-ui, sans-serif;
+  --shadow: 0 8px 24px rgba(1, 4, 9, 0.75);
+
+  /* Type: Inter is Grafana's face. 12 / 14 / 18 / 28 px, weights 400 and 500. */
+  --font-sans: "Inter", system-ui, sans-serif;
   --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+  --text-xs: 12px;
   --text-sm: 13px;
   --text-md: 14px;
-  --text-lg: 20px;
-  --text-xl: 32px;
+  --text-lg: 18px;
+  --text-xl: 28px;
   --weight-regular: 400;
-  --weight-strong: 600;
-  --radius: 4px;
+  --weight-strong: 500;
+
+  /* Shape and spacing */
+  --radius: 2px;
+  --radius-lg: 4px;
+  --control-h: 32px;
   --space-1: 4px;
   --space-2: 8px;
   --space-3: 12px;
   --space-4: 16px;
   --space-5: 24px;
-  --sidebar-width: 220px;
+  --sidebar-width: 232px;
+  --topbar-h: 48px;
   --motion-duration: 140ms;
   --motion-ease: ease-out;
 }
@@ -46,17 +72,27 @@
   --surface-2: #f0f1f3;
   --sidebar: #ffffff;
   --border: #dcdee3;
+  --border-strong: #c7cad1;
   --text: #24292e;
-  --text-strong: #000000;
+  --text-strong: #101418;
   --muted: #5f6672;
-  --accent: #1f62e0;
-  --accent-bg: #3d71d9;
+  --faint: #8e939c;
+  --brand: #5f87b8;
+  --accent: #2f5d97;
+  --accent-bg: #2f5d97;
+  --accent-bg-hover: #284f81;
+  --on-accent: #ffffff;
   --critical: #d10e5c;
-  --error: #e55400;
-  --warning: #b08900;
+  --error: #d65b00;
+  --warning: #9c7c00;
   --info: #1f62e0;
   --valid: #1a7f4b;
-  --shadow: 0 8px 24px rgba(24, 26, 27, 0.15);
+  --critical-tint: rgba(209, 14, 92, 0.1);
+  --error-tint: rgba(214, 91, 0, 0.1);
+  --warning-tint: rgba(156, 124, 0, 0.12);
+  --info-tint: rgba(31, 98, 224, 0.1);
+  --valid-tint: rgba(26, 127, 75, 0.1);
+  --shadow: 0 8px 24px rgba(24, 26, 27, 0.18);
 }
 
 @media (prefers-reduced-motion: reduce) {

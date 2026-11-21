@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { Icon } from "./Icon";
 
-const SECTIONS = ["Profile", "Notifications", "Theme", "Starred filters"];
+const SECTIONS = ["Profile", "Notifications", "Starred filters"];
 
 /** sections replaces the placeholder text under a heading (e.g. Profile) with real content. */
 export function SettingsMenu({ sections = {} }: { sections?: Partial<Record<string, ReactNode>> }) {

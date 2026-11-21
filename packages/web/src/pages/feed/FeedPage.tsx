@@ -14,6 +14,7 @@ import {
   FEED_TABS,
   fieldNames,
   filterAlerts,
+  filterText,
   mentionsStatus,
   newStarred,
   parseFilter,
@@ -187,7 +188,7 @@ export function FeedPage() {
 
   const toggleStar = (text: string) => {
     if (!personId) return;
-    const hit = starred.find((s) => s.name === text);
+    const hit = starred.find((s) => s.name === text || filterText(s.filter) === text);
     saveStarred(hit ? starred.filter((s) => s !== hit) : [...starred, newStarred(personId, text)]);
   };
 
@@ -350,6 +351,7 @@ export function FeedPage() {
       {alerts && alerts.length > 0 && (
         <StatPanels
           alerts={alerts}
+          filter={q}
           onFilter={(text) => {
             setParams((p) => {
               const n = withFilter(p, text);
