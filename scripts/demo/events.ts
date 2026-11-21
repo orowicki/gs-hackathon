@@ -124,3 +124,100 @@ export function nextEvent(rng: Rng, now: Date, recent: DemoEvent[] = []): DemoEv
   if (r < 0.96) return rng() < 0.5 ? pricingLatency(rng, now, "resolved") : paymentsCritical(rng, now, "resolved");
   return unparseable(rng, now);
 }
+
+export type DemoSink = "http" | "file_tail" | "redis_stream";
+export interface ShowcaseStep {
+  sink: DemoSink;
+  event: DemoEvent;
+  /** Pause after sending, ms. */
+  gapMs: number;
+}
+
+/**
+ * Fixed opening sequence of a default run. Enough alone to fill a feed with every severity, five
+ * sources, prod and staging, repeats (dedup count > 1) and resolved alerts.
+ * Ordering: all events of one dedup key (firing, repeats, resolve) use the SAME sink, so they stay
+ * in order; sinks are only mixed across different keys.
+ */
+export function showcase(now: Date): ShowcaseStep[] {
+  const ts = now.toISOString();
+  const m = (
+    sink: DemoSink,
+    service: string,
+    alertname: string,
+    severity: string,
+    summary: string,
+    status: "firing" | "resolved",
+    environment?: string,
+    gapMs = 150,
+  ): ShowcaseStep => ({
+    sink,
+    gapMs,
+    event: {
+      kind: status === "resolved" ? "resolved" : "latency",
+      line: JSON.stringify({
+        alertname,
+        labels: { service, region: "eu-west", severity, ...(environment ? { environment } : {}) },
+        annotations: { summary },
+        startsAt: ts,
+        status,
+      }),
+    },
+  });
+  const wf = (sink: DemoSink, n: string, workflowName: string, step: string, severity: string, environment: string): ShowcaseStep => ({
+    sink,
+    gapMs: 150,
+    event: {
+      kind: "workflow",
+      line: JSON.stringify({
+        type: "WORKFLOW_FAILED",
+        workflowId: `WF-SHOWCASE-${n}`,
+        workflowName,
+        step,
+        severity,
+        environment,
+        timestamp: ts,
+        error: { code: "TIMEOUT", message: `${step} did not complete in 5000 ms` },
+      }),
+    },
+  });
+  const trade = (sink: DemoSink, tradeId: string, desk: string, notional: number, reason: string): ShowcaseStep => ({
+    sink,
+    gapMs: 150,
+    event: {
+      kind: "trade",
+      line: JSON.stringify({
+        meta: { schema: "trade.rejected.v2", producer: "trade-gateway", ts: now.getTime() },
+        payload: { tradeId, desk, notional, currency: "EUR", reason },
+      }),
+    },
+  });
+  const pay = "Error rate 27% over the last 5 minutes";
+  return [
+    // critical, payments-api, prod: fired three times (count 3)
+    m("http", "payments-api", "HighErrorRate", "critical", pay, "firing"),
+    m("http", "payments-api", "HighErrorRate", "critical", pay, "firing"),
+    m("http", "payments-api", "HighErrorRate", "critical", pay, "firing"),
+    // warning, pricing-engine-emea: fires, then resolves (resolved alert)
+    m("file_tail", "pricing-engine-emea", "HighLatency", "warning", "p99 latency 840 ms over the last 5 minutes", "firing"),
+    m("redis_stream", "pricing-engine-emea", "CacheMissRate", "warning", "Cache miss rate 38%", "firing"),
+    // critical, pricing-engine-apac, repeated once
+    m("redis_stream", "pricing-engine-apac", "HighLatency", "critical", "p99 latency 1700 ms over the last 5 minutes", "firing"),
+    m("redis_stream", "pricing-engine-apac", "HighLatency", "critical", "p99 latency 1700 ms over the last 5 minutes", "firing"),
+    // settlement workflows, prod: error (repeated), warning, critical
+    wf("http", "1", "order-settlement", "confirm-settlement", "ERROR", "prod"),
+    wf("http", "2", "order-settlement", "confirm-settlement", "ERROR", "prod"),
+    wf("file_tail", "3", "order-settlement", "notify-custodian", "WARN", "prod"),
+    wf("file_tail", "4", "order-settlement", "book-trade", "CRITICAL", "prod"),
+    // staging: a workflow error and a payments warning that resolves
+    wf("http", "5", "report-export", "validate-counterparty", "ERROR", "staging"),
+    m("redis_stream", "payments-api", "HighErrorRate", "warning", "Error rate 8% over the last 5 minutes", "firing", "staging"),
+    // info: rejected trades (the big rates one also reaches Team Rates)
+    trade("http", "T-SHOW-1", "rates", 25_000_000, "LIMIT_BREACH"),
+    trade("redis_stream", "T-SHOW-2", "fx", 2_500_000, "INVALID_PRICE"),
+    trade("file_tail", "T-SHOW-3", "credit", 900_000, "CREDIT_LIMIT"),
+    // resolves, through the same sink as their firing event, after the firing ones were sent
+    m("file_tail", "pricing-engine-emea", "HighLatency", "warning", "p99 latency back to 120 ms", "resolved", undefined, 300),
+    m("redis_stream", "payments-api", "HighErrorRate", "warning", "Error rate back to 0%", "resolved", "staging", 300),
+  ];
+}

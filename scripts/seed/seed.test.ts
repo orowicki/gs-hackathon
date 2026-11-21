@@ -26,7 +26,7 @@ describe("seed data", () => {
     expect(data.person.map((p) => p.id)).toContain("anna");
     expect(data.group.length).toBe(3);
     expect(data.schema.length).toBe(3);
-    expect(data.rule.length).toBe(4);
+    expect(data.rule.length).toBe(6);
     expect(data.runbook.length).toBe(3);
     expect(data.source.map((s) => s.entity.type).sort()).toEqual(["file_tail", "http", "redis_stream"]);
     expect(data.preference.map((p) => p.id)).toEqual(["person:anna"]);
