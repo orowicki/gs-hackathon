@@ -25,6 +25,11 @@ export interface RunbookRoutesDeps {
   /** Needed for POST /api/alerts/{id}/runbook-runs (start a runbook by hand); omitted = that route 404s. */
   loadAlert?(id: string): Promise<Alert | undefined>;
   loadEvent?(id: string): Promise<Event | undefined>;
+  /**
+   * Looks up a group for a step's `approvers` check. Omitted (or the group is unknown): steps with
+   * `approvers` cannot be approved by anyone (fail closed).
+   */
+  getGroup?(id: string): Promise<{ memberIds?: string[] } | undefined>;
   /** How long approve waits for the continuation before answering 202 (default 5000). */
   respondWithinMs?: number;
 }
@@ -105,7 +110,19 @@ export function createRunbookRoutes(deps: RunbookRoutesDeps): {
     let m: RegExpExecArray | null;
 
     if (method === "GET" && path === "/api/approvals") {
-      send(res, 200, await runner.listPendingApprovals());
+      const pending = await runner.listPendingApprovals();
+      // A resolved (or deleted) alert needs no more decisions: its waiting steps leave the inbox.
+      const open = new Map<string, boolean>();
+      if (deps.loadAlert) {
+        const load = deps.loadAlert;
+        await Promise.all(
+          [...new Set(pending.map((p) => p.alertId))].map(async (id) => {
+            const a = await load(id);
+            open.set(id, a !== undefined && a.state !== "resolved");
+          }),
+        );
+      }
+      send(res, 200, deps.loadAlert ? pending.filter((p) => open.get(p.alertId)) : pending);
       return true;
     }
     if (method === "GET" && (m = /^\/api\/alerts\/([^/]+)\/runbook-runs$/.exec(path))) {
@@ -209,10 +226,26 @@ export function createRunbookRoutes(deps: RunbookRoutesDeps): {
       const decision = (b.decision as string | undefined) ?? "approve";
       if (decision !== "approve" && decision !== "skip") throw new HttpError(400, "decision must be approve or skip", "bad_request");
       const runbookId = (b.runbookId as string | undefined) || url.searchParams.get("runbookId") || undefined;
+      if (deps.loadAlert) {
+        const alert = await deps.loadAlert(alertId);
+        if (!alert) throw new HttpError(404, "alert not found", "not_found");
+        if (alert.state === "resolved") throw new HttpError(409, "the alert is resolved; its runbook steps can no longer be approved", "alert_resolved");
+      }
+      // Only a signed-in account may decide: a body/query actor is just a claim, so it is not accepted.
+      if (!accountActor) throw new HttpError(403, "sign in to approve or skip runbook steps", "forbidden");
+      const approver = accountActor;
       const pending = runner.approve(alertId, stepIndex, {
-        actor: accountActor || (b.actor as string | undefined) || url.searchParams.get("actor") || "anonymous",
+        actor: approver,
         runbookId,
         decision,
+        authorize: async (run, i) => {
+          const groupId = run.runbook.steps[i]?.approvers;
+          if (!groupId) return;
+          const group = deps.getGroup ? await deps.getGroup(groupId) : undefined;
+          if (!group?.memberIds?.includes(approver)) {
+            throw new RunnerError("forbidden", `only members of group ${groupId} can approve or skip this step`);
+          }
+        },
       });
       let timer: NodeJS.Timeout | undefined;
       const timedOut = Symbol("timeout");
@@ -244,7 +277,7 @@ export function createRunbookRoutes(deps: RunbookRoutesDeps): {
         return await route(req, res, url, actor);
       } catch (e) {
         if (e instanceof HttpError) send(res, e.status, { error: e.message, code: e.code });
-        else if (e instanceof RunnerError) send(res, e.code === "not_found" ? 404 : 409, { error: e.message, code: e.code });
+        else if (e instanceof RunnerError) send(res, e.code === "not_found" ? 404 : e.code === "forbidden" ? 403 : 409, { error: e.message, code: e.code });
         else send(res, 500, { error: "internal error", code: "internal" });
         return true;
       }

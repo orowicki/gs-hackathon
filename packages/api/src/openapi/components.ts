@@ -334,12 +334,12 @@ export const componentSchemas: Record<string, object> = {
     ["alertId", "runbookId", "steps"],
   ),
   ApproveStepRequest: obj({
-    actor: str(),
+    actor: str("Ignored: the approver is always the signed-in account (session cookie or X-Account)"),
     runbookId: str("Needed when several runbooks await approval at that step"),
     decision: { ...strEnum(["approve", "skip"]), default: "approve" },
   }),
   PendingApproval: obj(
-    { alertId: str(), runbookId: str(), stepIndex: { type: "integer" }, stepName: str(), requestedAt: str() },
+    { alertId: str(), runbookId: str(), stepIndex: { type: "integer" }, stepName: str(), approvers: str("Group id whose members may approve or skip; absent = any signed-in account"), requestedAt: str() },
     ["alertId", "runbookId", "stepIndex", "requestedAt"],
   ),
 

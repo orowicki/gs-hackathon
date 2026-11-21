@@ -12,6 +12,8 @@ interface PendingApproval {
   runbookId: string;
   stepIndex: number;
   stepName: string;
+  /** The approvers group the server enforces (from the run's runbook snapshot). */
+  approvers?: string;
   requestedAt: string;
 }
 interface Step {
@@ -74,7 +76,8 @@ export const APPROVALS_URL = "/api/approvals";
 
 /**
  * Alerts > Approvals (GET /api/approvals): every runbook step waiting for a person, across
- * all alerts. Approve or skip right here; only members of the step's approvers group can.
+ * open alerts (resolved ones drop out). Approve or skip right here; only members of the step's approvers
+ * group can (the server enforces it).
  */
 export function ApprovalsPage() {
   const me = useCurrentPerson();
@@ -121,10 +124,13 @@ export function ApprovalsPage() {
   }, [items, alerts, runbooks]);
 
   const groupName = (id?: string) => (id ? (groups.find((g) => g.id === id)?.name ?? id) : "the team");
+  // Mirrors the server: signed in, and a member of the approvers group when the step has one
+  // (an unknown group or groups that failed to load lock the buttons; the server would refuse anyway).
   const canApprove = (approvers?: string) => {
+    if (!me) return false;
     if (!approvers) return true;
     const g = groups.find((x) => x.id === approvers);
-    return !g || !me || (g.memberIds ?? []).includes(me.id);
+    return !!g && (g.memberIds ?? []).includes(me.id);
   };
 
   async function decide(p: PendingApproval, decision: "approve" | "skip") {
@@ -177,7 +183,8 @@ export function ApprovalsPage() {
             const alert = alerts[p.alertId];
             const rb = runbooks[p.runbookId];
             const step = rb?.steps?.[p.stepIndex];
-            const allowed = canApprove(step?.approvers);
+            const approvers = p.approvers ?? step?.approvers;
+            const allowed = canApprove(approvers);
             return (
               <li key={key} className="ap-card">
                 <div className="ap-main">
@@ -202,7 +209,8 @@ export function ApprovalsPage() {
                   </div>
                   <p className="ap-what">{describe(step, groupName)}</p>
                   <p className="ap-who">
-                    {step?.approvers ? <>Approvers: {groupName(step.approvers)}</> : <>Anyone can approve.</>}
+                    {approvers ? <>Approvers: {groupName(approvers)}</> : <>Anyone signed in can approve.</>}
+                    {!me && <> · Sign in to decide</>}
                     {!allowed && me && <> · {nameOf(me.id)} isn't in this group</>}
                   </p>
                 </div>
@@ -211,7 +219,7 @@ export function ApprovalsPage() {
                     type="button"
                     className="btn primary"
                     disabled={busy === key || !allowed}
-                    title={allowed ? "Run this step now" : `Only ${groupName(step?.approvers)} can approve`}
+                    title={allowed ? "Run this step now" : !me ? "Sign in to approve" : `Only ${groupName(approvers)} can approve`}
                     onClick={() => void decide(p, "approve")}
                   >
                     <Icon as={Check} /> Approve

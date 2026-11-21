@@ -278,7 +278,7 @@ export const operationSpecs: Record<string, OperationSpec> = {
   },
   "GET /api/alerts/{id}": { success: json(200, "The alert with its event and suggestions", ref("AlertDetail")), errors: [400, 404] },
   "GET /api/alerts/{id}/runbook-runs": { success: json(200, "Runs of matching runbooks for the alert", list("RunbookRun")), errors: [400] },
-  "GET /api/approvals": { success: json(200, "Steps awaiting approval", list("PendingApproval")), errors: [] },
+  "GET /api/approvals": { success: json(200, "Steps awaiting approval on alerts that are not resolved", list("PendingApproval")), errors: [] },
   "GET /api/audit": {
     query: [
       q("alertId", { type: "string" }, "Only entries of this alert"),
@@ -341,12 +341,13 @@ export const operationSpecs: Record<string, OperationSpec> = {
     pathParams: { stepIndex: { schema: { type: "integer", minimum: 0 }, description: "Zero-based index of the step" } },
     query: [
       q("runbookId", { type: "string" }, "Runbook id (alternative to the body field)"),
-      q("actor", { type: "string" }, "Approver (alternative to the body field)"),
+      q("actor", { type: "string" }, "Ignored: the approver is always the signed-in account"),
     ],
     request: body("ApproveStepRequest", false),
     success: json(200, "The run after the step was approved or skipped", ref("RunbookRun")),
     alsoSuccess: [json(202, "Approved; the continuation is still running", ref("RunbookRun"))],
-    errors: [400, 404, 409, 413],
+    // 403: not signed in, or not a member of the step's approvers group. 409: not waiting, or the alert is resolved.
+    errors: [400, 403, 404, 409, 413],
   },
 
   "POST /api/alerts/{id}/suggestions": {
