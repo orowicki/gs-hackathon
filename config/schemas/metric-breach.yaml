@@ -1,0 +1,15 @@
+id: schema-metric-breach
+name: Metric threshold breach (Prometheus/Alertmanager style)
+match: alertname matches * AND labels.service matches * AND startsAt matches *
+mapping:
+  severity: { kind: path, path: labels.severity }
+  title: { kind: template, template: "{{alertname}} on {{labels.service}}" }
+  source: { kind: path, path: labels.service }
+  environment: { kind: path, path: labels.environment, default: prod }
+  dedupKey: { kind: template, template: "{{alertname}}-{{labels.service}}" }
+  sourceStatus: { kind: path, path: status, default: firing }
+  occurredAt: { kind: path, path: startsAt }
+  type: { kind: path, path: alertname }
+  message: { kind: path, path: annotations.summary }
+  entity: { kind: path, path: labels.instance }
+  runbookUrl: { kind: path, path: annotations.runbook_url }

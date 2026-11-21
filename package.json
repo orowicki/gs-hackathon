@@ -11,7 +11,7 @@
   "scripts": {
     "build": "npm run build --workspaces --if-present",
     "lint": "eslint . && npm run typecheck --workspaces --if-present",
-    "test": "vitest run"
+    "test": "vitest run --no-file-parallelism"
   },
   "devDependencies": {
     "@types/node": "^26.6.6",

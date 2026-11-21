@@ -1,0 +1,20 @@
+{
+  "name": "@alerting/engine",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -b",
+    "typecheck": "tsc -b && tsc -p tsconfig.test.json",
+    "start": "node dist/main.js"
+  },
+  "dependencies": {
+    "@alerting/config": "*",
+    "@alerting/filter": "*",
+    "@alerting/shared": "*",
+    "@alerting/delivery": "*",
+    "ioredis": "^5.4.1"
+  }
+}
