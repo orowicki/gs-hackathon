@@ -22,16 +22,24 @@ const PARSER_HELP: Record<string, string> = {
   raw: "Keep the whole line as the message.",
 };
 
-/** GET /api/source-types once; `reload` retries after an error. */
+/** Source types rarely change: fetched once per page load and shared, so opening the
+ *  editor again (tabs, examples) renders immediately instead of flashing a loading state. */
+let typesCache: SourceTypesResponse | null = null;
+
+/** GET /api/source-types (cached); `reload` retries after an error. */
 export function useSourceTypes() {
-  const [data, setData] = useState<SourceTypesResponse | null>(null);
+  const [data, setData] = useState<SourceTypesResponse | null>(typesCache);
   const [error, setError] = useState("");
   const [attempt, setAttempt] = useState(0);
   useEffect(() => {
+    if (typesCache && attempt === 0) return;
     let live = true;
     setError("");
     getJson<SourceTypesResponse>("/api/source-types").then(
-      (r) => live && setData(r),
+      (r) => {
+        typesCache = r;
+        if (live) setData(r);
+      },
       (e: Error) => live && setError(e.message),
     );
     return () => {
@@ -197,9 +205,24 @@ export function SourceEditor({
 
   const patch = (p: Partial<Source>) => setSrc((s) => ({ ...s, ...p }));
 
+  const header = (
+    <>
+      <header className="page-header">
+        <div>
+          <h1>{isNew ? "New source" : src.name || "Edit source"}</h1>
+          <p className="page-intro">{isNew ? SOURCE_INTRO : `Source id ${src.id}`}</p>
+        </div>
+      </header>
+      {tabs}
+      {notice && <p className="callout info">{notice}</p>}
+    </>
+  );
+
   if (!types.data) {
+    // Same header and tabs as the loaded page, so nothing jumps when the types arrive.
     return (
-      <main className="page src-page">
+      <main className="page src-page re-page">
+        {header}
         {types.error ? (
           <p className="callout error" role="alert">
             Couldn't load source types: {types.error}{" "}
@@ -208,7 +231,7 @@ export function SourceEditor({
             </button>
           </p>
         ) : (
-          <p className="muted">Loading…</p>
+          <p className="muted">Loading source types…</p>
         )}
       </main>
     );
@@ -276,14 +299,7 @@ export function SourceEditor({
 
   return (
     <main className="page src-page re-page">
-      <header className="page-header">
-        <div>
-          <h1>{isNew ? "New source" : src.name || "Edit source"}</h1>
-          <p className="page-intro">{isNew ? SOURCE_INTRO : `Source id ${src.id}`}</p>
-        </div>
-      </header>
-      {tabs}
-      {notice && <p className="callout info">{notice}</p>}
+      {header}
 
       <div className="re-layout">
         <div className="re-steps">
