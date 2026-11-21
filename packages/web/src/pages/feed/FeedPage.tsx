@@ -8,7 +8,7 @@ import { withFilter } from "../../filterUrl";
 import { AlertList, SkeletonRows } from "./AlertList";
 import { createSource } from "./data";
 import type { FeedSource } from "./data";
-import { FilterBar } from "./FilterBarStub";
+import { FilterBar } from "../../components/filter-bar";
 import { fieldNames, filterAlerts, newStarred, parseFilter, starredTexts, upsertAlert, valuesFor } from "./helpers";
 import { ProfilePicker, StarredList } from "./ProfilePicker";
 

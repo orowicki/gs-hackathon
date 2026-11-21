@@ -16,7 +16,7 @@ for (const scheme of ["light", "dark"] as const) {
       const total = await rows.count();
       expect(total).toBeGreaterThan(3);
 
-      const filter = page.getByRole("textbox", { name: "Filter" });
+      const filter = page.getByRole("combobox", { name: "Filter" });
       await filter.fill("alert.severity =");
       await expect(page.getByRole("alert")).toBeVisible();
       await expect(rows).toHaveCount(total);

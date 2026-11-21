@@ -3,7 +3,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const shots = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../docs/screenshots");
-const FILTER = "alert.severity = critical";
+const FILTER = "alert.status = nonsense";
 
 for (const scheme of ["light", "dark"] as const) {
   test.describe(scheme, () => {
@@ -15,25 +15,24 @@ for (const scheme of ["light", "dark"] as const) {
     test("landing", async ({ page }) => {
       await page.goto("/");
       await expect(page.getByRole("button", { name: "Settings" })).toBeVisible();
-      await expect(page.getByRole("textbox", { name: "Filter" })).toBeVisible();
+      await expect(page.getByRole("combobox", { name: "Filter" })).toBeVisible();
       await expect(page.getByRole("button", { name: "Star filter" })).toBeVisible();
       await expect(page.getByRole("button", { name: "New rule" })).toBeVisible();
-      await expect(page.getByText("No alerts yet.")).toBeVisible();
-      await expect(page.getByRole("link", { name: "Create a rule" })).toBeVisible();
+      await expect(page.locator(".alert-list .row").first()).toBeVisible();
       await page.keyboard.press("/");
-      await expect(page.getByRole("textbox", { name: "Filter" })).toBeFocused();
-      await page.getByRole("textbox", { name: "Filter" }).blur();
+      await expect(page.getByRole("combobox", { name: "Filter" })).toBeFocused();
+      await page.getByRole("combobox", { name: "Filter" }).blur();
       await shot(page, "landing");
     });
 
     test("filter in url", async ({ page }) => {
       await page.goto(`/?q=${encodeURIComponent(FILTER)}`);
-      await expect(page.getByRole("textbox", { name: "Filter" })).toHaveValue(FILTER);
+      await expect(page.getByRole("combobox", { name: "Filter" })).toHaveValue(FILTER);
       await expect(page.getByText("No alerts match this filter.")).toBeVisible();
       await shot(page, "filter");
-      await page.getByRole("link", { name: "Clear filter" }).click();
+      await page.getByRole("button", { name: "Clear filter" }).click();
       await expect(page).toHaveURL(/\/$/);
-      await page.getByRole("textbox", { name: "Filter" }).fill("a b");
+      await page.getByRole("combobox", { name: "Filter" }).fill("a b");
       await expect(page).toHaveURL(/\?q=a\+b$/);
     });
 
