@@ -155,7 +155,6 @@ export async function startStack(run: string, dedupKeys: string[]): Promise<Stac
     }
   }
   const ruleIds = data.rule.map((r) => r.id);
-  const recipients = data.person.map((p) => p.id);
   const clearRedis = async () => {
     const keys = ruleIds.flatMap((r) => dedupKeys.map((k) => dedupKey(r, k)));
     if (keys.length) await redis.del(...keys);
