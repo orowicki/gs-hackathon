@@ -15,6 +15,8 @@ Source of truth: `packages/shared/src/types/*.ts` (import from `@alerting/shared
 | Runbook | `runbook.ts` | `text` or `automation` (steps http, escalate, wait; `approval: none or required`) |
 | Severity, CommonFields | `common.ts` | `SEVERITY_ORDER`, `compareSeverity()` (critical > error > warning > info) |
 
+Conventions: common fields live under `common` on both Event and Alert (`Partial` when no schema matched). Alert uses `state` (open, acknowledged, resolved); `status` (firing, resolved) exists only on events/common fields. `StarredFilter` (`people.ts`) is per profile; `RunbookRun` and `PendingApproval` (`runbook.ts`) back the runbook-run and approval routes; `DeadLetter.id` equals its notification id.
+
 Example: `fixtures/alerts/workflow-failed.json` (an `Alert`); sample events in `fixtures/events/`.
 
 Who uses it: A (ingest, schemas) writes Event, Source, Schema; B (engine, delivery) reads Event and writes Alert, Notification; C (web, runbooks) reads Alert and owns Runbook and AuditEntry. Changing a type needs a DECISIONS.md entry.

@@ -41,6 +41,10 @@ export const ROUTES: RouteDef[] = [
   { method: "GET", path: "/api/groups/{id}/preferences", summary: "Get a group's notification preferences", tag: "preferences", response: "Preference" },
   { method: "PUT", path: "/api/groups/{id}/preferences", summary: "Set a group's notification preferences", tag: "preferences", request: "Preference", response: "Preference" },
 
+  { method: "POST", path: "/api/schemas/test", summary: "Try a schema/mapping against a pasted sample; returns the mapped common fields", tag: "schemas", request: "{ schema: Schema; sample: JsonObject }", response: "{ matched: boolean; common: Partial<CommonFields> }" },
+  { method: "POST", path: "/api/sources/test", summary: "Try a parser on a sample line; returns the parsed fields", tag: "sources", request: "{ parser: ParserConfig; sample: string }", response: "{ parsed: JsonObject }" },
+  { method: "GET", path: "/api/people/{id}/starred-filters", summary: "List a person's starred filters", tag: "filters", response: "StarredFilter[]" },
+  { method: "PUT", path: "/api/people/{id}/starred-filters", summary: "Replace a person's starred filters", tag: "filters", request: "StarredFilter[]", response: "StarredFilter[]" },
   { method: "GET", path: "/api/events", summary: "List stored events (filter, limit, before)", tag: "events", response: "Event[]" },
   { method: "GET", path: "/api/events/recent", summary: "Most recent events (for autocomplete and previews)", tag: "events", response: "Event[]" },
   { method: "POST", path: "/api/events/test-filter", summary: "Count recent events matching a filter", tag: "events", request: "{ filter: Filter }", response: "{ matched: number; total: number }" },
@@ -51,6 +55,9 @@ export const ROUTES: RouteDef[] = [
 
   { method: "GET", path: "/api/alerts", summary: "List alerts (filter, state, limit, before)", tag: "alerts", response: "Alert[]" },
   { method: "GET", path: "/api/alerts/{id}", summary: "Get an alert with its event, runbooks and suggestions", tag: "alerts", response: "Alert" },
+  { method: "GET", path: "/api/alerts/{id}/runbook-runs", summary: "Runbook run state per step of an alert", tag: "runbooks", response: "RunbookRun[]" },
+  { method: "GET", path: "/api/approvals", summary: "Pending runbook step approvals", tag: "runbooks", response: "PendingApproval[]" },
+  { method: "GET", path: "/api/audit", summary: "Global audit log (filter by query: alertId, actor, action, before, limit)", tag: "alerts", response: "AuditEntry[]" },
   { method: "POST", path: "/api/alerts/{id}/ack", summary: "Acknowledge an alert", tag: "alerts", response: "Alert" },
   { method: "POST", path: "/api/alerts/{id}/resolve", summary: "Resolve an alert", tag: "alerts", response: "Alert" },
   { method: "GET", path: "/api/alerts/{id}/audit", summary: "Audit log of an alert", tag: "alerts", response: "AuditEntry[]" },

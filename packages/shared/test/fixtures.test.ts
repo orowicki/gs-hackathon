@@ -1,5 +1,5 @@
 import { readdirSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   ALERT_STATES,
@@ -83,6 +83,34 @@ describe("alert fixtures", () => {
   it("one alert per json event", () => {
     const events = files("events").filter((f) => f.endsWith(".json")).length;
     expect(alerts).toHaveLength(events);
+  });
+
+  // Convention: alert fixture X.json has eventId "evt-X" and links to events/X.json.
+  const expected: Record<string, { severity: string; dedupKey: string }> = {
+    "workflow-failed": { severity: "error", dedupKey: "order-settlement-validate-counterparty" },
+    "metric-breach": { severity: "critical", dedupKey: "HighErrorRate-payments-api" },
+    "trade-rejected": { severity: "info", dedupKey: "T-998877" },
+  };
+
+  it.each(alerts)("$f links to an event fixture and is consistent with it", ({ f, alert }) => {
+    const a = alert as Alert;
+    const name = basename(f, ".json");
+    expect(a.eventId).toBe(`evt-${name}`);
+    const ev = JSON.parse(readFileSync(join(root, "events", `${name}.json`), "utf8")) as { workflowName: string; step: string; severity: string; alertname: string; labels: { service: string; severity: string }; payload: { tradeId: string } };
+    const exp = expected[name]!;
+    expect(a.severity).toBe(exp.severity);
+    expect(a.common.severity).toBe(exp.severity);
+    expect(a.dedupKey).toBe(exp.dedupKey);
+    // Spot-check against the event payload itself.
+    if (name === "workflow-failed") {
+      expect(a.dedupKey).toBe(`${ev.workflowName}-${ev.step}`);
+      expect(a.severity).toBe(String(ev.severity).toLowerCase());
+    }
+    if (name === "metric-breach") {
+      expect(a.dedupKey).toBe(`${ev.alertname}-${ev.labels.service}`);
+      expect(a.severity).toBe(ev.labels.severity);
+    }
+    if (name === "trade-rejected") expect(a.dedupKey).toBe(ev.payload.tradeId);
   });
 
   it.each(alerts)("$f is a valid Alert", ({ alert }) => {

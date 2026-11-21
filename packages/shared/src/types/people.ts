@@ -43,3 +43,11 @@ export interface Preference {
   rules: PreferenceRule[];
   quietHours?: QuietHours;
 }
+
+/** A filter a person starred in the UI filter bar (per profile). */
+export interface StarredFilter {
+  id: Id;
+  personId: Id;
+  name: string;
+  filter: Filter;
+}

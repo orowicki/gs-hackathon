@@ -48,3 +48,18 @@ export interface AutomationRunbook {
 export type Runbook = TextRunbook | AutomationRunbook;
 
 export type StepRunState = "pending" | "awaiting_approval" | "running" | "done" | "failed" | "skipped";
+
+/** Run state of one runbook against one alert. */
+export interface RunbookRun {
+  alertId: Id;
+  runbookId: Id;
+  steps: Array<{ index: number; state: StepRunState; result?: string; at?: string }>;
+}
+
+export interface PendingApproval {
+  alertId: Id;
+  runbookId: Id;
+  stepIndex: number;
+  stepName?: string;
+  requestedAt: string;
+}

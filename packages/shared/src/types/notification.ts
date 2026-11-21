@@ -26,6 +26,8 @@ export type DeliveryResult =
   | { status: "failed"; retryable: boolean; error: string };
 
 export interface DeadLetter {
+  /** Id used by /api/dead-letters/{id}/retry; equals notification.id. */
+  id: Id;
   notification: Notification;
   error: string;
   failedAt: IsoTimestamp;
