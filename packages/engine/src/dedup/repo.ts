@@ -57,7 +57,12 @@ const ENSURE_SQL = [
 ];
 
 /** Postgres-backed repo on the `alerts` table (full Alert JSON in `data`, hot columns kept in sync). */
-export function createPgAlertRepo(pool: Pick<Pool, "query">): AlertRepo {
+export function createPgAlertRepo(
+  pool: Pick<Pool, "query">,
+  opts: { retryMs?: number; logger?: { error(msg: string): void } } = {},
+): AlertRepo {
+  const retryMs = opts.retryMs ?? 5000;
+  const log = opts.logger ?? console;
   // Normally migration 005 has run; this only covers databases created from the bare table DDL.
   let ready: Promise<void> | undefined;
   const ensure = () =>
@@ -76,8 +81,9 @@ export function createPgAlertRepo(pool: Pick<Pool, "query">): AlertRepo {
         if (!(await present())) throw err; // lost a race with another process doing the same
       }
     })().catch((err) => {
-      // memoized on purpose: fail fast on every call instead of re-running DDL per event
-      console.error(
+      // fail fast with the same error for `retryMs`, then allow one new attempt (transient PG errors heal)
+      setTimeout(() => (ready = undefined), retryMs).unref();
+      log.error(
         `dedup: alerts schema (migration 005) missing and could not be applied: ${(err as Error).message}`,
       );
       throw err;

@@ -316,3 +316,36 @@ describe.skipIf(!REDIS_URL || !DATABASE_URL)(
     });
   },
 );
+
+describe("pg repo schema check", () => {
+  it("fails fast during the cooldown, then retries after a transient error", async () => {
+    let fail = true;
+    let calls = 0;
+    const pool = {
+      query: async (q: string) => {
+        calls++;
+        if (fail) throw new Error("connection reset");
+        if (q.includes("pg_indexes")) return { rows: [{ n: "2" }] };
+        return { rows: [] };
+      },
+    };
+    const repo = createPgAlertRepo(pool as never, {
+      retryMs: 30,
+      logger: { error() {} },
+    });
+    const alert = {
+      id: "a",
+      ruleId: "r",
+      dedupKey: "k",
+      state: "open",
+      lastSeen: "2026-01-01T00:00:00Z",
+    } as never;
+    await expect(repo.upsertOpen(alert)).rejects.toThrow("connection reset");
+    const before = calls;
+    await expect(repo.upsertOpen(alert)).rejects.toThrow("connection reset");
+    expect(calls).toBe(before); // no new DB round trip within the cooldown
+    fail = false;
+    await new Promise((r) => setTimeout(r, 60));
+    await expect(repo.upsertOpen(alert)).resolves.toBeNull(); // schema check passed, empty result
+  });
+});
