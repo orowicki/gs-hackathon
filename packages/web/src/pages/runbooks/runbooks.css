@@ -54,3 +54,7 @@
 @media (max-width: 900px) {
   .rb-kinds, .rb-http { grid-template-columns: 1fr; }
 }
+
+/* Branching (id / if / retries) from YAML: shown, kept on save, edited in YAML. */
+.rb-branch { margin: 0; padding: 6px var(--space-2); background: var(--surface-2); border-radius: var(--radius); color: var(--text); font-size: var(--text-sm); }
+.rb-branch code { font-family: var(--font-mono); font-size: var(--text-xs); color: var(--accent); }
