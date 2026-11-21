@@ -42,7 +42,7 @@ Directory `config/sources/` (kind `source`). Where events come from and how a ra
 
 `config` by type: `http` takes `{}` (events are posted to `POST /ingest/{sourceId}`); `file_tail` takes `path` (string, required, path or glob); `redis_stream` takes `stream` and `consumerGroup` (both strings, both required); `kafka` takes `brokers` (comma-separated `host:port`, required), `topic` (required), `groupId` (required in the schema, defaults to `alerting` when omitted) and `fromBeginning` (boolean, default `false`; only matters when the group has no committed offset). Details: [source-plugin.md](autopilot/interfaces/source-plugin.md).
 
-A Kafka source (shown as text: the config examples in this file are checked against the shared source types) consumes one topic as a consumer group, so several instances with the same `groupId` share the partitions. Each message value is one raw event; the offset is committed only after the event was accepted (at-least-once), and a failed message is retried after 500 ms, never skipped.
+A Kafka source (shown as text: the config examples in this file are checked against the shared source types) consumes one topic as a consumer group, so several instances with the same `groupId` share the partitions. Each message value is one raw event; the offset is committed only after the event was accepted (at-least-once), and a failed message is retried after 500 ms, never skipped (so a message whose processing keeps failing blocks its partition).
 
 ```text
 id: orders-kafka

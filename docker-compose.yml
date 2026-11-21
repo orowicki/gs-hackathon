@@ -24,8 +24,9 @@ services:
         condition: service_healthy
       ntfy:
         condition: service_healthy
+      # The kafka source tolerates a down broker, so only wait for the container to start.
       redpanda:
-        condition: service_healthy
+        condition: service_started
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:3000/health"]
       interval: 5s

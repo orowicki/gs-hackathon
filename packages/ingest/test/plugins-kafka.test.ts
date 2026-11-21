@@ -24,12 +24,14 @@ function mockConsumer() {
     on: vi.fn(),
     events: { CRASH: "consumer.crash" },
   };
-  const deliver = (value: string | null, offset = "7", ts = "1700000000000") =>
-    each({
+  const deliver = async (value: string | null, offset = "7", ts = "1700000000000") => {
+    await vi.waitFor(() => expect(c.run).toHaveBeenCalled());
+    await each({
       topic: "t",
       partition: 2,
       message: { value: value === null ? null : Buffer.from(value), offset, timestamp: ts },
     } as unknown as Payload);
+  };
   return { c, deliver };
 }
 
@@ -75,6 +77,7 @@ describe("kafka plugin (mocked client)", () => {
     c.commitOffsets.mockImplementation(async () => void order.push("commit"));
     const emit = vi.fn(async () => void order.push("emit"));
     const h = await createKafkaPlugin(() => c).start(cfg, emit, ctx);
+    await vi.waitFor(() => expect(c.run).toHaveBeenCalled());
     expect(c.run.mock.calls[0]?.[0]).toMatchObject({ autoCommit: false });
     expect(c.subscribe).toHaveBeenCalledWith({ topic: "t", fromBeginning: false });
     await deliver('{"a":1}');
@@ -125,9 +128,35 @@ describe("kafka plugin (mocked client)", () => {
   it("stop() disconnects, and is idempotent", async () => {
     const { c } = mockConsumer();
     const h = await createKafkaPlugin(() => c).start(cfg, async () => undefined, ctx);
+    await vi.waitFor(() => expect(c.run).toHaveBeenCalled());
     await h.stop();
     await h.stop();
     expect(c.disconnect).toHaveBeenCalledTimes(1);
+  });
+
+  it("start resolves while connect hangs; stop during the in-flight connect leaves no running consumer", async () => {
+    const m = mockConsumer();
+    let release!: () => void;
+    m.c.connect.mockImplementation(() => new Promise<undefined>((r) => (release = () => r(undefined))));
+    const h = await createKafkaPlugin(() => m.c).start(cfg, async () => undefined, ctx);
+    expect(m.c.run).not.toHaveBeenCalled();
+    await h.stop();
+    expect(m.c.disconnect).toHaveBeenCalled();
+    release();
+    await new Promise((r) => setTimeout(r, 10));
+    expect(m.c.subscribe).not.toHaveBeenCalled();
+    expect(m.c.run).not.toHaveBeenCalled();
+    expect(m.c.disconnect.mock.calls.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("a non-numeric message timestamp falls back to now", async () => {
+    const { c, deliver } = mockConsumer();
+    const emit = vi.fn(async (): Promise<void> => undefined);
+    const h = await createKafkaPlugin(() => c).start(cfg, emit, ctx);
+    await deliver("x", "1", "garbage");
+    expect(c.commitOffsets).toHaveBeenCalled();
+    expect(emit).toHaveBeenCalled();
+    await h.stop();
   });
 
   it("a failing connect does not throw from start and is retried", async () => {
@@ -140,6 +169,7 @@ describe("kafka plugin (mocked client)", () => {
       const good = mockConsumer();
       const consumers = [bad.c, good.c];
       const h = await createKafkaPlugin(() => consumers.shift() as KafkaConsumerLike).start(cfg, async () => undefined, ctx);
+      await vi.advanceTimersByTimeAsync(0);
       expect(good.c.connect).not.toHaveBeenCalled();
       await vi.advanceTimersByTimeAsync(2100);
       expect(good.c.run).toHaveBeenCalled();

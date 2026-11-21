@@ -78,7 +78,8 @@ const defaultFactory: KafkaConsumerFactory = (config, ctx) => {
     clientId: `alerting-${ctx.sourceId}`,
     brokers: config.brokers,
     retry: { initialRetryTime: 300, maxRetryTime: 30_000, retries: 8 },
-    logLevel: logLevel.WARN,
+    logLevel: logLevel.INFO,
+    connectionTimeout: 3000,
     logCreator:
       () =>
       ({ level, log }) => {
@@ -86,6 +87,7 @@ const defaultFactory: KafkaConsumerFactory = (config, ctx) => {
         const text = `kafka ${message} ${JSON.stringify(extra)}`;
         if (level === logLevel.ERROR) ctx.logger?.error(text);
         else if (level === logLevel.WARN) ctx.logger?.warn(text);
+        else if (level === logLevel.INFO) ctx.logger?.info(text);
       },
   });
   return kafka.consumer({
@@ -125,7 +127,10 @@ export function createKafkaPlugin(
         const { topic, partition, message } = p;
         try {
           if (message.value !== null) {
-            const receivedAt = new Date(Number(message.timestamp)).toISOString();
+            const ts = Number(message.timestamp);
+            const receivedAt = (
+              Number.isFinite(ts) ? new Date(ts) : new Date()
+            ).toISOString();
             await emit(message.value.toString("utf8"), { receivedAt });
           }
           // Tombstones (null value) are skipped but committed.
@@ -169,16 +174,22 @@ export function createKafkaPlugin(
             if (ev.payload?.restart === false && !stopped) reconnect(c);
           });
           await c.connect();
+          if (stopped) return void (await c.disconnect().catch(() => undefined));
           await c.subscribe({
             topic: config.topic,
             fromBeginning: config.fromBeginning,
           });
+          if (stopped) return void (await c.disconnect().catch(() => undefined));
           await c.run({ autoCommit: false, eachMessage });
+          if (stopped) return void (await c.disconnect().catch(() => undefined));
           ctx.logger?.info(
             `kafka source ${ctx.sourceId}: consuming ${config.topic} as group ${config.groupId}`,
           );
         } catch (e) {
-          if (stopped) return;
+          if (stopped) {
+            void c.disconnect().catch(() => undefined);
+            return;
+          }
           ctx.logger?.error(`kafka start failed: ${String(e)}`);
           reconnect(c);
         }
@@ -195,7 +206,10 @@ export function createKafkaPlugin(
         }, CONNECT_RETRY_MS);
       };
 
-      await attempt();
+      // Never block the caller (the runner starts sources sequentially): connect in the background.
+      void attempt().catch((e: unknown) =>
+        ctx.logger?.error(`kafka start failed: ${String(e)}`),
+      );
 
       const onAbort = () => void handle.stop();
       ctx.signal?.addEventListener("abort", onAbort, { once: true });
