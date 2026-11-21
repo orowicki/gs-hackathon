@@ -1,10 +1,10 @@
 // Demo event generator: sends a mix of Appendix A events through http, file_tail and redis_stream.
-// node --experimental-strip-types scripts/demo/demo.ts [--once] [--rate 2] [--duration 60] [--count N]
+// node --experimental-strip-types scripts/demo/demo.ts [--once] [--burst] [--no-showcase] [--rate 2] [--duration 60] [--count N]
 import { spawn } from "node:child_process";
 import { appendFileSync, mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { nextEvent, oneOfEach, type DemoEvent } from "./events.ts";
+import { nextEvent, oneOfEach, showcase, type DemoEvent } from "./events.ts";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const API_URL = (process.env.API_URL ?? "http://localhost:3000").replace(/\/$/, "");
@@ -75,6 +75,8 @@ function num(name: string, env: string, dflt: number): number {
 
 async function main(): Promise<void> {
   const once = process.argv.includes("--once");
+  const burst = process.argv.includes("--burst");
+  const noShowcase = process.argv.includes("--no-showcase");
   const rate = num("rate", "DEMO_RATE", 2);
   const duration = num("duration", "DEMO_DURATION", 60);
   const count = arg("count") !== undefined ? num("count", "DEMO_COUNT", 1) : Infinity;
@@ -91,12 +93,36 @@ async function main(): Promise<void> {
     counts[sink]++;
   };
   try {
-    if (once) {
+    if (burst) {
+      // ~30 random events (or --count N) as fast as possible, a few at a time, round-robin over the sinks.
+      const n = arg("count") !== undefined ? count : 30;
+      const batch = 6;
+      console.log(`demo: burst of ${n} events`);
+      for (let i = 0; i < n; i += batch) {
+        const jobs: Promise<void>[] = [];
+        for (let j = i; j < Math.min(n, i + batch); j++) {
+          // Only fresh firing events: no repeats (empty history) and no resolves, so concurrency
+          // cannot reorder a resolve before its firing.
+          let e = nextEvent(Math.random, new Date());
+          while (e.kind === "resolved") e = nextEvent(Math.random, new Date());
+          jobs.push(emit(sinks[j % sinks.length] as Sink, e));
+        }
+        await Promise.all(jobs);
+      }
+    } else if (once) {
       for (const sink of sinks) for (const e of oneOfEach(Math.random, new Date())) await emit(sink, e);
     } else {
       console.log(`demo: ~${rate} events/s for ${count === Infinity ? `${duration} s` : `${count} events`} (Ctrl-C to stop)`);
       const recent: DemoEvent[] = [];
-      const end = Date.now() + duration * 1000;
+      const end = Date.now() + duration * 1000; // includes the showcase
+      if (!noShowcase) {
+        const steps = showcase(new Date());
+        console.log(`demo: showcase first (${steps.length} scripted events), then random events`);
+        for (const step of steps) {
+          await emit(step.sink, step.event);
+          await new Promise((r) => setTimeout(r, step.gapMs));
+        }
+      }
       const interval = 1000 / rate;
       for (let i = 0; i < count && (count !== Infinity || Date.now() < end); i++) {
         const started = Date.now();

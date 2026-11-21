@@ -46,4 +46,4 @@ An action is `{ type, execute(step, ctx) => Promise<{ ok, result }> }`. Add one 
 ## Notes
 
 - `actor` is taken from the request body/query without authentication (no auth is in scope).
-- The alert-stream worker (`startRunbookWorker`) is not started in the API `main.ts` yet, because no alerts store exists on main.
+- The alert-stream worker (`startRunbookWorker`) runs in the compose `worker` service via `packages/api/src/runbook-worker.ts` (consumer group `runbooks`, safe with several replicas). It is not started in the API process. Stale-run recovery (`runner.recoverStale`) runs in the API only.

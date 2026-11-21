@@ -80,3 +80,8 @@ spend:
 # Load test: 1 then 2 workers (docker). Flags: --workers N --smoke --local --rate R --duration S
 loadtest *args:
     bash scripts/loadtest/loadtest.sh {{args}}
+
+# Regenerate docs/api.md from the OpenAPI document (needs a build of @alerting/api)
+docs-api:
+    npm run build -w @alerting/api
+    node --experimental-strip-types --no-warnings scripts/docs/api-reference.ts

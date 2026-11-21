@@ -2,6 +2,13 @@
 
 TypeScript monorepo: `packages/api` (HTTP API with `/health`) and `packages/shared`, run with Postgres, Redis and ntfy via Docker Compose.
 
+## Docs
+
+- [Architecture](docs/architecture.md)
+- [Config formats](docs/config-formats.md)
+- [Extending](docs/extending.md)
+- [Performance](docs/performance.md)
+
 ## Requirements
 
 - Docker (with Compose)
@@ -19,7 +26,15 @@ just down
 - `just up`: the first build takes roughly 1-2 minutes (image build and dependency install); later starts reuse the cache. It waits up to 120 s for `/health`, checks the host Node version, runs `npm ci` if `node_modules/yaml` is missing, then seeds. Seeding only creates what is missing and never overwrites, so edits survive a restart and a second run changes nothing (it prints `seed: created N, kept M`).
 - Seeded: the people (anna, ewa, julia, marek, tomasz), groups (pricing-team, rates-desk, settlements-oncall), the three Appendix A schemas and four rules, the three Appendix B runbooks (all from `config/`), three demo sources (`demo-http`, `demo-logs` tailing `/tmp/demo-logs/*.log` in the app container, `demo-stream` on Redis stream `demo:events`) and Anna's preference (critical to ui + ntfy, quiet hours 20:00-08:00 Europe/Warsaw, ui only).
 - Open <http://localhost:3000> and pick a profile.
-- `just demo` sends about 2 events/s for 60 s, round-robin over HTTP (`POST /ingest/demo-http`), file tail and Redis stream: settlement workflow failures, pricing-engine latency warnings, rejected trades, a payments critical for Anna, some resolved metrics, repeats (dedup) and the odd unparseable line. Options: `just demo --once` (one of each type through each source), `just demo --rate 5 --duration 30`, `just demo --count 20`. Sends through file_tail and Redis use `docker compose exec` and cost roughly 0.3-1 s each, so the real rate may be lower than requested. It prints per-source counts at the end. The file and stream sinks use `docker compose exec`, so run it from the repo root.
+- `just demo` first sends a fixed showcase (about 19 events, a few seconds), then about 2 random events/s until the 60 s are up (the showcase counts towards them), round-robin over HTTP (`POST /ingest/demo-http`), file tail and Redis stream. The showcase alone gives a feed with all four severities (critical, error, warning, info, at least 2 open alerts each), sources `payments-api`, `pricing-engine-emea`, `pricing-engine-apac`, `pricing-engine-staging`, `order-settlement` and `trade-gateway`, environments `prod` and `staging`, alerts that repeat (dedup count 3 for the payments critical) and alerts that resolve (a pricing latency and a staging payments critical). Every seeded rule fires (info comes from large rejected rates trades, staging from Anna's and Team Pricing's rules, which do not check the environment). The random part adds settlement failures, latency, rejected trades, resolved metrics, repeats and the odd unparseable line.
+- Options: `just demo --once` (one of each type through each source), `just demo --burst` (about 30 fresh random events as fast as possible, a few seconds, no showcase, no resolves; events for the same service still count as repeats), `just demo --no-showcase` (random events only), `just demo --rate 5 --duration 30`, `just demo --count 20` (showcase, then 20 random events). Sends through file_tail and Redis use `docker compose exec` and cost roughly 0.3-1 s each, so the real rate may be lower than requested. It prints per-source counts at the end; run it from the repo root.
+- Filters to try in the alerts list (`alert.*` reads the alert itself; bare names such as `type` or `payload.desk` read the original event). The counts below are for the showcase alone: the random phase adds more alerts on top, so counts grow, but the showcase alerts keep their state (random events never reuse their dedup keys):
+  1. `alert.severity = critical`: 4 showcase alerts (payments-api prod, pricing-engine-apac, an order-settlement workflow, and the resolved staging payments-api critical).
+  2. `alert.source = payments-api`: the prod critical (repeated, count 3) and the staging critical (resolved).
+  3. `alert.environment = staging`: the open pricing-engine-staging warning and the resolved staging payments critical.
+  4. `alert.status != resolved`: everything still open; hides the resolved pricing-engine-emea latency and the resolved staging payments critical.
+  5. `alert.count > 1`: the repeated alerts (payments-api critical, pricing-engine-apac latency, the confirm-settlement failure).
+  Combine them, e.g. `alert.severity >= warning AND alert.environment = prod AND alert.status != resolved`.
 - Notifications on ntfy: <http://localhost:8080>, topics `alerting-<person>` (e.g. `alerting-anna`; see `ntfyTopic` in `config/people/`).
 
 ## What is mocked
@@ -31,11 +46,9 @@ just down
 
 ## Extending
 
-- New source type: add a plugin in `packages/ingest/src/plugins/` (see `http.ts`, `file-tail.ts`, `redis-stream.ts`), give it a config JSON schema in `schemas.ts` and register it in `plugins/index.ts`. A source instance is then created in the UI, via `POST /api/sources`, or as YAML.
-- New schema (event shape): in the UI, `POST /api/schemas`, or a file in `config/schemas/*.yaml` (a `match` filter plus a `mapping` to the common alert fields; see the existing files). Use `POST /api/schemas/test` to try a mapping on a sample.
-- New channel type: implement the `Channel` interface from `packages/delivery/src/channel.ts` (examples: `ui.ts`, `ntfy.ts`) and register it with `registerChannel`.
-- New runbook action type: add it in `packages/runbooks/src/actions.ts` (HTTP example: `http.ts`) and register it through the registry in `registry.ts`.
-- YAML files in `config/` are loaded by the seed on `just up` (only if missing). To change seeded demo sources or Anna's preference, edit `scripts/seed/seed.ts`.
+Step-by-step guides for a new source type, parser, delivery channel, runbook action and API route are in [docs/extending.md](docs/extending.md). New schemas, rules and sources can also be added as YAML.
+
+YAML files in `config/` are loaded by the seed on `just up` (only if missing) and then watched live; formats are in [docs/config-formats.md](docs/config-formats.md). To change seeded demo sources or Anna's preference, edit `scripts/seed/seed.ts`.
 
 ## Let Claude configure it
 

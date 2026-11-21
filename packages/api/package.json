@@ -10,16 +10,18 @@
     "typecheck": "tsc -b && tsc -p tsconfig.test.json"
   },
   "dependencies": {
+    "@alerting/config": "*",
     "@alerting/delivery": "*",
     "@alerting/filter": "*",
+    "@alerting/ingest": "*",
+    "@alerting/runbooks": "*",
     "@alerting/shared": "*",
     "ioredis": "^5.4.1",
-    "pg": "^8.12.0",
-    "@alerting/ingest": "*",
-    "@alerting/config": "*",
-    "@alerting/runbooks": "*"
+    "pg": "^8.12.0"
   },
   "devDependencies": {
-    "@types/pg": "^8.11.6"
+    "@types/pg": "^8.11.6",
+    "ajv": "^8.20.0",
+    "yaml": "^2.9.1"
   }
 }
