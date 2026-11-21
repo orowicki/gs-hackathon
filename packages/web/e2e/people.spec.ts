@@ -70,22 +70,22 @@ for (const scheme of ["light", "dark"] as const) {
 
       // create
       await page.getByRole("button", { name: "Add person" }).click();
-      await page.getByLabel("Name").fill("Bob Builder");
-      await page.getByLabel("Role").fill("Dev");
-      await page.getByLabel("ntfy topic").fill("bob");
+      await page.getByRole("textbox", { name: "Name", exact: true }).fill("Bob Builder");
+      await page.getByRole("textbox", { name: "Role", exact: true }).fill("Dev");
+      await page.getByRole("textbox", { name: "ntfy topic", exact: true }).fill("bob");
       await page.getByRole("button", { name: "Save" }).click();
       await expect(people.getByRole("cell", { name: "Bob Builder" })).toBeVisible();
 
       // edit
       await page.getByRole("button", { name: "Edit Bob Builder" }).click();
-      await page.getByLabel("Role").fill("Lead");
-      await page.getByLabel("Can create rules").check();
+      await page.getByRole("textbox", { name: "Role", exact: true }).fill("Lead");
+      await page.getByRole("checkbox", { name: "Can create rules" }).check();
       await page.getByRole("button", { name: "Save" }).click();
       await expect(people.getByRole("cell", { name: "Lead" })).toBeVisible();
 
       // group with a member
       await page.getByRole("button", { name: "Add group" }).click();
-      await page.getByLabel("Group name").fill("On-call");
+      await page.getByRole("textbox", { name: "Group name", exact: true }).fill("On-call");
       await page.getByRole("group", { name: "Members" }).getByLabel("Bob Builder").check();
       await page.getByRole("button", { name: "Save" }).click();
       const groups = page.getByRole("table", { name: "Groups" });

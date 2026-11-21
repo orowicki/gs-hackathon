@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { Group, Person } from "../../../../shared/src/types/people";
 import * as api from "./api";
 import {
@@ -30,8 +30,14 @@ export function PeoplePage() {
   const [pEdit, setPEdit] = useState<Editing<PersonDraft>>(null);
   const [gEdit, setGEdit] = useState<Editing<GroupDraft>>(null);
 
+  const [busy, setBusy] = useState(false);
+  const busyRef = useRef(false);
+  const loadSeq = useRef(0);
+
   const load = useCallback(async () => {
+    const seq = ++loadSeq.current;
     const [p, g] = await Promise.allSettled([api.listPeople(), api.listGroups()]);
+    if (seq !== loadSeq.current) return;
     if (p.status === "fulfilled") {
       setPeople(p.value);
       setPeopleErr(null);
@@ -47,15 +53,29 @@ export function PeoplePage() {
     void load();
   }, [load]);
 
-  const run = async (fn: () => Promise<unknown>) => {
+  const run = async (action: "save" | "delete", fn: () => Promise<unknown>) => {
+    if (busyRef.current) return false;
+    busyRef.current = true;
+    setBusy(true);
     try {
       setActionErr(null);
       await fn();
       await load();
       return true;
     } catch (e) {
-      setActionErr(`Couldn't save: ${describe(e)}`);
+      setActionErr(`Couldn't ${action}: ${describe(e)}`);
       return false;
+    } finally {
+      busyRef.current = false;
+      setBusy(false);
+    }
+  };
+
+  const removePerson = async (id: string) => {
+    const affected = groups.filter((g) => g.memberIds.includes(id));
+    await api.deletePerson(id);
+    for (const g of affected) {
+      await api.updateGroup(g.id, { name: g.name, memberIds: g.memberIds.filter((m) => m !== id) });
     }
   };
 
@@ -86,10 +106,11 @@ export function PeoplePage() {
           <PersonForm
             key={pEdit.id ?? "new"}
             initial={pEdit.draft}
+            busy={busy}
             onCancel={() => setPEdit(null)}
             onSave={async (d) => {
               const body = personPayload(d);
-              const ok = await run(() => (pEdit.id ? api.updatePerson(pEdit.id, body) : api.createPerson(body)));
+              const ok = await run("save", () => (pEdit.id ? api.updatePerson(pEdit.id, body) : api.createPerson(body)));
               if (ok) setPEdit(null);
             }}
           />
@@ -137,8 +158,9 @@ export function PeoplePage() {
                       <button
                         type="button"
                         aria-label={`Delete ${p.name}`}
+                        disabled={busy}
                         onClick={() => {
-                          if (window.confirm(`Delete ${p.name}?`)) void run(() => api.deletePerson(p.id));
+                          if (window.confirm(`Delete ${p.name}?`)) void run("delete", () => removePerson(p.id));
                         }}
                       >
                         Delete
@@ -168,11 +190,12 @@ export function PeoplePage() {
           <GroupForm
             key={gEdit.id ?? "new"}
             initial={gEdit.draft}
+            busy={busy}
             people={people}
             onCancel={() => setGEdit(null)}
             onSave={async (d) => {
               const body = groupPayload(d);
-              const ok = await run(() => (gEdit.id ? api.updateGroup(gEdit.id, body) : api.createGroup(body)));
+              const ok = await run("save", () => (gEdit.id ? api.updateGroup(gEdit.id, body) : api.createGroup(body)));
               if (ok) setGEdit(null);
             }}
           />
@@ -193,7 +216,7 @@ export function PeoplePage() {
               {groups.map((g) => (
                 <tr key={g.id}>
                   <td>{g.name}</td>
-                  <td>{g.memberIds.map((id) => names.get(id) ?? id).join(", ")}</td>
+                  <td>{g.memberIds.map((id) => names.get(id) ?? `unknown (${id})`).join(", ")}</td>
                   <td>
                     <div className="actions">
                       <button
@@ -206,8 +229,9 @@ export function PeoplePage() {
                       <button
                         type="button"
                         aria-label={`Delete group ${g.name}`}
+                        disabled={busy}
                         onClick={() => {
-                          if (window.confirm(`Delete group ${g.name}?`)) void run(() => api.deleteGroup(g.id));
+                          if (window.confirm(`Delete group ${g.name}?`)) void run("delete", () => api.deleteGroup(g.id));
                         }}
                       >
                         Delete
@@ -232,7 +256,7 @@ function FieldError({ msg }: { msg?: string }) {
   ) : null;
 }
 
-function PersonForm(props: { initial: PersonDraft; onSave: (d: PersonDraft) => void; onCancel: () => void }) {
+function PersonForm(props: { initial: PersonDraft; busy: boolean; onSave: (d: PersonDraft) => void; onCancel: () => void }) {
   const [d, setD] = useState(props.initial);
   const [errs, setErrs] = useState<Errors>({});
   return (
@@ -275,7 +299,7 @@ function PersonForm(props: { initial: PersonDraft; onSave: (d: PersonDraft) => v
       </label>
       <FieldError msg={errs.ntfyTopic} />
       <div className="actions">
-        <button type="submit" className="primary">
+        <button type="submit" className="primary" disabled={props.busy}>
           Save
         </button>
         <button type="button" onClick={props.onCancel}>
@@ -288,6 +312,7 @@ function PersonForm(props: { initial: PersonDraft; onSave: (d: PersonDraft) => v
 
 function GroupForm(props: {
   initial: GroupDraft;
+  busy: boolean;
   people: Person[];
   onSave: (d: GroupDraft) => void;
   onCancel: () => void;
@@ -325,7 +350,7 @@ function GroupForm(props: {
         ))}
       </fieldset>
       <div className="actions">
-        <button type="submit" className="primary">
+        <button type="submit" className="primary" disabled={props.busy}>
           Save
         </button>
         <button type="button" onClick={props.onCancel}>

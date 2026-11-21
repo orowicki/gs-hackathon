@@ -54,25 +54,25 @@ export function isValidTime(s: string): boolean {
   return /^([01]\d|2[0-3]):[0-5]\d$/.test(s);
 }
 
-export function gridFromPreference(pref: Preference): { grid: Grid; lossy: boolean } {
+export function gridFromPreference(pref: Pick<Preference, "rules">): {
+  grid: Grid;
+  lossy: boolean;
+  extraRules: PreferenceRule[];
+} {
   const grid = emptyGrid();
   const seen = new Set<Severity>();
-  let lossy = false;
-  for (const rule of pref.rules) {
+  const extraRules: PreferenceRule[] = [];
+  for (const rule of pref.rules ?? []) {
     const sev = severityOfFilter(rule.when);
-    if (!sev) {
-      lossy = true;
-      continue;
-    }
-    if (seen.has(sev)) {
-      lossy = true; // first match wins; later duplicates are unreachable
+    const known = Array.isArray(rule.channels) && rule.channels.every((c) => CHANNELS.includes(c));
+    if (!sev || seen.has(sev) || !known) {
+      extraRules.push(rule); // kept unchanged after the grid rules
       continue;
     }
     seen.add(sev);
     grid[sev] = [...rule.channels];
-    if (rule.channels.some((c) => !CHANNELS.includes(c))) lossy = true;
   }
-  return { grid, lossy };
+  return { grid, lossy: extraRules.length > 0, extraRules };
 }
 
 export function quietFromPreference(pref: Preference, timezone: string): QuietForm {
@@ -88,12 +88,12 @@ export function quietFromPreference(pref: Preference, timezone: string): QuietFo
 }
 
 /** Build the preference. Every severity row yields a rule (empty channels = none). */
-export function preferenceFromForm(personId: string, grid: Grid, quiet: QuietForm): Preference {
+export function preferenceFromForm(personId: string, grid: Grid, quiet: QuietForm, extraRules: PreferenceRule[] = []): Preference {
   const rules: PreferenceRule[] = SEVERITY_ROWS.map((sev) => ({
     when: severityFilter(sev),
     channels: CHANNELS.filter((c) => grid[sev].includes(c)),
   }));
-  const pref: Preference = { ownerType: "person", ownerId: personId, rules };
+  const pref: Preference = { ownerType: "person", ownerId: personId, rules: [...rules, ...extraRules] };
   if (quiet.enabled) {
     const qh: QuietHours = {
       from: quiet.from,
@@ -106,11 +106,22 @@ export function preferenceFromForm(personId: string, grid: Grid, quiet: QuietFor
   return pref;
 }
 
+export function isValidTimezone(tz: string): boolean {
+  try {
+    new Intl.DateTimeFormat(undefined, { timeZone: tz });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export function validateQuiet(q: QuietForm): string | undefined {
   if (!q.enabled) return undefined;
   if (!isValidTime(q.from)) return "From must be a time as HH:MM (00:00 to 23:59).";
   if (!isValidTime(q.to)) return "To must be a time as HH:MM (00:00 to 23:59).";
   if (!q.timezone.trim()) return "Timezone is required.";
+  if (!isValidTimezone(q.timezone.trim())) return "Timezone is not a valid IANA timezone.";
+  if (q.from === q.to) return "From and To must be different.";
   return undefined;
 }
 

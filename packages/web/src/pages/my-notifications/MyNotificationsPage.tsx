@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import type { ChannelId, Severity } from "../../../../shared/src/types/common";
-import type { Person } from "../../../../shared/src/types/people";
+import type { Person, PreferenceRule } from "../../../../shared/src/types/people";
 import { getPreference, listPeople, putPreference } from "./api";
 import {
   CHANNELS,
@@ -44,6 +44,8 @@ export function MyNotificationsPage() {
   const [saveError, setSaveError] = useState<string | undefined>();
   const [saved, setSaved] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [extraRules, setExtraRules] = useState<PreferenceRule[]>([]);
+  const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
     listPeople()
@@ -67,11 +69,13 @@ export function MyNotificationsPage() {
           setGrid(defaultGrid(person));
           setQuiet(defaultQuiet(tz));
           setLossy(false);
+          setExtraRules([]);
           setDefaultsHint(true);
         } else {
           const r = gridFromPreference(pref);
           setGrid(r.grid);
           setLossy(r.lossy);
+          setExtraRules(r.extraRules);
           setQuiet(quietFromPreference(pref, tz));
           setDefaultsHint(false);
         }
@@ -85,9 +89,10 @@ export function MyNotificationsPage() {
     return () => {
       cancelled = true;
     };
-  }, [people, person?.id, tz]);
+  }, [people, person?.id, tz, reloadKey]);
 
   const quietError = validateQuiet(quiet);
+  const gridDisabled = loading || Boolean(loadError);
 
   function chooseProfile(id: string) {
     if (id) {
@@ -97,11 +102,11 @@ export function MyNotificationsPage() {
   }
 
   async function save() {
-    if (!person || quietError) return;
+    if (!person || quietError || loadError || loading) return;
     setSaveError(undefined);
     setSaved(false);
     try {
-      await putPreference(person.id, preferenceFromForm(person.id, grid, quiet));
+      await putPreference(person.id, preferenceFromForm(person.id, grid, quiet, extraRules));
       setSaved(true);
       setLossy(false);
       setDefaultsHint(false);
@@ -144,13 +149,22 @@ export function MyNotificationsPage() {
           <p className="muted">
             Editing preferences for <strong>{person.name}</strong>
           </p>
-          {loadError && <p role="alert" className="mn-error">{loadError}</p>}
+          {loadError && (
+            <p role="alert" className="mn-error">
+              {loadError}{" "}
+              <button type="button" onClick={() => setReloadKey((k) => k + 1)}>
+                Retry
+              </button>
+            </p>
+          )}
           {defaultsHint && (
             <p className="muted">
               No preferences saved yet. Defaults apply: ui always, ntfy for error and critical when you have an ntfy topic.
             </p>
           )}
-          {lossy && <p className="mn-note">Some rules can't be shown in the grid; saving replaces them.</p>}
+          {lossy && <p className="mn-note">Some rules can't be shown in the grid; they are kept after the grid rules.</p>}
+
+          {!person.ntfyTopic && <p className="muted">Set an ntfy topic in People &amp; groups to use ntfy</p>}
 
           <table className="mn-grid">
             <thead>
@@ -175,7 +189,7 @@ export function MyNotificationsPage() {
                         type="checkbox"
                         aria-label={`${sev} via ${c}`}
                         checked={grid[sev].includes(c)}
-                        disabled={loading}
+                        disabled={gridDisabled || (c === "ntfy" && !person.ntfyTopic)}
                         onChange={(e) => setCell(sev, c, e.target.checked)}
                       />
                     </td>
@@ -243,7 +257,7 @@ export function MyNotificationsPage() {
           </fieldset>
 
           <div className="mn-row">
-            <button type="button" className="mn-save" onClick={save} disabled={loading || Boolean(quietError)}>
+            <button type="button" className="mn-save" onClick={save} disabled={gridDisabled || Boolean(quietError)}>
               Save
             </button>
             {saved && <span role="status" className="mn-saved">Saved</span>}

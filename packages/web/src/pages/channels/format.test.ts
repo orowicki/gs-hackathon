@@ -25,7 +25,9 @@ describe("statusColor", () => {
 
 describe("errorMessage", () => {
   it("maps 503 and 404", () => {
-    expect(errorMessage(503, "delivery not configured")).toMatch(/not configured/);
+    expect(errorMessage(503, "delivery not configured")).toMatch(
+      /not configured/,
+    );
     expect(errorMessage(404, "")).toMatch(/not found/);
     expect(errorMessage(500, "boom")).toBe("Request failed (500): boom");
   });

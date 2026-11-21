@@ -46,9 +46,9 @@ for (const scheme of ["light", "dark"] as const) {
       await page.getByRole("checkbox", { name: "critical via ntfy" }).uncheck();
       await page.getByRole("checkbox", { name: "warning via ui" }).uncheck();
       await page.getByRole("checkbox", { name: "Enable quiet hours" }).check();
-      await page.getByLabel("From").fill("23:00");
-      await page.getByLabel("To").fill("06:30");
-      await page.getByLabel("Timezone").fill("Europe/Berlin");
+      await page.getByRole("textbox", { name: "From", exact: true }).fill("23:00");
+      await page.getByRole("textbox", { name: "To", exact: true }).fill("06:30");
+      await page.getByRole("textbox", { name: "Timezone", exact: true }).fill("Europe/Berlin");
       await page.getByRole("button", { name: "Save" }).click();
       await expect(page.getByText("Saved", { exact: true })).toBeVisible();
 
@@ -75,13 +75,13 @@ for (const scheme of ["light", "dark"] as const) {
 
       await page.reload();
       await expect(page.getByRole("checkbox", { name: "warning via ui" })).not.toBeChecked();
-      await expect(page.getByLabel("From")).toHaveValue("23:00");
+      await expect(page.getByRole("textbox", { name: "From", exact: true })).toHaveValue("23:00");
     });
 
     test("profile select when none stored", async ({ page }) => {
       await mockApi(page, []);
       await page.goto("/settings/notifications");
-      await page.getByLabel("Profile").selectOption("p2");
+      await page.getByRole("combobox", { name: "Profile" }).selectOption("p2");
       await expect(page.getByText("Bob")).toBeVisible();
       expect(await page.evaluate(() => localStorage.getItem("alerting.profile"))).toBe("p2");
     });

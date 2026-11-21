@@ -20,7 +20,7 @@ describe("grid <-> preference", () => {
     expect(pref.rules).toHaveLength(4);
     expect(pref.rules[0]).toEqual({ when: severityFilter("critical"), channels: ["ui", "ntfy"] });
     expect(pref.rules[2]!.channels).toEqual([]);
-    expect(gridFromPreference(pref)).toEqual({ grid, lossy: false });
+    expect(gridFromPreference(pref)).toEqual({ grid, lossy: false, extraRules: [] });
     expect(quietFromPreference(pref, "UTC")).toEqual(quiet);
   });
 
@@ -42,6 +42,40 @@ describe("grid <-> preference", () => {
     const r = gridFromPreference(pref);
     expect(r.lossy).toBe(true);
     expect(r.grid.error).toEqual(["ntfy"]);
+    expect(r.extraRules).toEqual([pref.rules[0]]);
+  });
+
+  it("keeps unrecognised rules after the four generated ones, unchanged and in order", () => {
+    const extra = [
+      { when: { type: "cmp", field: "alert.source", op: "=", value: "x" }, channels: ["ui"] },
+      { when: "alert.severity = error", channels: ["ntfy"] },
+      { when: "alert.severity = error", channels: ["ui"] },
+      { when: "alert.severity = info", channels: ["slack"] },
+    ] as unknown as Preference["rules"];
+    const pref: Preference = {
+      ownerType: "person",
+      ownerId: "p1",
+      rules: [extra[0]!, extra[1]!, ...extra.slice(2)],
+    };
+    const r = gridFromPreference(pref);
+    expect(r.grid.error).toEqual(["ntfy"]);
+    expect(r.extraRules).toEqual([extra[0], extra[2], extra[3]]);
+    const out = preferenceFromForm("p1", r.grid, { enabled: false, from: "", to: "", timezone: "UTC", allowChannels: [] }, r.extraRules);
+    expect(out.rules).toHaveLength(7);
+    expect(out.rules.slice(4)).toEqual([extra[0], extra[2], extra[3]]);
+  });
+
+  it("treats missing rules as empty", () => {
+    const r = gridFromPreference({} as Preference);
+    expect(r.lossy).toBe(false);
+    expect(r.extraRules).toEqual([]);
+  });
+
+  it("validates timezone and from != to", () => {
+    const q = { enabled: true, from: "22:00", to: "07:00", timezone: "Europe/Berlin", allowChannels: [] };
+    expect(validateQuiet(q)).toBeUndefined();
+    expect(validateQuiet({ ...q, timezone: "Not/AZone" })).toMatch(/[Tt]imezone/);
+    expect(validateQuiet({ ...q, to: "22:00" })).toMatch(/different/);
   });
 
   it("defaults", () => {

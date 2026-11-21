@@ -10,12 +10,14 @@ export async function listPeople(): Promise<Person[]> {
   return (await res.json()) as Person[];
 }
 
-/** Returns undefined when the API has no preference (404). */
+/** Returns undefined when the API has no preference (404) or an empty/malformed one. */
 export async function getPreference(personId: string): Promise<Preference | undefined> {
   const res = await fetch(`/api/people/${encodeURIComponent(personId)}/preferences`);
   if (res.status === 404) return undefined;
   if (!res.ok) return fail(res);
-  return (await res.json()) as Preference;
+  const pref = (await res.json().catch(() => undefined)) as Preference | undefined;
+  if (!pref || !Array.isArray(pref.rules) || pref.rules.length === 0) return undefined;
+  return pref;
 }
 
 export async function putPreference(personId: string, pref: Preference): Promise<Preference> {
