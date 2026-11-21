@@ -10,7 +10,7 @@ if (!redisUrl || !databaseUrl) {
   console.error("engine: REDIS_URL and DATABASE_URL are required");
   process.exit(1);
 }
-const redis = new Redis(redisUrl);
+const redis = new Redis(redisUrl, { enableAutoPipelining: true });
 const store = createConfigStore({ databaseUrl, redisUrl });
 const pool = new pg.Pool({ connectionString: databaseUrl, statement_timeout: 10_000 });
 pool.on("error", (err) => console.error(`engine: postgres pool error: ${err.message}`));

@@ -177,8 +177,13 @@ export interface EngineOptions {
   reclaimEveryMs?: number;
   /** Minimum idle time before a pending entry is reclaimed (ms, default 30000). */
   reclaimMinIdleMs?: number;
-  /** Entries read per XREADGROUP and processed concurrently (default 200). */
+  /** Entries read per XREADGROUP (default 200). */
   batchSize?: number;
+  /**
+   * Entries processed at once (default 4 x batchSize). Reads continue while earlier entries are
+   * still in flight, so one slow entry does not hold up the next read.
+   */
+  maxInFlight?: number;
   /** Deliveries after which an event is given up on (logged and acked; default 5). */
   maxDeliveries?: number;
 }
@@ -198,6 +203,7 @@ export function createEngine(opts: EngineOptions): Engine {
   const reclaimMinIdleMs = opts.reclaimMinIdleMs ?? 30_000;
   const maxDeliveries = opts.maxDeliveries ?? 5;
   const batchSize = opts.batchSize ?? 200;
+  const maxInFlight = Math.max(1, opts.maxInFlight ?? batchSize * 4);
   const queue = createDeliveryQueue(opts.redis);
   let running = false;
   let loop: Promise<void> | undefined;
@@ -220,20 +226,33 @@ export function createEngine(opts: EngineOptions): Engine {
     }
   };
 
-  const ack = async (id: string) => {
-    try {
-      await opts.redis.xack(STREAM_EVENTS, GROUP_ENGINE, id);
-    } catch (err) {
-      logger.error(`engine: ack ${id} failed: ${(err as Error).message}`);
-    }
+  // Acks issued in the same turn of the event loop go out as one XACK. A failed XACK only logs: the
+  // entries stay pending and are reclaimed later (replays are idempotent).
+  let ackIds: string[] = [];
+  let ackFlush: Promise<void> | undefined;
+  const ack = (id: string): Promise<void> => {
+    ackIds.push(id);
+    return (ackFlush ??= new Promise<void>((resolve) => setImmediate(resolve)).then(async () => {
+      const ids = ackIds;
+      ackIds = [];
+      ackFlush = undefined;
+      try {
+        await opts.redis.xack(STREAM_EVENTS, GROUP_ENGINE, ...ids);
+      } catch (err) {
+        logger.error(`engine: ack of ${ids.length} entries (${ids[0]}..) failed: ${(err as Error).message}`);
+      }
+    }));
   };
 
   /** Process one stream entry; ack only on success, otherwise leave it pending for a retry. */
-  const handle = async (id: string, fields: string[]) => {
+  const handle = async (id: string, fields: string[], parsed?: { event: Event; matched: CompiledRule[] }) => {
     let event: Event;
     try {
-      const i = fields.indexOf("data");
-      event = JSON.parse(fields[i + 1] ?? "") as Event;
+      if (parsed) event = parsed.event;
+      else {
+        const i = fields.indexOf("data");
+        event = JSON.parse(fields[i + 1] ?? "") as Event;
+      }
     } catch (err) {
       logger.error(`engine: event ${id} is not valid JSON, dropped: ${(err as Error).message}`);
       await ack(id);
@@ -241,7 +260,8 @@ export function createEngine(opts: EngineOptions): Engine {
     }
     try {
       const res = await processEvent(event, {
-        rules: rules!.rules(),
+        // already matched while keying the entry: only those rules are evaluated again
+        rules: parsed ? parsed.matched : rules!.rules(),
         directory: directory!,
         enqueue: (n) => queue.enqueue(n),
         publishAlert,
@@ -261,34 +281,42 @@ export function createEngine(opts: EngineOptions): Engine {
     await ack(id);
   };
 
-  /**
-   * Process a batch concurrently. Entries that resolve to the same (rule, dedupKey) run one after
-   * the other in stream order; everything else overlaps. Never rejects (handle() swallows errors).
-   */
-  const handleBatch = async (entries: Entries) => {
-    const tails = new Map<string, Promise<void>>();
-    const all: Array<Promise<void>> = [];
-    for (const [id, fields] of entries) {
-      let keys: string[] = [];
-      try {
-        const i = fields.indexOf("data");
-        const event = JSON.parse(fields[i + 1] ?? "") as Event;
-        keys = [
-          ...new Set(
-            matchRules(event, rules!.rules(), logger).map((r) => `${r.rule.id}\u0000${alertDedupKey(event, r, id)}`),
-          ),
-        ];
-      } catch {
-        // invalid entries are dropped by handle()
-      }
-      const waits = keys.map((k) => tails.get(k)).filter((p): p is Promise<void> => !!p);
-      const done = (waits.length ? Promise.all(waits).then(() => undefined) : Promise.resolve()).then(() =>
-        handle(id, fields),
-      );
-      for (const k of keys) tails.set(k, done);
-      all.push(done);
+  // Entries being processed by this engine. Entries that resolve to the same (rule, dedupKey) run one
+  // after the other in stream order (also across reads); everything else overlaps.
+  const active = new Map<string, Promise<void>>();
+  const tails = new Map<string, Promise<void>>();
+  let slotFreed: (() => void) | undefined;
+
+  /** Start processing one entry behind the earlier entries of its keys. Never rejects. */
+  const submit = (id: string, fields: string[]): Promise<void> => {
+    let keys: string[] = [];
+    let parsed: { event: Event; matched: CompiledRule[] } | undefined;
+    try {
+      const i = fields.indexOf("data");
+      const event = JSON.parse(fields[i + 1] ?? "") as Event;
+      const matched = matchRules(event, rules!.rules(), logger);
+      parsed = { event, matched };
+      keys = [...new Set(matched.map((r) => `${r.rule.id}\u0000${alertDedupKey(event, r, id)}`))];
+    } catch {
+      // invalid entries are dropped by handle()
     }
-    await Promise.all(all);
+    const waits = keys.map((k) => tails.get(k)).filter((p): p is Promise<void> => !!p);
+    const done = (waits.length ? Promise.all(waits).then(() => undefined) : Promise.resolve())
+      .then(() => handle(id, fields, parsed))
+      .finally(() => {
+        for (const k of keys) if (tails.get(k) === done) tails.delete(k);
+        active.delete(id);
+        const wake = slotFreed;
+        slotFreed = undefined;
+        wake?.();
+      });
+    for (const k of keys) tails.set(k, done);
+    active.set(id, done);
+    return done;
+  };
+
+  const waitForSlot = async () => {
+    while (active.size >= maxInFlight) await new Promise<void>((r) => (slotFreed = r));
   };
 
   const deliveryCount = async (id: string): Promise<number> => {
@@ -314,6 +342,7 @@ export function createEngine(opts: EngineOptions): Engine {
       cursor = res[0];
       for (const [id, fields] of res[1] ?? []) {
         if (!running) return;
+        if (active.has(id)) continue; // still being processed here; not stuck
         if (!fields) {
           // entry was trimmed from the stream; nothing to retry
           await ack(id);
@@ -330,7 +359,7 @@ export function createEngine(opts: EngineOptions): Engine {
           await ack(id);
           continue;
         }
-        await handle(id, fields);
+        await submit(id, fields);
       }
     } while (running && cursor !== "0-0");
   };
@@ -343,12 +372,14 @@ export function createEngine(opts: EngineOptions): Engine {
           lastReclaim = Date.now();
           await reclaim();
         }
+        await waitForSlot();
+        if (!running) break;
         const res = (await reader!.xreadgroup(
           "GROUP",
           GROUP_ENGINE,
           consumer,
           "COUNT",
-          batchSize,
+          Math.min(batchSize, maxInFlight - active.size),
           "BLOCK",
           blockMs,
           "STREAMS",
@@ -356,7 +387,7 @@ export function createEngine(opts: EngineOptions): Engine {
           ">",
         )) as Array<[string, Entries]> | null;
         if (!res) continue;
-        for (const [, entries] of res) await handleBatch(entries);
+        for (const [, entries] of res) for (const [id, fields] of entries) void submit(id, fields);
       } catch (err) {
         if (!running) return;
         const msg = (err as Error).message ?? String(err);
@@ -403,6 +434,9 @@ export function createEngine(opts: EngineOptions): Engine {
         }
       }
       await loop;
+      // entries already read finish (and are acked) before the caches go away
+      while (active.size > 0) await Promise.all([...active.values()]);
+      await ackFlush;
       rules?.close();
       directory?.close();
       reader = undefined;

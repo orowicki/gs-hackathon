@@ -56,12 +56,40 @@ const ENSURE_SQL = [
   "CREATE UNIQUE INDEX IF NOT EXISTS alerts_open_dedup_uniq ON alerts (rule_id, dedup_key) WHERE state <> 'resolved'",
 ];
 
+type UpsertResult = { alert: Alert; created: boolean; raised: boolean };
+
+const batchKey = (ruleId: string, dedupKey: string) => `${ruleId}\u0000${dedupKey}`;
+
+// Shared by the single and the batched upsert; $7 is the severity order. `EXCLUDED` is the row
+// proposed for insertion, so in the batched form every row is compared with its own input.
+const ON_CONFLICT_BUMP = `ON CONFLICT (rule_id, dedup_key) WHERE state <> 'resolved' DO UPDATE SET
+         last_seen = GREATEST(alerts.last_seen, EXCLUDED.last_seen),
+         severity_raised_by = CASE
+           WHEN COALESCE(array_position($7::text[], EXCLUDED.data->>'severity'), 0) > COALESCE(array_position($7::text[], alerts.data->>'severity'), 0)
+           THEN EXCLUDED.id ELSE alerts.severity_raised_by END,
+         data = alerts.data || jsonb_build_object(
+           'count', COALESCE((alerts.data->>'count')::int, 0) + 1,
+           'lastSeen', CASE WHEN EXCLUDED.last_seen >= alerts.last_seen THEN EXCLUDED.data->>'lastSeen' ELSE alerts.data->>'lastSeen' END,
+           'common', CASE WHEN EXCLUDED.last_seen >= alerts.last_seen THEN EXCLUDED.data->'common' ELSE alerts.data->'common' END,
+           'severity', CASE
+             WHEN COALESCE(array_position($7::text[], EXCLUDED.data->>'severity'), 0) > COALESCE(array_position($7::text[], alerts.data->>'severity'), 0)
+             THEN EXCLUDED.data->>'severity' ELSE alerts.data->>'severity' END)`;
+
 /** Postgres-backed repo on the `alerts` table (full Alert JSON in `data`, hot columns kept in sync). */
 export function createPgAlertRepo(
   pool: Pick<Pool, "query">,
-  opts: { retryMs?: number; logger?: { error(msg: string): void } } = {},
+  opts: {
+    retryMs?: number;
+    logger?: { error(msg: string): void };
+    /** Max upserts per statement (default 500). */
+    maxBatch?: number;
+    /** Max upsert statements running at once (default 4; keep below the pool size). */
+    maxInFlight?: number;
+  } = {},
 ): AlertRepo {
   const retryMs = opts.retryMs ?? 5000;
+  const maxBatch = Math.max(1, opts.maxBatch ?? 500);
+  const maxInFlight = Math.max(1, opts.maxInFlight ?? 4);
   const log = opts.logger ?? console;
   // Normally migration 005 has run; this only covers databases created from the bare table DDL.
   let ready: Promise<void> | undefined;
@@ -88,44 +116,132 @@ export function createPgAlertRepo(
       );
       throw err;
     }));
+  const upsertOne = async (alert: Alert): Promise<UpsertResult | null> => {
+    const r = await pool.query<{ data: Alert; created: boolean; raised: boolean }>(
+      `INSERT INTO alerts (id, rule_id, dedup_key, state, last_seen, data)
+       SELECT $1::text, $2::text, $3::text, $4::text, $5::timestamptz, $6::jsonb
+       WHERE NOT EXISTS (SELECT 1 FROM alerts WHERE id = $1::text)
+       ${ON_CONFLICT_BUMP}
+       RETURNING data, (xmax = 0) AS created, (severity_raised_by IS NOT DISTINCT FROM $1::text AND xmax <> 0) AS raised`,
+      [alert.id, alert.ruleId, alert.dedupKey, alert.state, alert.lastSeen, JSON.stringify(alert), [...SEVERITIES]],
+    );
+    const row = r.rows[0];
+    return row ? { alert: row.data, created: row.created, raised: row.raised } : null;
+  };
+
+  /**
+   * One statement (one commit, so one WAL flush) for a whole batch of upserts with pairwise distinct
+   * (ruleId, dedupKey). Results are mapped back by key; a missing row means the id existed (replay).
+   */
+  const upsertMany = async (alerts: Alert[]): Promise<Array<UpsertResult | null>> => {
+    const r = await pool.query<{
+      rule_id: string;
+      dedup_key: string;
+      data: Alert;
+      created: boolean;
+      severity_raised_by: string | null;
+    }>(
+      `WITH i AS (
+         SELECT * FROM unnest($1::text[], $2::text[], $3::text[], $4::text[], $5::timestamptz[], $6::jsonb[])
+           AS t(id, rule_id, dedup_key, state, last_seen, data)
+       )
+       INSERT INTO alerts (id, rule_id, dedup_key, state, last_seen, data)
+       SELECT id, rule_id, dedup_key, state, last_seen, data FROM i
+       WHERE NOT EXISTS (SELECT 1 FROM alerts a WHERE a.id = i.id)
+       ${ON_CONFLICT_BUMP}
+       RETURNING rule_id, dedup_key, data, (xmax = 0) AS created, severity_raised_by`,
+      [
+        alerts.map((a) => a.id),
+        alerts.map((a) => a.ruleId),
+        alerts.map((a) => a.dedupKey),
+        alerts.map((a) => a.state),
+        alerts.map((a) => a.lastSeen),
+        alerts.map((a) => JSON.stringify(a)),
+        [...SEVERITIES],
+      ],
+    );
+    const byKey = new Map(r.rows.map((row) => [batchKey(row.rule_id, row.dedup_key), row]));
+    return alerts.map((a) => {
+      const row = byKey.get(batchKey(a.ruleId, a.dedupKey));
+      if (!row) return null;
+      return { alert: row.data, created: row.created, raised: !row.created && row.severity_raised_by === a.id };
+    });
+  };
+
+  // Coalescing: upserts issued while up to `maxInFlight` statements are running are sent together.
+  // Calls on the same (ruleId, dedupKey) never share a statement or run concurrently, so they apply
+  // in call order.
+  interface Waiting {
+    alert: Alert;
+    key: string;
+    resolve(r: UpsertResult | null): void;
+    reject(e: unknown): void;
+  }
+  let waiting: Waiting[] = [];
+  const busyKeys = new Set<string>();
+  let inFlight = 0;
+  let scheduled = false;
+
+  const flush = async (batch: Waiting[]) => {
+    try {
+      let results: Array<UpsertResult | null>;
+      try {
+        results = await upsertMany(batch.map((w) => w.alert));
+      } catch (err) {
+        if (batch.length === 1) throw err;
+        // a statement is atomic: nothing was applied; retry one by one so one bad item fails alone
+        await Promise.all(
+          batch.map((w) => upsertOne(w.alert).then(w.resolve, w.reject)),
+        );
+        return;
+      }
+      batch.forEach((w, i) => w.resolve(results[i] ?? null));
+    } catch (err) {
+      for (const w of batch) w.reject(err);
+    }
+  };
+
+  const drain = () => {
+    scheduled = false;
+    while (inFlight < maxInFlight && waiting.length > 0) {
+      const batch: Waiting[] = [];
+      const rest: Waiting[] = [];
+      const taken = new Set<string>();
+      for (const w of waiting) {
+        if (batch.length < maxBatch && !busyKeys.has(w.key) && !taken.has(w.key)) {
+          batch.push(w);
+          taken.add(w.key);
+        } else {
+          // keep later calls on a key behind earlier ones
+          taken.add(w.key);
+          rest.push(w);
+        }
+      }
+      if (batch.length === 0) return;
+      waiting = rest;
+      inFlight++;
+      for (const k of taken) if (batch.some((w) => w.key === k)) busyKeys.add(k);
+      void flush(batch).finally(() => {
+        inFlight--;
+        for (const w of batch) busyKeys.delete(w.key);
+        schedule();
+      });
+    }
+  };
+
+  const schedule = () => {
+    if (scheduled || waiting.length === 0 || inFlight >= maxInFlight) return;
+    scheduled = true;
+    setImmediate(drain);
+  };
+
   return {
     async upsertOpen(alert) {
       await ensure();
-      const r = await pool.query<{
-        data: Alert;
-        created: boolean;
-        raised: boolean;
-      }>(
-        `INSERT INTO alerts (id, rule_id, dedup_key, state, last_seen, data)
-         SELECT $1::text, $2::text, $3::text, $4::text, $5::timestamptz, $6::jsonb
-         WHERE NOT EXISTS (SELECT 1 FROM alerts WHERE id = $1::text)
-         ON CONFLICT (rule_id, dedup_key) WHERE state <> 'resolved' DO UPDATE SET
-           last_seen = GREATEST(alerts.last_seen, EXCLUDED.last_seen),
-           severity_raised_by = CASE
-             WHEN COALESCE(array_position($7::text[], EXCLUDED.data->>'severity'), 0) > COALESCE(array_position($7::text[], alerts.data->>'severity'), 0)
-             THEN EXCLUDED.id ELSE alerts.severity_raised_by END,
-           data = alerts.data || jsonb_build_object(
-             'count', COALESCE((alerts.data->>'count')::int, 0) + 1,
-             'lastSeen', CASE WHEN EXCLUDED.last_seen >= alerts.last_seen THEN EXCLUDED.data->>'lastSeen' ELSE alerts.data->>'lastSeen' END,
-             'common', CASE WHEN EXCLUDED.last_seen >= alerts.last_seen THEN EXCLUDED.data->'common' ELSE alerts.data->'common' END,
-             'severity', CASE
-               WHEN COALESCE(array_position($7::text[], EXCLUDED.data->>'severity'), 0) > COALESCE(array_position($7::text[], alerts.data->>'severity'), 0)
-               THEN EXCLUDED.data->>'severity' ELSE alerts.data->>'severity' END)
-         RETURNING data, (xmax = 0) AS created, (severity_raised_by IS NOT DISTINCT FROM $1::text AND xmax <> 0) AS raised`,
-        [
-          alert.id,
-          alert.ruleId,
-          alert.dedupKey,
-          alert.state,
-          alert.lastSeen,
-          JSON.stringify(alert),
-          [...SEVERITIES],
-        ],
-      );
-      const row = r.rows[0];
-      return row
-        ? { alert: row.data, created: row.created, raised: row.raised }
-        : null;
+      return new Promise<UpsertResult | null>((resolve, reject) => {
+        waiting.push({ alert, key: batchKey(alert.ruleId, alert.dedupKey), resolve, reject });
+        schedule();
+      });
     },
     async resolveOpen(ruleId, dedupKey, at, common) {
       const r = await pool.query<{ data: Alert }>(
