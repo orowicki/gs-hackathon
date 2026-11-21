@@ -301,6 +301,12 @@ describe.skipIf(!REDIS_URL || !DATABASE_URL)("dedup (real redis + postgres)", ()
   const pool = new pg.Pool({ connectionString: DATABASE_URL });
   const redises: Redis[] = [];
   const ruleIds: string[] = [];
+  const clearKeys = async (c: Redis) => {
+    for (const pattern of ["alerting:dedup*", "alerting:throttle:*", "alerting:digest*"]) {
+      const keys = await c.keys(pattern);
+      if (keys.length) await c.del(...keys);
+    }
+  };
   const mk = () => {
     const r = new Redis(REDIS_URL!);
     redises.push(r);
@@ -309,6 +315,9 @@ describe.skipIf(!REDIS_URL || !DATABASE_URL)("dedup (real redis + postgres)", ()
   suite("pg", async () => {
     await pool.query(DDL);
     const redis = mk();
+    // The real Redis is shared by all tests: throttle counters, digest buffers and dedup maps of
+    // earlier tests (same recipient ids) would otherwise leak into this one.
+    await clearKeys(redis);
     const ui: UiSetState = async (id, state) => {
       await pool.query("UPDATE alerts SET state = $2, data = jsonb_set(data, '{state}', to_jsonb($2::text)) WHERE id = $1", [id, state]);
     };
@@ -318,6 +327,7 @@ describe.skipIf(!REDIS_URL || !DATABASE_URL)("dedup (real redis + postgres)", ()
   it("two engine instances processing interleaved events concurrently count exactly", async () => {
     await pool.query(DDL);
     const repo = createPgAlertRepo(pool);
+    await clearKeys(mk());
     const rule = mkRule(`conc-${Date.now()}`);
     ruleIds.push(rule.id);
     const h1 = new Harness(createDedupHooks({ redis: mk(), repo }), rule);
