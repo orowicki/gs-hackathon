@@ -135,81 +135,64 @@ for (const scheme of ["light", "dark"] as const) {
     test("schemas list, click-to-map, save, export, import", async ({
       page,
     }) => {
-      const { schemas, imported } = await mockApi(page);
+      const { schemas } = await mockApi(page);
       await page.goto("/config/schemas");
-      await expect(
-        page.getByRole("heading", { name: "Schemas" }),
-      ).toBeVisible();
-      await expect(
-        page.getByRole("link", { name: "Workflow failed" }),
-      ).toBeVisible();
+      await expect(page.getByRole("heading", { name: "Schemas" })).toBeVisible();
+      await expect(page.getByRole("link", { name: "Workflow failed" })).toBeVisible();
       await expect(page.getByText("schema-metric-breach")).toBeVisible();
-      await page.screenshot({
-        path: path.join(shots, `schemas-list-${scheme}.png`),
-      });
+      await page.screenshot({ path: path.join(shots, `schemas-list-${scheme}.png`), fullPage: true });
 
-      await page.getByRole("link", { name: "Add schema" }).click();
+      // New schema: choose a way, then the step-by-step editor.
+      await page.getByRole("link", { name: "New schema" }).click();
+      await page.getByRole("radio", { name: /Build step by step/ }).click();
       await page.getByLabel("Id", { exact: true }).fill("schema-new");
-      await page
-        .getByLabel("Name", { exact: true })
-        .fill("New workflow schema");
+      await page.getByLabel("Name", { exact: true }).fill("New workflow schema");
       await page.getByLabel("Match filter").fill('type = "WORKFLOW_FAILED"');
       await page.getByLabel("Sample event (JSON)").fill(SAMPLE);
       await expect(page.getByLabel("Map field error.code")).toBeVisible();
+      await expect(page.getByRole("status").filter({ hasText: "The sample matches" })).toBeVisible();
 
-      await page.getByLabel("Common field to map").selectOption("severity");
+      // Map by clicking the sample: severity with a value translation, title with a default.
+      await page.getByRole("button", { name: "Map severity" }).click();
       await page.getByLabel("Map field severity").click();
-      await expect(page.getByLabel("Path for severity")).toHaveValue(
-        "severity",
-      );
+      await expect(page.getByLabel("Path for severity")).toHaveValue("severity");
+      await page.getByRole("button", { name: "More options for severity" }).click();
       await page.getByLabel("Add value map pair to severity").click();
       await page.getByLabel("severity value map from 1").fill("ERROR");
       await page.getByLabel("severity value map to 1").fill("error");
-
-      await page.getByLabel("Common field to map").selectOption("title");
+      await page.getByRole("button", { name: "Map title" }).click();
       await page.getByLabel("Map field workflowName").click();
-      await expect(page.getByLabel("Path for title")).toHaveValue(
-        "workflowName",
-      );
+      await expect(page.getByLabel("Path for title")).toHaveValue("workflowName");
+      await page.getByRole("button", { name: "More options for title" }).click();
       await page.getByLabel("Default for title").fill("Workflow failed");
 
-      await expect(page.getByText("Matches:")).toContainText("yes");
-      const result = page.getByLabel("Mapped common fields");
-      await expect(result).toContainText("error");
-      await expect(result).toContainText("order-settlement");
-      await page.screenshot({
-        path: path.join(shots, `schemas-edit-${scheme}.png`),
-        fullPage: true,
-      });
+      // The value column is computed with the backend's own mapper.
+      await expect(page.getByRole("group", { name: "Mapping for severity" })).toContainText("error");
+      await expect(page.getByRole("group", { name: "Mapping for title" })).toContainText("order-settlement");
+      await page.screenshot({ path: path.join(shots, `schemas-edit-${scheme}.png`), fullPage: true });
 
-      await page.getByRole("button", { name: "Save" }).click();
-      await expect(
-        page.getByRole("link", { name: "New workflow schema" }),
-      ).toBeVisible();
-      const saved = schemas.find((s) => s.id === "schema-new");
+      await page.getByRole("button", { name: "Save schema" }).click();
+      await expect(page.getByRole("link", { name: "New workflow schema" })).toBeVisible();
+      const saved = schemas.find((x) => x.id === "schema-new");
       expect(saved?.match).toBe('type = "WORKFLOW_FAILED"');
-      expect(saved?.mapping.severity).toMatchObject({
-        kind: "path",
-        path: "severity",
-        valueMap: { ERROR: "error" },
-      });
+      expect(saved?.mapping.severity).toMatchObject({ kind: "path", path: "severity", valueMap: { ERROR: "error" } });
       expect(saved?.mapping.title?.default).toBe("Workflow failed");
 
+      // Edit and export.
       await page.getByRole("link", { name: "Workflow failed" }).click();
-      await expect(
-        page.getByRole("heading", { name: "Edit schema" }),
-      ).toBeVisible();
+      await expect(page.getByRole("heading", { name: "Workflow failed" })).toBeVisible();
       await page.getByRole("button", { name: "Export YAML" }).click();
-      await expect(page.getByLabel("Exported YAML")).toContainText(
-        "name: Workflow failed",
-      );
+      await expect(page.getByLabel("Exported YAML")).toContainText("name: Workflow failed");
 
-      await page.getByRole("link", { name: "Cancel" }).click();
-      await page.getByRole("button", { name: "Import YAML" }).click();
-      await page.getByLabel("Schema YAML").fill(YAML);
-      await page.getByRole("button", { name: "Import", exact: true }).click();
-      await expect.poll(() => imported.length).toBe(1);
-      expect(imported[0]).toBe(YAML);
+      // Import: paste YAML, review in the editor, then save.
+      await page.getByRole("link", { name: "Back to schemas" }).click();
+      await page.getByRole("link", { name: "Import YAML" }).click();
+      await page.getByLabel("Schema YAML").fill(YAML.replace("schema-workflow-failed", "schema-imported"));
+      await page.getByRole("button", { name: "Review schema" }).click();
+      await expect(page.getByLabel("Name", { exact: true })).toHaveValue("Workflow failed");
+      await expect(page.getByLabel("Match filter")).toHaveValue('type = "WORKFLOW_FAILED"');
+      await page.getByRole("button", { name: "Save schema" }).click();
+      await expect.poll(() => schemas.some((x) => x.id === "schema-imported")).toBe(true);
     });
   });
 }
