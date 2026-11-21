@@ -1,0 +1,15 @@
+# Team Settlements: failed order-settlement workflows in prod page the on-call group on ntfy and ui.
+id: settlements-workflow-failed
+name: Team Settlements
+enabled: true
+when: 'type = WORKFLOW_FAILED AND workflowName = order-settlement AND environment = prod'
+who:
+  - recipients:
+      - { type: group, id: settlements-oncall }
+    force: [ntfy, ui]
+looks:
+  titleTemplate: 'Settlement failed at {{step}}'
+  fields: [step, error.message]
+  colour: red
+createdAt: '2026-11-01T00:00:00Z'
+updatedAt: '2026-11-01T00:00:00Z'

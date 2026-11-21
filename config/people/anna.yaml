@@ -1,0 +1,5 @@
+id: anna
+name: Anna Kowalska
+role: Payments lead
+canCreateRules: true
+ntfyTopic: alerting-anna
