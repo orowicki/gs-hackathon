@@ -37,7 +37,7 @@ for (const scheme of ["light", "dark"] as const) {
       await page.goto("/settings/notifications");
 
       await expect(page.getByRole("heading", { name: "My notifications" })).toBeVisible();
-      await expect(page.getByText("Ada Lovelace")).toBeVisible();
+      await expect(page.getByRole("main").getByText("Ada Lovelace")).toBeVisible();
       await expect(page.getByText(/Defaults apply/)).toBeVisible();
       // defaults: ntfy topic present, so critical via ntfy is on
       await expect(page.getByRole("checkbox", { name: "critical via Phone" })).toBeChecked();
@@ -83,7 +83,7 @@ for (const scheme of ["light", "dark"] as const) {
       // Signed in as Bob (mock mode keeps the session in this browser).
       await page.addInitScript(() => localStorage.setItem("alerting.mockSession", "p2"));
       await page.goto("/settings/notifications");
-      await expect(page.getByText("Bob")).toBeVisible();
+      await expect(page.getByRole("main").getByText("Bob")).toBeVisible();
       await expect(page.getByRole("combobox", { name: "Profile" })).toHaveCount(0);
       expect(await page.evaluate(() => localStorage.getItem("alerting.profile"))).toBe(JSON.stringify("p2"));
     });

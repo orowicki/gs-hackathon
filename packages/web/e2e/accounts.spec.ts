@@ -6,8 +6,7 @@ const shots = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../
 
 test("mock mode: signed in by default, sign out, create an account, sign back in", async ({ page }) => {
   await page.goto("/?mock=1");
-  await page.getByRole("button", { name: "Settings" }).click();
-  await expect(page.getByText("Signed in as")).toBeVisible();
+  await page.getByRole("button", { name: /^Account:/ }).click();
   await page.getByRole("button", { name: "Sign out" }).click();
 
   await expect(page.getByRole("heading", { name: "Sign in" })).toBeVisible();
@@ -19,15 +18,14 @@ test("mock mode: signed in by default, sign out, create an account, sign back in
   await page.getByLabel("Role (optional)").fill("QA");
   await page.getByRole("button", { name: "Create and sign in" }).click();
 
-  await page.getByRole("button", { name: "Settings" }).click();
-  await expect(page.getByText("Zoe Tester")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Account: Zoe Tester" })).toBeVisible();
+  await page.getByRole("button", { name: "Account: Zoe Tester" }).click();
   await expect(page.getByText("Can't create rules.")).toBeVisible();
 
   // The new account stays in the list after signing out (kept in this browser).
   await page.getByRole("button", { name: "Sign out" }).click();
   await page.getByRole("button", { name: /Zoe Tester/ }).click();
-  await page.getByRole("button", { name: "Settings" }).click();
-  await expect(page.getByText("Zoe Tester")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Account: Zoe Tester" })).toBeVisible();
 });
 
 test("server mode: sign-in page, POST /api/session, actor names on the alert page", async ({ page }) => {

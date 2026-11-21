@@ -4,7 +4,6 @@ import { Plus } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { Icon } from "../../components/Icon";
-import { SettingsMenu } from "../../components/SettingsPanel";
 import { withFilter } from "../../filterUrl";
 import { parseRange, withRange, withRangeTree, type TimeRange } from "../../timeRange";
 import { TimeRangePicker } from "../../components/time-range/TimeRangePicker";
@@ -27,7 +26,6 @@ import {
   valuesFor,
   type FeedTab,
 } from "./helpers";
-import { StarredList } from "./ProfilePicker";
 import { useCurrentPerson } from "../../account";
 import { StatPanels } from "./StatPanels";
 
@@ -265,18 +263,6 @@ export function FeedPage() {
   const starredList = starredTexts(starred);
   const canCreate = person?.canCreateRules ?? false;
 
-  const settings = {
-    "Starred filters": (
-      <StarredList
-        starred={starred}
-        onApply={(t) => {
-          setQ(t);
-          applyText(t);
-        }}
-        onRemove={(id) => saveStarred(starred.filter((s) => s.id !== id))}
-      />
-    ),
-  };
 
   function body() {
     if (error) {
@@ -331,7 +317,6 @@ export function FeedPage() {
   return (
     <div className="feed-page">
       <header className="topbar">
-        <SettingsMenu sections={settings} />
         <FilterBar
           value={q}
           onChange={setQ}

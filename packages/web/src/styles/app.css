@@ -899,3 +899,75 @@ a.crumb:hover {
   gap: 6px;
 }
 .app-loading { min-height: 100vh; background: var(--bg); }
+
+/* Top-right account menu */
+.app-bar-actions { align-items: center; gap: var(--space-2); }
+.account-menu { position: relative; }
+.account-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  height: 32px;
+  padding: 0 var(--space-2) 0 4px;
+  font: inherit;
+  font-size: var(--text-sm);
+  color: var(--text-strong);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-lg);
+  cursor: pointer;
+}
+.account-btn:hover,
+.account-btn[aria-expanded="true"] { background: var(--surface-2); border-color: var(--border); }
+.account-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.account-avatar {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  font-size: 11px;
+  font-weight: var(--weight-strong);
+  color: var(--on-accent);
+  background: var(--accent-bg);
+  border-radius: 50%;
+}
+.account-avatar.large { width: 36px; height: 36px; font-size: 13px; }
+.account-pop {
+  position: absolute;
+  top: calc(100% + var(--space-1));
+  right: 0;
+  z-index: 20;
+  width: 260px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow);
+  animation: panel-in var(--motion-duration) var(--motion-ease);
+}
+.account-head { display: flex; align-items: center; gap: var(--space-3); }
+.account-who { display: flex; flex-direction: column; min-width: 0; font-size: var(--text-sm); }
+.account-pop-name { color: var(--text-strong); font-size: var(--text-md); font-weight: var(--weight-strong); }
+.account-perm { margin: 0; font-size: var(--text-sm); padding-bottom: var(--space-2); border-bottom: 1px solid var(--border); }
+.account-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 6px var(--space-2);
+  font: inherit;
+  font-size: var(--text-sm);
+  text-align: left;
+  color: var(--text);
+  text-decoration: none;
+  background: none;
+  border: 0;
+  border-radius: var(--radius);
+  cursor: pointer;
+}
+.account-item:hover { background: var(--surface-2); color: var(--text-strong); }
+@media (max-width: 640px) { .account-name { display: none; } }
+/* The account menu opens over the page content. */
+.app-bar { position: relative; z-index: 30; }

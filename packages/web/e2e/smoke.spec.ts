@@ -14,7 +14,7 @@ for (const scheme of ["light", "dark"] as const) {
 
     test("landing", async ({ page }) => {
       await page.goto("/");
-      await expect(page.getByRole("button", { name: "Settings" })).toBeVisible();
+      await expect(page.getByRole("button", { name: /^Account:/ })).toBeVisible();
       await expect(page.getByRole("combobox", { name: "Filter" })).toBeVisible();
       await expect(page.getByRole("button", { name: "Star filter" })).toBeVisible();
       await expect(page.getByRole("button", { name: "New rule" })).toBeVisible();
@@ -36,15 +36,17 @@ for (const scheme of ["light", "dark"] as const) {
       await expect(page).toHaveURL(/\?q=a\+b$/);
     });
 
-    test("settings panel", async ({ page }) => {
+    test("account menu", async ({ page }) => {
       await page.goto("/");
-      await page.getByRole("button", { name: "Settings" }).click();
-      for (const h of ["Account", "Notifications", "Starred filters"]) {
-        await expect(page.getByRole("heading", { name: h })).toBeVisible();
-      }
-      await shot(page, "settings");
+      await page.getByRole("button", { name: /^Account:/ }).click();
+      const menu = page.getByRole("dialog", { name: "Account" });
+      await expect(menu.getByRole("link", { name: "My notifications" })).toBeVisible();
+      await expect(menu.getByRole("button", { name: "Sign out" })).toBeVisible();
+      await expect(menu).toBeVisible();
+      await page.waitForTimeout(300);
+      await shot(page, "account");
       await page.keyboard.press("Escape");
-      await expect(page.getByRole("heading", { name: "Account" })).toHaveCount(0);
+      await expect(menu).toHaveCount(0);
     });
 
     test("new rule", async ({ page }) => {
