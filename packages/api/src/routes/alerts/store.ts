@@ -395,6 +395,7 @@ export function createPgAlertStores(pool: Pool): AlertStores {
         out.byStatus[r.state] = (out.byStatus[r.state] ?? 0) + n;
         if (r.state === "open") {
           out.open += n;
+          if (r.severity === null) continue;
           const sev = r.severity as Severity;
           out.bySeverity[sev] = (out.bySeverity[sev] ?? 0) + n;
         }

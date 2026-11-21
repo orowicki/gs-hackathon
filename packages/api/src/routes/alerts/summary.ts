@@ -10,8 +10,9 @@ const SCAN_CAP = 5000;
 
 /**
  * Without a filter: one aggregate SQL query. With a filter that compiles to SQL: a grouped
- * count in Postgres. Otherwise the filter language is evaluated in Node (as for the list), so alerts are scanned in the same newest-first
- * order and with the same cap as `GET /api/alerts`, keeping panel counts equal to the list.
+ * count in Postgres over all matching alerts (no SCAN_CAP, like the unfiltered summary).
+ * Otherwise the filter language is evaluated in Node (as for the list): alerts are scanned
+ * newest-first with the same cap as `GET /api/alerts`.
  */
 export async function computeSummary(
   deps: AlertsApiDeps,
