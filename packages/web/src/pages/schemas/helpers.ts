@@ -263,7 +263,7 @@ export function describeMatch(match: string): string {
     else if (e) equals.push(`${e[1]} is ${e[2]}`);
     else return "";
   }
-  const list = (xs: string[]) => (xs.length <= 1 ? xs.join("") : `${xs.slice(0, -1).join(", ")} and ${xs.at(-1)}`);
-  const bits = [equals.length ? `where ${list(equals)}` : "", exists.length ? `that have ${list(exists)}` : ""].filter(Boolean);
+  const joinList = (xs: string[]) => (xs.length <= 1 ? xs.join("") : `${xs.slice(0, -1).join(", ")} and ${xs.at(-1)}`);
+  const bits = [equals.length ? `where ${joinList(equals)}` : "", exists.length ? `that have ${joinList(exists)}` : ""].filter(Boolean);
   return bits.length ? `events ${bits.join(" and ")}` : "";
 }
