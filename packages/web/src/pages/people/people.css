@@ -34,26 +34,7 @@
   clip: rect(0 0 0 0);
   white-space: nowrap;
 }
-.people-page button,
-.people-page input[type="text"] {
-  font: inherit;
-  color: var(--text);
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: var(--space-1) var(--space-3);
-}
-.people-page button {
-  cursor: pointer;
-}
-.people-page button:hover {
-  border-color: var(--accent);
-}
-.people-page button.primary {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: var(--surface);
-}
+/* buttons and inputs: styles/components.css */
 .people-page :focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 1px;
