@@ -1,13 +1,12 @@
 import { useCurrentPerson } from "../../account";
 import { useEffect, useId, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { BellRing, Mail, MessageSquare, Monitor, Moon, Route, Smartphone, type LucideIcon } from "lucide-react";
+import { BellRing, Mail, MessageSquare, Monitor, Moon, Smartphone, type LucideIcon } from "lucide-react";
 import type { ChannelId, Severity } from "../../../../shared/src/types/common";
 import type { ChannelStatus } from "../../../../shared/src/types/notification";
-import type { Group, Person, PreferenceRule } from "../../../../shared/src/types/people";
-import type { Rule } from "../../../../shared/src/types/rule";
+import type { Person, PreferenceRule } from "../../../../shared/src/types/people";
 import { Icon } from "../../components/Icon";
-import { getPreference, listChannels, listGroups, listPeople, listRules, putPreference } from "./api";
+import { getPreference, listChannels, listPeople, putPreference } from "./api";
 import {
   CHANNELS,
   SEVERITY_ROWS,
@@ -21,7 +20,7 @@ import {
   type Grid,
   type QuietForm,
 } from "./grid";
-import { effectiveNow, quietActiveAt, quietSegments, rulesReaching, timezones } from "./insights";
+import { effectiveNow, quietActiveAt, quietSegments, timezones } from "./insights";
 import "./my-notifications.css";
 import { channelLabel } from "../../channels";
 
@@ -49,14 +48,6 @@ function toggle(list: ChannelId[], c: ChannelId, on: boolean): ChannelId[] {
   return on ? (list.includes(c) ? list : [...list, c]) : list.filter((x) => x !== c);
 }
 
-/** Where a channel delivers to for this person, in plain words. */
-function destination(c: ChannelId, person: Person): string {
-  if (c === "ui") return "The alert feed in this app, live";
-  if (c === "ntfy") return person.ntfyTopic ? `Push to the ntfy app, topic ${person.ntfyTopic}` : "Not set up: no phone topic yet";
-  if (c === "email") return "Email (the demo mail server catches it)";
-  return "Delivery channel";
-}
-
 /** Whether the person can receive on a channel at all. */
 const usable = (c: ChannelId, person: Person): boolean => c !== "ntfy" || Boolean(person.ntfyTopic);
 
@@ -71,8 +62,6 @@ export function MyNotificationsPage() {
   // The signed-in account's notifications; the stored profile is the fallback without accounts.
   const personId = useCurrentPerson()?.id ?? storedId;
   const [statuses, setStatuses] = useState<ChannelStatus[] | null | undefined>();
-  const [rules, setRules] = useState<Rule[] | null | undefined>();
-  const [groups, setGroups] = useState<Group[]>([]);
   const [grid, setGrid] = useState<Grid>(() => defaultGrid());
   const [quiet, setQuiet] = useState<QuietForm>(() => defaultQuiet(tz));
   const [baseline, setBaseline] = useState<string>(() => snapshot(defaultGrid(), defaultQuiet(tz)));
@@ -94,12 +83,6 @@ export function MyNotificationsPage() {
     listChannels()
       .then(setStatuses)
       .catch(() => setStatuses(null));
-    listRules()
-      .then(setRules)
-      .catch(() => setRules(null));
-    listGroups()
-      .then(setGroups)
-      .catch(() => setGroups([]));
     const t = setInterval(() => setNow(new Date()), 60_000);
     return () => clearInterval(t);
   }, []);
@@ -161,8 +144,9 @@ export function MyNotificationsPage() {
 
   const zoneList = useMemo(() => timezones(quiet.timezone), [quiet.timezone]);
   const quietNow = quietActiveAt(quiet, now);
+  const segments = quietSegments(quiet);
+  const widest = segments.reduce((best, [a, b], i, all) => (b - a > all[best]![1] - all[best]![0] ? i : best), 0);
   const rightNow = effectiveNow(grid, quiet, now);
-  const reach = useMemo(() => (person && rules ? rulesReaching(rules, groups, person.id) : []), [person, rules, groups]);
 
   function chooseProfile(id: string) {
     if (id) {
@@ -210,7 +194,6 @@ export function MyNotificationsPage() {
     setGrid(g);
   };
 
-  const status = (c: ChannelId) => statuses?.find((s) => s.id === c);
 
   return (
     <main className="page my-notifications">
@@ -310,7 +293,7 @@ export function MyNotificationsPage() {
               {SEVERITY_ROWS.map((sev) => {
                 const { channels: on, held } = rightNow[sev];
                 return (
-                  <div key={sev} className={`np-now-tile sev-${sev}`}>
+                  <div key={sev} className="np-now-tile">
                     <span className={`tag sev-${sev}`}>{SEVERITY_TEXT[sev]}</span>
                     <span className="np-now-channels">
                       {on.length === 0 ? (
@@ -385,22 +368,18 @@ export function MyNotificationsPage() {
                 <tbody>
                   {SEVERITY_ROWS.map((sev) => (
                     <tr key={sev}>
-                      <th scope="row">
-                        <span className={`np-sev-bar sev-${sev}`} aria-hidden="true" />
-                        {SEVERITY_TEXT[sev]}
-                      </th>
+                      <th scope="row">{SEVERITY_TEXT[sev]}</th>
                       {channels.map((c) => (
                         <td key={c}>
-                          <label className="switch np-switch">
-                            <input
-                              type="checkbox"
-                              aria-label={`${sev} via ${channelLabel(c)}`}
-                              checked={grid[sev].includes(c)}
-                              disabled={gridDisabled || !usable(c, person)}
-                              onChange={(e) => setCell(sev, c, e.target.checked)}
-                            />
-                            <span className="switch-track" aria-hidden="true" />
-                          </label>
+                          <input
+                            type="checkbox"
+                            className="np-check"
+                            aria-label={`${sev} via ${channelLabel(c)}`}
+                            title={usable(c, person) ? undefined : "No phone topic yet"}
+                            checked={grid[sev].includes(c)}
+                            disabled={gridDisabled || !usable(c, person)}
+                            onChange={(e) => setCell(sev, c, e.target.checked)}
+                          />
                         </td>
                       ))}
                     </tr>
@@ -408,6 +387,11 @@ export function MyNotificationsPage() {
                 </tbody>
               </table>
             </div>
+            {!person.ntfyTopic && channels.includes("ntfy") && (
+              <p className="np-note muted">
+                Phone is off: this profile has no phone topic yet. Add one in <Link to="/config/people">People &amp; groups</Link>.
+              </p>
+            )}
           </section>
 
           {/* Quiet hours. */}
@@ -448,16 +432,21 @@ export function MyNotificationsPage() {
                 </div>
 
                 <div className="np-timeline" aria-hidden="true">
-                  {quietSegments(quiet).map(([a, b], i) => (
-                    <span key={i} className="np-timeline-quiet" style={{ left: `${a * 100}%`, width: `${(b - a) * 100}%` }} />
-                  ))}
-                  <span className="np-timeline-ticks">
+                  <div className="np-timeline-bar">
+                    {segments.map(([a, b], i) => (
+                      <span key={i} className="np-timeline-quiet" style={{ left: `${a * 100}%`, width: `${(b - a) * 100}%` }}>
+                        {/* Label once, on the widest part (a window over midnight is two parts). */}
+                        {i === widest && b - a >= 0.08 ? `Quiet ${quiet.from}–${quiet.to}` : ""}
+                      </span>
+                    ))}
+                  </div>
+                  <div className="np-timeline-ticks">
                     <span>00:00</span>
                     <span>06:00</span>
                     <span>12:00</span>
                     <span>18:00</span>
                     <span>24:00</span>
-                  </span>
+                  </div>
                 </div>
 
                 <div className="np-row np-allow">
@@ -487,87 +476,6 @@ export function MyNotificationsPage() {
                   </p>
                 )}
               </div>
-            )}
-          </section>
-
-          {/* Contact points: every registered channel, where it goes and whether it is healthy. */}
-          <section className="np-panel" aria-labelledby="np-contacts">
-            <header className="np-panel-head">
-              <div>
-                <h2 id="np-contacts">Contact points</h2>
-                <p className="np-panel-intro">Every channel the service can deliver on, and where it reaches you.</p>
-              </div>
-              <Link className="btn" to="/config/channels">
-                Channel health
-              </Link>
-            </header>
-            <ul className="np-contacts">
-              {channels.map((c) => {
-                const s = status(c);
-                const ok = usable(c, person);
-                return (
-                  <li key={c} className={ok ? "np-contact" : "np-contact off"}>
-                    <span className="np-contact-icon">
-                      <Icon as={channelIcon(c)} />
-                    </span>
-                    <span className="np-contact-main">
-                      <span className="np-contact-name">{channelLabel(c)}</span>
-                      <span className="muted">{destination(c, person)}</span>
-                    </span>
-                    {!ok ? (
-                      <Link className="btn" to="/config/people">
-                        Add a phone topic
-                      </Link>
-                    ) : s ? (
-                      <span className={s.healthy ? "tag ok" : "tag sev-error"} title={s.lastError ?? undefined}>
-                        {s.healthy ? "Healthy" : "Problem"}
-                        {s.pending > 0 ? ` · ${s.pending} pending` : ""}
-                        {s.deadLetters > 0 ? ` · ${s.deadLetters} failed` : ""}
-                      </span>
-                    ) : (
-                      <span className="tag">Status unknown</span>
-                    )}
-                  </li>
-                );
-              })}
-            </ul>
-          </section>
-
-          {/* Which rules can notify this person, and how. */}
-          <section className="np-panel" aria-labelledby="np-rules">
-            <header className="np-panel-head">
-              <div>
-                <h2 id="np-rules">Rules that notify you</h2>
-                <p className="np-panel-intro">Alerts reach you only through these rules, directly or through a group you are in.</p>
-              </div>
-              <Icon as={Route} />
-            </header>
-            {rules === undefined ? (
-              <p className="muted">Loading rules…</p>
-            ) : rules === null ? (
-              <p className="muted">Couldn't load the rules.</p>
-            ) : reach.length === 0 ? (
-              <p className="muted">
-                No rule sends alerts to you yet. Ask someone who can edit rules to add you, or add you to a group in{" "}
-                <Link to="/config/people">People &amp; groups</Link>.
-              </p>
-            ) : (
-              <ul className="np-rules">
-                {reach.map(({ rule, via, forced }) => (
-                  <li key={rule.id} className={rule.enabled ? "np-rule" : "np-rule off"}>
-                    <Link to={`/rules/${encodeURIComponent(rule.id)}`} className="np-rule-name">
-                      {rule.name}
-                    </Link>
-                    <span className="muted">{via.map((v) => (v === "you" ? "You directly" : `Group ${v}`)).join(", ")}</span>
-                    {!rule.enabled && <span className="tag">Disabled</span>}
-                    {forced.length > 0 && (
-                      <span className="tag sev-warning" title="This rule overrides your preferences on these channels">
-                        Always: {forced.map(channelLabel).join(", ")}
-                      </span>
-                    )}
-                  </li>
-                ))}
-              </ul>
             )}
           </section>
         </>

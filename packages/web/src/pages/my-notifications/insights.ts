@@ -1,6 +1,4 @@
 import type { ChannelId, Severity } from "../../../../shared/src/types/common";
-import type { Group } from "../../../../shared/src/types/people";
-import type { Rule } from "../../../../shared/src/types/rule";
 import { SEVERITY_ROWS, isValidTime, isValidTimezone, type Grid, type QuietForm } from "./grid";
 
 const minutes = (hhmm: string): number => {
@@ -45,42 +43,6 @@ export function effectiveNow(grid: Grid, quiet: QuietForm, at: Date): Record<Sev
     out[sev] = { channels, held: all.filter((c) => !channels.includes(c)) };
   }
   return out;
-}
-
-export interface RuleReach {
-  rule: Rule;
-  /** "you" for a direct recipient, otherwise the group names that include the person. */
-  via: string[];
-  /** Channels a row forces for this person, overriding their preferences. */
-  forced: ChannelId[];
-}
-
-/** Rules whose `who` rows name the person directly or through a group, with how they are reached. */
-export function rulesReaching(rules: Rule[], groups: Group[], personId: string): RuleReach[] {
-  const groupsOf = new Map(groups.map((g) => [g.id, g]));
-  const out: RuleReach[] = [];
-  for (const rule of rules) {
-    const via = new Set<string>();
-    const forced = new Set<ChannelId>();
-    for (const row of rule.who ?? []) {
-      let hit = false;
-      for (const r of row.recipients ?? []) {
-        if (r.type === "person" && r.id === personId) {
-          via.add("you");
-          hit = true;
-        } else if (r.type === "group") {
-          const g = groupsOf.get(r.id);
-          if (g?.memberIds.includes(personId)) {
-            via.add(g.name || g.id);
-            hit = true;
-          }
-        }
-      }
-      if (hit) for (const c of row.force ?? []) forced.add(c);
-    }
-    if (via.size > 0) out.push({ rule, via: [...via], forced: [...forced] });
-  }
-  return out.sort((a, b) => Number(b.rule.enabled) - Number(a.rule.enabled) || a.rule.name.localeCompare(b.rule.name));
 }
 
 /** IANA timezones for the picker (falls back to a short list on older browsers). */
