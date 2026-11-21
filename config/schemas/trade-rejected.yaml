@@ -1,0 +1,11 @@
+id: schema-trade-rejected
+name: Trade rejected
+match: meta.schema matches "trade.rejected.*"
+mapping:
+  severity: { kind: constant, value: info }
+  title: { kind: template, template: "Rejected {{payload.currency}} {{payload.notional}} — {{payload.reason}}" }
+  source: { kind: path, path: meta.producer }
+  environment: { kind: constant, value: prod }
+  dedupKey: { kind: path, path: payload.tradeId }
+  status: { kind: constant, value: firing }
+  occurredAt: { kind: path, path: meta.ts }
