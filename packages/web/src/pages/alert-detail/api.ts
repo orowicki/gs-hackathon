@@ -21,7 +21,30 @@ export interface Alert {
   parsed?: unknown;
   raw?: unknown;
   fields?: Array<{ label: string; value: string }>;
+  ruleId?: string;
+  resolvedAt?: string;
+  resolvedBy?: string;
+  acknowledgedAt?: string;
+  acknowledgedBy?: string;
+  /** What the resolver wrote. */
+  resolution?: string;
+  /** The rule's "how to resolve" text, if anyone has contributed one. */
+  rulebook?: RulebookEntry | null;
   [key: string]: unknown;
+}
+
+export interface RulebookEntry {
+  ruleId: string;
+  text: string;
+  updatedBy: string;
+  updatedAt: string;
+  alertId?: string;
+}
+
+export interface ResolveInput {
+  resolution?: string;
+  /** Save the resolution as the rule's rulebook text. */
+  contribute?: boolean;
 }
 
 export interface RunbookRun {
@@ -72,7 +95,7 @@ const base = (id: string) => `/api/alerts/${encodeURIComponent(id)}`;
 
 export const getAlert = (id: string) => request<Alert>("GET", base(id));
 export const ackAlert = (id: string) => request<Alert>("POST", `${base(id)}/ack`);
-export const resolveAlert = (id: string) => request<Alert>("POST", `${base(id)}/resolve`);
+export const resolveAlert = (id: string, input: ResolveInput = {}) => request<Alert>("POST", `${base(id)}/resolve`, input);
 export const sendSuggestion = (id: string, text: string) => request<unknown>("POST", `${base(id)}/suggestions`, { text });
 
 /** Never throws: missing routes (404) and failures both yield an empty list. */

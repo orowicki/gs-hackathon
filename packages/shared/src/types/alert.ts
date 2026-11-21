@@ -20,6 +20,9 @@ export interface Alert {
   acknowledgedBy?: Id;
   acknowledgedAt?: IsoTimestamp;
   resolvedAt?: IsoTimestamp;
+  resolvedBy?: Id;
+  /** What the resolver wrote about how it was fixed. */
+  resolution?: string;
   /** Rendered `looks.fields`, in order. */
   fields: Array<{ label: string; value: string }>;
   colour?: string;
@@ -48,4 +51,14 @@ export interface Suggestion {
   text: string;
   status: "open" | "accepted" | "dismissed";
   createdAt: IsoTimestamp;
+}
+
+/** The rulebook: one "how to resolve" text per rule, written by people when they resolve alerts. */
+export interface RulebookEntry {
+  ruleId: Id;
+  text: string;
+  updatedBy: Id;
+  updatedAt: IsoTimestamp;
+  /** Alert whose resolution produced this text. */
+  alertId?: Id;
 }

@@ -12,6 +12,8 @@ export interface FeedSource {
   getStarred(personId: string): Promise<StarredFilter[]>;
   putStarred(personId: string, list: StarredFilter[]): Promise<StarredFilter[]>;
   suggestFields?(): Promise<string[]>;
+  /** Acknowledge an alert; returns the updated alert. */
+  ack?(id: string): Promise<Alert>;
   /** True when the data is the built-in fixture mock, not a real API. */
   demo?: boolean;
 }
@@ -59,6 +61,7 @@ export function createHttpSource(first: Alert[], fetchFn: typeof fetch = (...a) 
       return sortAlerts(await json<Alert[]>(fetchFn, ALERTS_URL));
     },
     getAlert: (id) => json<Alert>(fetchFn, "/api/alerts/" + encodeURIComponent(id)),
+    ack: (id) => json<Alert>(fetchFn, "/api/alerts/" + encodeURIComponent(id) + "/ack", { method: "POST" }),
     subscribe(onPush, onStatus) {
       const es = new EventSource("/api/stream");
       es.onopen = () => onStatus(true);

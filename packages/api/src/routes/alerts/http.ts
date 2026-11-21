@@ -1,5 +1,5 @@
 import type http from "node:http";
-import type { Alert, AuditEntry, Event } from "@alerting/shared";
+import type { Alert, AuditEntry, Event, RulebookEntry } from "@alerting/shared";
 import { tryParse, validateTree, evaluate, type FilterNode } from "@alerting/filter";
 import {
   BodyError,
@@ -139,6 +139,8 @@ async function listAlerts(res: http.ServerResponse, url: URL, deps: AlertsApiDep
   sendJson(res, 200, out, headers);
 }
 
+const MAX_RESOLUTION_CHARS = 4000;
+
 async function transition(
   req: http.IncomingMessage,
   res: http.ServerResponse,
@@ -149,7 +151,22 @@ async function transition(
   const body = await readJsonBody(req);
   const actor = resolveActor(req, body.actor);
   const at = nowIso(deps);
-  const entry: AuditEntry = { id: newId(deps), alertId: id, at, actor, action: kind };
+  let resolution: string | undefined;
+  if (kind === "resolved" && body.resolution !== undefined && body.resolution !== null) {
+    if (typeof body.resolution !== "string" || body.resolution.length > MAX_RESOLUTION_CHARS)
+      return sendJson(res, 400, { error: `resolution must be a string of at most ${MAX_RESOLUTION_CHARS} characters` });
+    resolution = body.resolution.trim() || undefined;
+  }
+  const contribute = kind === "resolved" && body.contribute === true;
+  if (contribute && !resolution) return sendJson(res, 400, { error: "contribute needs a resolution text" });
+  const entry: AuditEntry = {
+    id: newId(deps),
+    alertId: id,
+    at,
+    actor,
+    action: kind,
+    ...(resolution ? { detail: resolution.slice(0, 200) } : {}),
+  };
   const out =
     kind === "acknowledged"
       ? await deps.alerts.transitionWithAudit(
@@ -158,18 +175,28 @@ async function transition(
           { state: "acknowledged", acknowledgedBy: actor, acknowledgedAt: at },
           entry,
         )
-      : await deps.alerts.transitionWithAudit(id, ["open", "acknowledged"], { state: "resolved", resolvedAt: at }, entry);
+      : await deps.alerts.transitionWithAudit(
+          id,
+          ["open", "acknowledged"],
+          { state: "resolved", resolvedAt: at, resolvedBy: actor, ...(resolution ? { resolution } : {}) },
+          entry,
+        );
   if (out === null) return sendJson(res, 404, { error: "alert not found" });
   if (out === "conflict") {
     const cur = await deps.alerts.get(id);
     return sendJson(res, 409, { error: `cannot ${kind === "acknowledged" ? "acknowledge" : "resolve"} an alert in this state`, state: cur?.state });
+  }
+  let rulebook: RulebookEntry | undefined;
+  if (contribute && resolution && deps.rulebook) {
+    rulebook = { ruleId: out.ruleId, text: resolution, updatedBy: actor, updatedAt: at, alertId: id };
+    await deps.rulebook.put(rulebook);
   }
   try {
     deps.publish?.({ type: "alert", alertId: id, kind });
   } catch (e) {
     console.error("ui publish failed:", e);
   }
-  sendJson(res, 200, out);
+  sendJson(res, 200, rulebook ? { ...out, rulebook } : out);
 }
 
 /** Returns false when the request is not an alerts/audit route. */
@@ -217,7 +244,8 @@ export async function handleAlertsRoutes(
       if (!alert) return sendJson(res, 404, { error: "alert not found" }), true;
       const ev = deps.events ? (await deps.events.getEvents([alert.eventId])).get(alert.eventId) : undefined;
       const suggestions = await deps.suggestions.listByAlert(id);
-      sendJson(res, 200, { ...alert, event: ev ?? null, suggestions });
+      const rulebook = deps.rulebook ? await deps.rulebook.get(alert.ruleId) : null;
+      sendJson(res, 200, { ...alert, event: ev ?? null, suggestions, rulebook });
       return true;
     }
     if (sub === "audit") {

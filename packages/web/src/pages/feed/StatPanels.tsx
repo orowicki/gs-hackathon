@@ -7,13 +7,13 @@ const PANELS: { sev: Severity; label: string }[] = [
   { sev: "info", label: "Info" },
 ];
 
-/** Grafana-style stat panels: open alerts per severity. Clicking one filters the feed. */
+/** Grafana-style stat panels: open (not yet acknowledged) alerts per severity. Clicking one filters the Active tab. */
 export function StatPanels({ alerts, onFilter }: { alerts: Alert[]; onFilter: (q: string) => void }) {
-  const open = alerts.filter((a) => a.state !== "resolved");
+  const open = alerts.filter((a) => a.state === "open");
   const count = (s: Severity) => open.filter((a) => a.severity === s).length;
   return (
     <section className="stats" aria-label="Open alerts by severity">
-      <button type="button" className="stat" onClick={() => onFilter("alert.status != resolved")}>
+      <button type="button" className="stat" onClick={() => onFilter("")}>
         <span className="stat-label">Open alerts</span>
         <span className="stat-value">{open.length}</span>
       </button>

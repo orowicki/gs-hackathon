@@ -10,7 +10,20 @@ import { AlertList, SkeletonRows } from "./AlertList";
 import { createSource, isDemoSource } from "./data";
 import type { FeedSource } from "./data";
 import { FilterBar } from "../../components/filter-bar";
-import { fieldNames, filterAlerts, newStarred, parseFilter, starredTexts, upsertAlert, valuesFor } from "./helpers";
+import {
+  FEED_TABS,
+  fieldNames,
+  filterAlerts,
+  mentionsStatus,
+  newStarred,
+  parseFilter,
+  parseTab,
+  starredTexts,
+  tabAlerts,
+  upsertAlert,
+  valuesFor,
+  type FeedTab,
+} from "./helpers";
 import { ProfilePicker, StarredList } from "./ProfilePicker";
 import { StatPanels } from "./StatPanels";
 
@@ -39,6 +52,7 @@ export function FeedPage() {
   const [params, setParams] = useSearchParams();
   const navigate = useNavigate();
   const q = params.get("q") ?? "";
+  const tab = parseTab(params.get("tab"));
   const input = useRef<HTMLInputElement>(null);
   const scroller = useRef<HTMLElement>(null);
 
@@ -69,7 +83,15 @@ export function FeedPage() {
     if (r.ok) setLastTree(r.tree);
   }, []);
 
-  const visible = useMemo(() => filterAlerts(alerts ?? [], activeTree), [alerts, activeTree]);
+  const matching = useMemo(() => filterAlerts(alerts ?? [], activeTree), [alerts, activeTree]);
+  const statusInFilter = mentionsStatus(activeTree);
+  const visible = useMemo(() => tabAlerts(matching, tab, activeTree), [matching, tab, activeTree]);
+  const tabCounts = useMemo(
+    () => Object.fromEntries(FEED_TABS.map((t) => [t.id, matching.filter((a) => a.state === t.state).length])) as Record<FeedTab, number>,
+    [matching],
+  );
+  const tabRef = useRef(tab);
+  tabRef.current = tab;
   const visibleIds = useRef(new Set<string>());
   visibleIds.current = new Set(visible.map((a) => a.id));
   const treeRef = useRef(activeTree);
@@ -112,7 +134,7 @@ export function FeedPage() {
           .then((alert) => {
             setAlerts((prev) => upsertAlert(prev ?? [], alert));
             setFlash((prev) => new Map(prev).set(alert.id, Date.now()));
-            const matches = filterAlerts([alert], treeRef.current).length > 0;
+            const matches = tabAlerts(filterAlerts([alert], treeRef.current), tabRef.current, treeRef.current).length > 0;
             const el = scroller.current;
             if (matches && kind === "created" && el && el.scrollTop > SCROLLED) setPending((n) => n + 1);
           })
@@ -181,6 +203,29 @@ export function FeedPage() {
   const setQ = useCallback(
     (text: string) => setParams((p) => withFilter(p, text), { replace: true }),
     [setParams],
+  );
+
+  const setTab = useCallback(
+    (next: FeedTab, clearFilter = false) =>
+      setParams(
+        (p) => {
+          const n = clearFilter ? withFilter(p, "") : new URLSearchParams(p);
+          if (next === "active") n.delete("tab");
+          else n.set("tab", next);
+          return n;
+        },
+        { replace: true },
+      ),
+    [setParams],
+  );
+
+  const ack = useCallback(
+    async (id: string) => {
+      if (!source?.ack) return;
+      const updated = await source.ack(id);
+      setAlerts((prev) => upsertAlert(prev ?? [], updated));
+    },
+    [source],
   );
 
   // "/" focuses the filter.
@@ -253,6 +298,13 @@ export function FeedPage() {
         </div>
       );
     }
+    if (visible.length === 0 && !q && !statusInFilter) {
+      return (
+        <div className="empty">
+          <p className="muted">{tab === "active" ? "Nothing needs attention. All alerts are acknowledged or resolved." : "No acknowledged alerts."}</p>
+        </div>
+      );
+    }
     if (visible.length === 0) {
       return (
         <div className="empty">
@@ -270,7 +322,9 @@ export function FeedPage() {
         </div>
       );
     }
-    return <AlertList alerts={visible} now={now} expanded={expanded} onToggle={toggle} flash={flash} />;
+    return (
+      <AlertList alerts={visible} now={now} expanded={expanded} onToggle={toggle} flash={flash} onAck={source?.ack ? ack : undefined} />
+    );
   }
 
   return (
@@ -297,10 +351,51 @@ export function FeedPage() {
         <StatPanels
           alerts={alerts}
           onFilter={(text) => {
-            setQ(text);
+            setParams((p) => {
+              const n = withFilter(p, text);
+              n.delete("tab");
+              return n;
+            }, { replace: true });
             applyText(text);
           }}
         />
+      )}
+      {alerts && alerts.length > 0 && (
+        <nav className="feed-tabs" aria-label="Alert state">
+          <div role="tablist">
+            {FEED_TABS.map((t) => (
+              <button
+                key={t.id}
+                type="button"
+                role="tab"
+                aria-selected={!statusInFilter && tab === t.id}
+                className={!statusInFilter && tab === t.id ? "feed-tab active" : "feed-tab"}
+                onClick={() => {
+                  // A status filter overrides tabs; picking a tab drops it.
+                  setTab(t.id, statusInFilter);
+                  if (statusInFilter) applyText("");
+                }}
+              >
+                {t.label}
+                <span className="feed-tab-count">{tabCounts[t.id]}</span>
+              </button>
+            ))}
+          </div>
+          {statusInFilter ? (
+            <span className="feed-tabs-note muted">Your filter picks the status, so all states are shown.</span>
+          ) : (
+            <button
+              type="button"
+              className="link-btn feed-tabs-note"
+              onClick={() => {
+                setQ("alert.status = resolved");
+                applyText("alert.status = resolved");
+              }}
+            >
+              Show resolved
+            </button>
+          )}
+        </nav>
       )}
       {isDemoSource(source) && (
         <div className="live-bar" role="status">

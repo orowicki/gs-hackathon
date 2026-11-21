@@ -26,7 +26,7 @@ export function ValueText({ display }: { display: Display }) {
 export function FieldRow({ label, path, children }: { label: string; path?: string; children: ReactNode }) {
   return (
     <div className="field-row">
-      <dt className="muted" title={path}>
+      <dt title={path}>
         <span>{label}</span>
         {path ? <CopyButton text={path} label={`Copy path ${path}`} /> : null}
       </dt>
@@ -72,7 +72,7 @@ export function EventFields({ event, prefix = "payload" }: { event: Record<strin
   const [raw, setRaw] = useState(false);
   const json = JSON.stringify(event, null, 2);
   return (
-    <section aria-label="Event data" className="event">
+    <section aria-label="Event data" className="event block">
       <h2>Event</h2>
       <Nodes nodes={objectNodes(event, prefix)} />
       <div className="raw">

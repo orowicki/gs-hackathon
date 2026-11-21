@@ -59,7 +59,7 @@ export const ROUTES: RouteDef[] = [
   { method: "GET", path: "/api/approvals", summary: "Pending runbook step approvals", tag: "runbooks", response: "PendingApproval[]" },
   { method: "GET", path: "/api/audit", summary: "Global audit log (filter by query: alertId, actor, action, before, limit)", tag: "alerts", response: "AuditEntry[]" },
   { method: "POST", path: "/api/alerts/{id}/ack", summary: "Acknowledge an alert", tag: "alerts", response: "Alert" },
-  { method: "POST", path: "/api/alerts/{id}/resolve", summary: "Resolve an alert", tag: "alerts", response: "Alert" },
+  { method: "POST", path: "/api/alerts/{id}/resolve", summary: "Resolve an alert (optional body: resolution text, contribute to the rule's rulebook)", tag: "alerts", response: "Alert" },
   { method: "GET", path: "/api/alerts/{id}/audit", summary: "Audit log of an alert", tag: "alerts", response: "AuditEntry[]" },
   { method: "POST", path: "/api/alerts/{id}/runbook-steps/{stepIndex}/approve", summary: "Approve a runbook step awaiting approval", tag: "runbooks", response: "RunbookRun" },
 

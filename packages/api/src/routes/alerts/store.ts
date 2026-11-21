@@ -1,6 +1,6 @@
 import type { Pool, PoolClient } from "pg";
 import { migrate } from "@alerting/config";
-import type { Alert, AlertState, AuditEntry, Event, Suggestion } from "@alerting/shared";
+import type { Alert, AlertState, AuditEntry, Event, RulebookEntry, Suggestion } from "@alerting/shared";
 
 export interface AlertCursor {
   lastSeen: string;
@@ -65,6 +65,12 @@ export interface SuggestionStore {
   ): Promise<Suggestion | null | "conflict">;
 }
 
+export interface RulebookStore {
+  get(ruleId: string): Promise<RulebookEntry | null>;
+  /** Insert or replace the rule's entry. */
+  put(entry: RulebookEntry): Promise<void>;
+}
+
 export interface EventLoader {
   getEvents(ids: string[]): Promise<Map<string, Event>>;
 }
@@ -73,6 +79,7 @@ export interface AlertStores {
   alerts: AlertStore;
   audit: AuditStore;
   suggestions: SuggestionStore;
+  rulebook: RulebookStore;
 }
 
 const ms = (iso: string): number => Date.parse(iso);
@@ -94,8 +101,18 @@ export function createMemoryAlertStores(): AlertStores & { events: Map<string, E
   const audit: AuditEntry[] = [];
   const suggestions = new Map<string, Suggestion>();
   const events = new Map<string, Event>();
+  const rulebook = new Map<string, RulebookEntry>();
   return {
     events,
+    rulebook: {
+      async get(ruleId) {
+        const e = rulebook.get(ruleId);
+        return e ? structuredClone(e) : null;
+      },
+      async put(entry) {
+        rulebook.set(entry.ruleId, structuredClone(entry));
+      },
+    },
     alerts: {
       async get(id) {
         const a = alerts.get(id);
@@ -394,7 +411,20 @@ export function createPgAlertStores(pool: Pool): AlertStores {
     },
   };
 
-  return { alerts, audit, suggestions };
+  const rulebook: RulebookStore = {
+    async get(ruleId) {
+      return datas(await q<DataRow<RulebookEntry>>("SELECT data FROM rulebook WHERE rule_id = $1", [ruleId]))[0] ?? null;
+    },
+    async put(e) {
+      await q(
+        `INSERT INTO rulebook (rule_id, updated_at, data) VALUES ($1,$2,$3)
+         ON CONFLICT (rule_id) DO UPDATE SET updated_at = EXCLUDED.updated_at, data = EXCLUDED.data`,
+        [e.ruleId, e.updatedAt, JSON.stringify(e)],
+      );
+    },
+  };
+
+  return { alerts, audit, suggestions, rulebook };
 }
 
 /** Reads ingest's `events` table; an absent table yields no events. */
