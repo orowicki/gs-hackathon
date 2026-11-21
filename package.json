@@ -9,8 +9,8 @@
     "node": ">=20"
   },
   "scripts": {
-    "build": "tsc -b packages/*",
-    "lint": "eslint . && tsc -b packages/* && npm run typecheck --workspaces --if-present",
+    "build": "npm run build --workspaces --if-present",
+    "lint": "eslint . && npm run typecheck --workspaces --if-present",
     "test": "vitest run"
   },
   "devDependencies": {

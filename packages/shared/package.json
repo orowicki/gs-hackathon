@@ -7,6 +7,6 @@
   "types": "dist/index.d.ts",
   "scripts": {
     "build": "tsc -b",
-    "typecheck": "tsc -p test/tsconfig.json"
+    "typecheck": "tsc -b && tsc -p test/tsconfig.json"
   }
 }

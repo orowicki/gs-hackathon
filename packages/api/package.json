@@ -7,7 +7,7 @@
   "scripts": {
     "build": "tsc -b",
     "start": "node dist/main.js",
-    "typecheck": "tsc -p tsconfig.test.json"
+    "typecheck": "tsc -b && tsc -p tsconfig.test.json"
   },
   "dependencies": {
     "@alerting/shared": "*",
