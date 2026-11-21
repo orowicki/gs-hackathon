@@ -2,6 +2,7 @@ import type http from "node:http";
 import type { Suggestion } from "@alerting/shared";
 import {
   BodyError,
+  sendBodyError,
   decodeSegment,
   newId,
   nowIso,
@@ -27,6 +28,7 @@ export async function createSuggestion(
   ruleId: string,
   alertId: string | undefined,
   body: Record<string, unknown>,
+  withAudit = false,
 ): Promise<Suggestion | null> {
   const text = validText(body.text);
   if (text === null) {
@@ -42,7 +44,16 @@ export async function createSuggestion(
     status: "open",
     createdAt: nowIso(deps),
   };
-  await deps.suggestions.create(s);
+  if (withAudit && alertId) {
+    await deps.suggestions.createWithAudit(s, {
+      id: newId(deps),
+      alertId,
+      at: s.createdAt,
+      actor: s.author,
+      action: "suggestion",
+      detail: s.text.slice(0, 200),
+    });
+  } else await deps.suggestions.create(s);
   return s;
 }
 
@@ -72,10 +83,15 @@ export async function handleSuggestionsRoutes(
     try {
       const body = await readJsonBody(req);
       const alertId = typeof body.alertId === "string" && body.alertId !== "" ? body.alertId : undefined;
+      if (alertId) {
+        const alert = await deps.alerts.get(alertId);
+        if (!alert || alert.ruleId !== ruleId)
+          return sendJson(res, 400, { error: "alertId does not belong to this rule" }), true;
+      }
       const s = await createSuggestion(req, res, deps, ruleId, alertId, body);
       if (s) sendJson(res, 201, s);
     } catch (e) {
-      if (e instanceof BodyError) sendJson(res, e.status, { error: e.message });
+      if (e instanceof BodyError) sendBodyError(req, res, e);
       else throw e;
     }
     return true;

@@ -29,6 +29,8 @@ export interface Deps {
   recentEvents?: EventsApiDeps["recentEvents"];
   /** SSE heartbeat interval (ms), default 15000. */
   ssePingMs?: number;
+  /** Max concurrent SSE clients (default 1000). */
+  sseMaxConnections?: number;
   /** Directory with the built web app; defaults to env WEB_DIST. */
   webDist?: string;
 }
@@ -177,7 +179,7 @@ export function createServer(deps: Deps): http.Server {
       return;
     }
     if (req.method === "GET" && path === "/api/stream") {
-      handleStream(req, res, deps.subscribeUiPush, deps.ssePingMs);
+      handleStream(req, res, deps.subscribeUiPush, deps.ssePingMs, deps.sseMaxConnections);
       return;
     }
     const m = req.method === "POST" ? /^\/ingest\/([^/]+)$/.exec(path) : null;
@@ -201,6 +203,9 @@ export function createServer(deps: Deps): http.Server {
     ) {
       return;
     }
+    // Single terminal 404. Async handlers that do not claim a path call this; a further
+    // handler (e.g. runbooks) is chained in front of it the same way.
+    const routeRest = (): void => send(res, 404, { error: "not found" });
     if (
       deps.recentEvents &&
       (path === "/api/events/recent" || path === "/api/events/test-filter")
@@ -210,7 +215,7 @@ export function createServer(deps: Deps): http.Server {
         try {
           const url = new URL(req.url ?? "/", "http://localhost");
           if (await handleEventsRoutes(req, res, path, url, { recentEvents })) return;
-          send(res, 404, { error: "not found" });
+          routeRest();
         } catch (err) {
           console.error("events route failed:", err);
           if (!res.headersSent) send(res, 500, { error: "internal error" });
@@ -220,7 +225,8 @@ export function createServer(deps: Deps): http.Server {
     }
     if (
       deps.alerts &&
-      (path.startsWith("/api/alerts") ||
+      (path === "/api/alerts" ||
+        path.startsWith("/api/alerts/") ||
         path === "/api/audit" ||
         (path.startsWith("/api/rules/") && path.endsWith("/suggestions")) ||
         path.startsWith("/api/suggestions/"))
@@ -231,7 +237,8 @@ export function createServer(deps: Deps): http.Server {
           const url = new URL(req.url ?? "/", "http://localhost");
           if (await handleAlertsRoutes(req, res, path, url, alertsDeps)) return;
           if (await handleSuggestionsRoutes(req, res, path, url, alertsDeps)) return;
-          send(res, 404, { error: "not found" });
+          // Not ours: fall through so other handlers / the final 404 can answer.
+          routeRest();
         } catch (err) {
           console.error("alerts route failed:", err);
           if (!res.headersSent) send(res, 500, { error: "internal error" });
@@ -239,7 +246,7 @@ export function createServer(deps: Deps): http.Server {
       })();
       return;
     }
-    send(res, 404, { error: "not found" });
+    routeRest();
   });
   server.requestTimeout = 30_000;
   return server;

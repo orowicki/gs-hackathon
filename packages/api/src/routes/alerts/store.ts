@@ -1,4 +1,4 @@
-import type { Pool } from "pg";
+import type { Pool, PoolClient } from "pg";
 import { migrate } from "@alerting/config";
 import type { Alert, AlertState, AuditEntry, Event, Suggestion } from "@alerting/shared";
 
@@ -20,14 +20,26 @@ export interface AlertStore {
   upsert(alert: Alert): Promise<void>;
   /** Atomic: applies `patch` only if the current state is in `from`. */
   transition(id: string, from: AlertState[], patch: Partial<Alert>): Promise<Alert | null | "conflict">;
+  /** Like `transition`, but the audit row is written in the same transaction (all or nothing). */
+  transitionWithAudit(
+    id: string,
+    from: AlertState[],
+    patch: Partial<Alert>,
+    entry: AuditEntry,
+  ): Promise<Alert | null | "conflict">;
 }
 
 export interface AuditListQuery {
   alertId?: string;
   actor?: string;
   action?: string;
-  before?: string;
+  before?: AuditCursor;
   limit: number;
+}
+
+export interface AuditCursor {
+  at: string;
+  id: string;
 }
 
 export interface AuditStore {
@@ -40,6 +52,8 @@ export interface AuditStore {
 
 export interface SuggestionStore {
   create(s: Suggestion): Promise<void>;
+  /** Insert the suggestion and its audit row in one transaction. */
+  createWithAudit(s: Suggestion, entry: AuditEntry): Promise<void>;
   get(id: string): Promise<Suggestion | null>;
   /** Newest first. */
   listByRule(ruleId: string, status?: Suggestion["status"]): Promise<Suggestion[]>;
@@ -65,6 +79,12 @@ const ms = (iso: string): number => Date.parse(iso);
 
 function cmpNewest(a: { lastSeen: string; id: string }, b: { lastSeen: string; id: string }): number {
   const d = ms(b.lastSeen) - ms(a.lastSeen);
+  if (d !== 0) return d;
+  return a.id < b.id ? 1 : a.id > b.id ? -1 : 0;
+}
+
+function cmpAuditNewest(a: { at: string; id: string }, b: { at: string; id: string }): number {
+  const d = ms(b.at) - ms(a.at);
   if (d !== 0) return d;
   return a.id < b.id ? 1 : a.id > b.id ? -1 : 0;
 }
@@ -101,6 +121,15 @@ export function createMemoryAlertStores(): AlertStores & { events: Map<string, E
         alerts.set(id, next);
         return structuredClone(next);
       },
+      async transitionWithAudit(id, from, patch, entry) {
+        const cur = alerts.get(id);
+        if (!cur) return null;
+        if (!from.includes(cur.state)) return "conflict";
+        const next = { ...cur, ...patch };
+        alerts.set(id, next);
+        audit.push(structuredClone(entry));
+        return structuredClone(next);
+      },
     },
     audit: {
       async append(entry) {
@@ -110,25 +139,27 @@ export function createMemoryAlertStores(): AlertStores & { events: Map<string, E
         return structuredClone(audit.filter((e) => e.alertId === alertId));
       },
       async list(q) {
-        const before = q.before ? ms(q.before) : undefined;
+        const b = q.before;
         const out = audit
-          .map((e, i) => ({ e, i }))
           .filter(
-            ({ e }) =>
+            (e) =>
               (!q.alertId || e.alertId === q.alertId) &&
               (!q.actor || e.actor === q.actor) &&
               (!q.action || e.action === q.action) &&
-              (before === undefined || ms(e.at) < before),
+              (!b || cmpAuditNewest(b, e) < 0),
           )
-          .sort((a, b) => ms(b.e.at) - ms(a.e.at) || b.i - a.i)
-          .slice(0, q.limit)
-          .map(({ e }) => e);
+          .sort(cmpAuditNewest)
+          .slice(0, q.limit);
         return structuredClone(out);
       },
     },
     suggestions: {
       async create(s) {
         suggestions.set(s.id, structuredClone(s));
+      },
+      async createWithAudit(s, entry) {
+        suggestions.set(s.id, structuredClone(s));
+        audit.push(structuredClone(entry));
       },
       async get(id) {
         const s = suggestions.get(id);
@@ -187,6 +218,38 @@ export function createPgAlertStores(pool: Pool): AlertStores {
     await ready;
     return (await pool.query<T>(text, params)).rows;
   };
+  const tx = async <T>(fn: (c: PoolClient) => Promise<T>): Promise<T> => {
+    ready ??= migrate(pool).catch((e: unknown) => {
+      ready = undefined;
+      throw e;
+    });
+    await ready;
+    const c = await pool.connect();
+    try {
+      await c.query("BEGIN");
+      const out = await fn(c);
+      await c.query("COMMIT");
+      return out;
+    } catch (e) {
+      try {
+        await c.query("ROLLBACK");
+      } catch {
+        /* connection is broken; release below */
+      }
+      throw e;
+    } finally {
+      c.release();
+    }
+  };
+  const insertAudit = (c: PoolClient, e: AuditEntry): Promise<unknown> =>
+    c.query("INSERT INTO alert_audit (id, alert_id, at, actor, action, data) VALUES ($1,$2,$3,$4,$5,$6)", [
+      e.id,
+      e.alertId,
+      e.at,
+      e.actor,
+      e.action,
+      JSON.stringify(e),
+    ]);
   const datas = <T>(rows: DataRow<T>[]): T[] => rows.map((r) => r.data);
 
   const alerts: AlertStore = {
@@ -228,6 +291,23 @@ export function createPgAlertStores(pool: Pool): AlertStores {
       const exists = await q("SELECT 1 FROM alerts WHERE id = $1", [id]);
       return exists.length ? "conflict" : null;
     },
+    async transitionWithAudit(id, from, patch, entry) {
+      return tx(async (c) => {
+        const r = await c.query<DataRow<Alert>>(
+          `UPDATE alerts SET data = data || $3::jsonb,
+             state = COALESCE($3::jsonb->>'state', state),
+             last_seen = COALESCE(($3::jsonb->>'lastSeen')::timestamptz, last_seen)
+           WHERE id = $1 AND state = ANY($2) RETURNING data`,
+          [id, from, JSON.stringify(patch)],
+        );
+        if (r.rows[0]) {
+          await insertAudit(c, entry);
+          return r.rows[0].data;
+        }
+        const exists = await c.query("SELECT 1 FROM alerts WHERE id = $1", [id]);
+        return exists.rows.length ? ("conflict" as const) : null;
+      });
+    },
   };
 
   const audit: AuditStore = {
@@ -255,7 +335,10 @@ export function createPgAlertStores(pool: Pool): AlertStores {
       if (f.alertId) add("alert_id", f.alertId);
       if (f.actor) add("actor", f.actor);
       if (f.action) add("action", f.action);
-      if (f.before) add("at", f.before, "::timestamptz");
+      if (f.before) {
+        params.push(f.before.at, f.before.id);
+        where.push(`(at, id) < ($${params.length - 1}::timestamptz, $${params.length})`);
+      }
       params.push(f.limit);
       const sql = `SELECT data FROM alert_audit ${where.length ? `WHERE ${where.join(" AND ")}` : ""} ORDER BY at DESC, id DESC LIMIT $${params.length}`;
       return datas(await q<DataRow<AuditEntry>>(sql, params));
@@ -271,6 +354,15 @@ export function createPgAlertStores(pool: Pool): AlertStores {
     },
     async get(id) {
       return datas(await q<DataRow<Suggestion>>("SELECT data FROM suggestions WHERE id = $1", [id]))[0] ?? null;
+    },
+    async createWithAudit(s, entry) {
+      await tx(async (c) => {
+        await c.query(
+          "INSERT INTO suggestions (id, rule_id, alert_id, status, created_at, data) VALUES ($1,$2,$3,$4,$5,$6)",
+          [s.id, s.ruleId, s.alertId ?? null, s.status, s.createdAt, JSON.stringify(s)],
+        );
+        await insertAudit(c, entry);
+      });
     },
     async listByRule(ruleId, status) {
       const params: unknown[] = [ruleId];

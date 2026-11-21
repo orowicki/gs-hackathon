@@ -50,6 +50,7 @@ export async function readJsonBody(req: http.IncomingMessage): Promise<Record<st
       size += c.length;
       if (size > MAX_BODY_BYTES) {
         done = true;
+        chunks.length = 0;
         reject(new BodyError(413, "payload too large"));
         return;
       }
@@ -103,4 +104,16 @@ export function parseLimit(raw: string | null, def: number, max: number): number
   const n = raw === null ? NaN : Number(raw);
   if (!Number.isFinite(n)) return def;
   return Math.min(max, Math.max(1, Math.floor(n)));
+}
+
+/** Respond to a BodyError. 413 closes the connection and destroys the request once the response is flushed. */
+export function sendBodyError(req: http.IncomingMessage, res: http.ServerResponse, e: BodyError): void {
+  if (e.status !== 413) return sendJson(res, e.status, { error: e.message });
+  const payload = JSON.stringify({ error: e.message });
+  res.writeHead(413, {
+    "content-type": "application/json",
+    "content-length": Buffer.byteLength(payload),
+    connection: "close",
+  });
+  res.end(payload, () => req.destroy());
 }

@@ -1,7 +1,7 @@
 import type http from "node:http";
 import { LIST_RECENT_EVENTS, type Event } from "@alerting/shared";
 import { tryParse, validateTree, evaluate, type EvalContext, type FilterNode } from "@alerting/filter";
-import { BodyError, parseLimit, readJsonBody, sendJson } from "../common.js";
+import { BodyError, parseLimit, readJsonBody, sendBodyError, sendJson } from "../common.js";
 
 export interface EventsApiDeps {
   /** Newest first. */
@@ -14,6 +14,13 @@ export function eventContext(e: Event): EvalContext {
     alert: { ...e.common, schema: e.schemaId, sourceStatus: e.common?.status },
     event: e.parsed ?? e.raw,
   } as EvalContext;
+}
+
+function treeFields(n: FilterNode, out: Set<string> = new Set()): Set<string> {
+  if (n.type === "and" || n.type === "or") n.children.forEach((c) => treeFields(c, out));
+  else if (n.type === "not") treeFields(n.child, out);
+  else out.add(n.field);
+  return out;
 }
 
 export async function handleEventsRoutes(
@@ -35,7 +42,7 @@ export async function handleEventsRoutes(
       body = await readJsonBody(req);
     } catch (e) {
       if (e instanceof BodyError) {
-        sendJson(res, e.status, { error: e.message });
+        sendBodyError(req, res, e);
         return true;
       }
       throw e;
@@ -65,7 +72,11 @@ export async function handleEventsRoutes(
     for (const e of events) {
       if (!tree || evaluate(tree, eventContext(e))) matched++;
     }
-    sendJson(res, 200, { matched, total: events.length });
+    const warning =
+      tree && treeFields(tree).has("alert.status")
+        ? { warning: "alert.status is not set on events; use alert.sourceStatus" }
+        : {};
+    sendJson(res, 200, { matched, total: events.length, ...warning });
     return true;
   }
   return false;

@@ -1,6 +1,10 @@
 import type http from "node:http";
 
 export const SSE_PING_MS = 15_000;
+export const SSE_MAX_CONNECTIONS = 1000;
+export const SSE_MAX_BUFFERED_BYTES = 1024 * 1024;
+
+let activeConnections = 0;
 
 export interface UiPushHub {
   publish(json: string): void;
@@ -35,6 +39,7 @@ export function handleStream(
   res: http.ServerResponse,
   subscribe: ((onMessage: (json: string) => void) => () => void) | undefined,
   pingMs: number = SSE_PING_MS,
+  maxConnections: number = SSE_MAX_CONNECTIONS,
 ): void {
   if (!subscribe) {
     const payload = JSON.stringify({ error: "delivery not configured" });
@@ -42,6 +47,13 @@ export function handleStream(
     res.end(payload);
     return;
   }
+  if (activeConnections >= maxConnections) {
+    const payload = JSON.stringify({ error: "too many stream connections" });
+    res.writeHead(503, { "content-type": "application/json", "content-length": Buffer.byteLength(payload) });
+    res.end(payload);
+    return;
+  }
+  activeConnections++;
   res.writeHead(200, {
     "content-type": "text/event-stream",
     "cache-control": "no-cache",
@@ -54,6 +66,7 @@ export function handleStream(
   const cleanup = (): void => {
     if (closed) return;
     closed = true;
+    activeConnections--;
     if (ping) clearInterval(ping);
     unsubscribe();
   };
@@ -61,6 +74,11 @@ export function handleStream(
     if (closed || res.destroyed || res.writableEnded) return;
     try {
       res.write(chunk);
+      if (res.writableLength > SSE_MAX_BUFFERED_BYTES) {
+        // Slow consumer: drop it rather than buffer without bound.
+        cleanup();
+        res.destroy();
+      }
     } catch {
       cleanup();
     }

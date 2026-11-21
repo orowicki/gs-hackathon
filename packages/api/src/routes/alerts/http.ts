@@ -3,6 +3,7 @@ import type { Alert, AuditEntry, Event } from "@alerting/shared";
 import { tryParse, validateTree, evaluate, type FilterNode } from "@alerting/filter";
 import {
   BodyError,
+  sendBodyError,
   decodeSegment,
   newId,
   nowIso,
@@ -14,7 +15,7 @@ import {
 } from "../common.js";
 import { createSuggestion } from "../suggestions/http.js";
 import { alertContext } from "./filter-context.js";
-import type { AlertCursor } from "./store.js";
+import type { AlertCursor, AuditCursor } from "./store.js";
 
 export type { AlertsApiDeps } from "../common.js";
 
@@ -30,6 +31,26 @@ function decodeCursor(s: string): AlertCursor | null {
     const v = JSON.parse(Buffer.from(s, "base64url").toString("utf8")) as Partial<AlertCursor>;
     if (typeof v.lastSeen === "string" && typeof v.id === "string" && !Number.isNaN(Date.parse(v.lastSeen)))
       return { lastSeen: v.lastSeen, id: v.id };
+  } catch {
+    /* fall through */
+  }
+  return null;
+}
+
+function encodeAuditCursor(e: { at: string; id: string }): string {
+  return Buffer.from(JSON.stringify({ at: e.at, id: e.id })).toString("base64url");
+}
+
+/** Opaque base64url cursor, or (back-compat) a plain ISO timestamp. */
+function decodeAuditCursor(s: string): AuditCursor | null {
+  if (/^\d{4}-\d{2}-\d{2}T/.test(s)) {
+    // Plain timestamp: everything strictly older, regardless of id.
+    return Number.isNaN(Date.parse(s)) ? null : { at: s, id: "" };
+  }
+  try {
+    const v = JSON.parse(Buffer.from(s, "base64url").toString("utf8")) as Partial<AuditCursor>;
+    if (typeof v.at === "string" && typeof v.id === "string" && !Number.isNaN(Date.parse(v.at)))
+      return { at: v.at, id: v.id };
   } catch {
     /* fall through */
   }
@@ -128,18 +149,26 @@ async function transition(
   const body = await readJsonBody(req);
   const actor = resolveActor(req, body.actor);
   const at = nowIso(deps);
+  const entry: AuditEntry = { id: newId(deps), alertId: id, at, actor, action: kind };
   const out =
     kind === "acknowledged"
-      ? await deps.alerts.transition(id, ["open"], { state: "acknowledged", acknowledgedBy: actor, acknowledgedAt: at })
-      : await deps.alerts.transition(id, ["open", "acknowledged"], { state: "resolved", resolvedAt: at });
+      ? await deps.alerts.transitionWithAudit(
+          id,
+          ["open"],
+          { state: "acknowledged", acknowledgedBy: actor, acknowledgedAt: at },
+          entry,
+        )
+      : await deps.alerts.transitionWithAudit(id, ["open", "acknowledged"], { state: "resolved", resolvedAt: at }, entry);
   if (out === null) return sendJson(res, 404, { error: "alert not found" });
   if (out === "conflict") {
     const cur = await deps.alerts.get(id);
     return sendJson(res, 409, { error: `cannot ${kind === "acknowledged" ? "acknowledge" : "resolve"} an alert in this state`, state: cur?.state });
   }
-  const entry: AuditEntry = { id: newId(deps), alertId: id, at, actor, action: kind };
-  await deps.audit.append(entry);
-  deps.publish?.({ type: "alert", alertId: id, kind });
+  try {
+    deps.publish?.({ type: "alert", alertId: id, kind });
+  } catch (e) {
+    console.error("ui publish failed:", e);
+  }
   sendJson(res, 200, out);
 }
 
@@ -157,19 +186,22 @@ export async function handleAlertsRoutes(
     if (method === "GET" && path === "/api/audit") {
       const sp = url.searchParams;
       const beforeParam = sp.get("before");
-      if (beforeParam !== null && Number.isNaN(Date.parse(beforeParam)))
-        return sendJson(res, 400, { error: "bad before" }), true;
-      sendJson(
-        res,
-        200,
-        await deps.audit.list({
-          alertId: sp.get("alertId") || undefined,
-          actor: sp.get("actor") || undefined,
-          action: sp.get("action") || undefined,
-          before: beforeParam || undefined,
-          limit: parseLimit(sp.get("limit"), 50, 200),
-        }),
-      );
+      let before: AuditCursor | undefined;
+      if (beforeParam) {
+        before = decodeAuditCursor(beforeParam) ?? undefined;
+        if (!before) return sendJson(res, 400, { error: "bad before" }), true;
+      }
+      const limit = parseLimit(sp.get("limit"), 50, 200);
+      const rows = await deps.audit.list({
+        alertId: sp.get("alertId") || undefined,
+        actor: sp.get("actor") || undefined,
+        action: sp.get("action") || undefined,
+        before,
+        limit,
+      });
+      const headers: Record<string, string> = {};
+      if (rows.length === limit) headers["x-next-before"] = encodeAuditCursor(rows[rows.length - 1]!);
+      sendJson(res, 200, rows, headers);
       return true;
     }
     const m = /^\/api\/alerts\/([^/]+)(?:\/(ack|resolve|audit|suggestions))?$/.exec(path);
@@ -201,21 +233,11 @@ export async function handleAlertsRoutes(
     const body = await readJsonBody(req);
     const alert = await deps.alerts.get(id);
     if (!alert) return sendJson(res, 404, { error: "alert not found" }), true;
-    const s = await createSuggestion(req, res, deps, alert.ruleId, id, body);
-    if (s) {
-      await deps.audit.append({
-        id: newId(deps),
-        alertId: id,
-        at: s.createdAt,
-        actor: s.author,
-        action: "suggestion",
-        detail: s.text.slice(0, 200),
-      });
-      sendJson(res, 201, s);
-    }
+    const s = await createSuggestion(req, res, deps, alert.ruleId, id, body, true);
+    if (s) sendJson(res, 201, s);
     return true;
   } catch (e) {
-    if (e instanceof BodyError) return sendJson(res, e.status, { error: e.message }), true;
+    if (e instanceof BodyError) return sendBodyError(req, res, e), true;
     throw e;
   }
 }

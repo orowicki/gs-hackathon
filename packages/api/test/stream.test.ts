@@ -97,6 +97,20 @@ describe("sse stream", () => {
     await s.waitFor(`data: ${JSON.stringify({ type: "alert", alertId: "a1", kind: "acknowledged" })}\n\n`);
   });
 
+  it("503 beyond the connection cap and frees slots on close", async () => {
+    const { url, hub } = await start({ sseMaxConnections: 2 });
+    const a = openStream(url);
+    const b = openStream(url);
+    await a.waitFor(": connected");
+    await b.waitFor(": connected");
+    const over = await fetch(`${url}/api/stream`);
+    expect(over.status).toBe(503);
+    a.req.destroy();
+    for (let i = 0; i < 100 && hub.size > 1; i++) await new Promise((r) => setTimeout(r, 20));
+    const c = openStream(url);
+    await c.waitFor(": connected");
+  });
+
   it("heartbeats", async () => {
     const { url } = await start({ ssePingMs: 20 });
     const s = openStream(url);
@@ -162,6 +176,12 @@ describe("events routes", () => {
     expect(await bad.json()).toHaveProperty("position");
     expect((await post(url, { filter: { type: "bogus" } })).status).toBe(400);
     const s = await post(url, { filter: 'alert.status = "open"' });
-    expect(await s.json()).toEqual({ matched: 0, total: 3 });
+    expect(await s.json()).toEqual({
+      matched: 0,
+      total: 3,
+      warning: "alert.status is not set on events; use alert.sourceStatus",
+    });
+    const ok = await post(url, { filter: 'alert.sourceStatus = "open"' });
+    expect(await ok.json()).not.toHaveProperty("warning");
   });
 });

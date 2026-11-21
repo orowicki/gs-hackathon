@@ -15,7 +15,7 @@ const base: Deps = { checkPostgres: async () => true, checkRedis: async () => tr
 let server: Server | undefined;
 afterEach(async () => {
   server?.closeAllConnections();
-  await new Promise((r) => server?.close(r));
+  if (server) await new Promise((r) => server?.close(r));
   server = undefined;
 });
 
@@ -197,6 +197,94 @@ describe("suggestions", () => {
     const d = (await (await fetch(`${url}/api/alerts/a0`)).json()) as { suggestions: Suggestion[] };
     expect(d.suggestions.length).toBe(1);
     expect((await post(`${url}/api/alerts/nope/suggestions`, { text: "x" })).status).toBe(404);
+  });
+});
+
+describe("routing fallthrough", () => {
+  it("unclaimed alerts paths 404 via the final handler", async () => {
+    const { url } = await setup();
+    const r = await fetch(`${url}/api/alerts/x/runbook-runs`, { method: "POST" });
+    expect(r.status).toBe(404);
+    expect(await r.json()).toEqual({ error: "not found" });
+    expect((await fetch(`${url}/api/alertsfoo`)).status).toBe(404);
+    expect((await fetch(`${url}/api/approvals`)).status).toBe(404);
+  });
+
+  it("handleAlertsRoutes / handleSuggestionsRoutes decline unknown paths so a later handler can claim them", async () => {
+    const { handleAlertsRoutes } = await import("../src/routes/alerts/http.js");
+    const { handleSuggestionsRoutes } = await import("../src/routes/suggestions/http.js");
+    const stores = createMemoryAlertStores();
+    const deps: AlertsApiDeps = { alerts: stores.alerts, audit: stores.audit, suggestions: stores.suggestions };
+    const path = "/api/alerts/x/runbook-runs";
+    const req = { method: "POST" } as never;
+    const res = {} as never;
+    const u = new URL(`http://x${path}`);
+    expect(await handleAlertsRoutes(req, res, path, u, deps)).toBe(false);
+    expect(await handleSuggestionsRoutes(req, res, path, u, deps)).toBe(false);
+  });
+});
+
+describe("robustness", () => {
+  it("413 on oversize body with connection close", async () => {
+    const { url } = await setup();
+    const r = await post(`${url}/api/alerts/a0/ack`, { actor: "x".repeat(70 * 1024) });
+    expect(r.status).toBe(413);
+    expect(r.headers.get("connection")).toBe("close");
+  });
+
+  it("a failing publish does not fail the ack, and the audit row exists", async () => {
+    const { url, stores } = await setup();
+    // rebuild a server whose publish throws
+    await new Promise((r) => server?.close(r));
+    server = createServer({
+      ...base,
+      alerts: {
+        alerts: stores.alerts,
+        audit: stores.audit,
+        suggestions: stores.suggestions,
+        publish: () => {
+          throw new Error("boom");
+        },
+        newId: () => "audit-1",
+      },
+    });
+    await new Promise<void>((r) => server!.listen(0, r));
+    const u2 = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+    void url;
+    expect((await post(`${u2}/api/alerts/a0/ack`, {})).status).toBe(200);
+    expect((await stores.audit.listByAlert("a0")).map((e) => e.id)).toEqual(["audit-1"]);
+  });
+
+  it("rule suggestion with alertId must match the alert's rule", async () => {
+    const { url, alerts } = await setup();
+    const bad = await post(`${url}/api/rules/other-rule/suggestions`, { text: "x", alertId: "a0" });
+    expect(bad.status).toBe(400);
+    expect((await post(`${url}/api/rules/${alerts[0]!.ruleId}/suggestions`, { text: "x", alertId: "nope" })).status).toBe(400);
+    const ok = await post(`${url}/api/rules/${alerts[0]!.ruleId}/suggestions`, { text: "x", alertId: "a0" });
+    expect(ok.status).toBe(201);
+  });
+});
+
+describe("audit paging", () => {
+  it("pages with equal timestamps via opaque cursor, and accepts a plain ISO before", async () => {
+    const { url, stores } = await setup();
+    const at = "2026-11-02T00:00:00.000Z";
+    for (const id of ["e1", "e2", "e3", "e4", "e5"])
+      await stores.audit.append({ id, alertId: "a0", at, actor: "x", action: "acknowledged" });
+    const seen: string[] = [];
+    let before = "";
+    for (let i = 0; i < 5; i++) {
+      const r = await fetch(`${url}/api/audit?limit=2${before ? `&before=${before}` : ""}`);
+      seen.push(...((await r.json()) as AuditEntry[]).map((e) => e.id));
+      const next = r.headers.get("x-next-before");
+      if (!next) break;
+      before = next;
+    }
+    expect(seen).toEqual(["e5", "e4", "e3", "e2", "e1"]);
+    const older = (await (await fetch(`${url}/api/audit?before=${at}`)).json()) as AuditEntry[];
+    expect(older).toEqual([]);
+    const newer = (await (await fetch(`${url}/api/audit?before=2026-11-03T00:00:00.000Z`)).json()) as AuditEntry[];
+    expect(newer.length).toBe(5);
   });
 });
 
