@@ -40,6 +40,23 @@ describe("createSchemaMapEvent", () => {
   });
 });
 
+describe("startSchemaMapping", () => {
+  it("close() during the retry backoff resolves ready promptly", async () => {
+    const errs: string[] = [];
+    const store = {
+      list: () => Promise.reject(new Error("db down")),
+      onChange: () => Promise.resolve(() => {}),
+    };
+    const m = startSchemaMapping(store as never, { onError: (e) => errs.push(e.message) });
+    await new Promise((r) => setTimeout(r, 50)); // first attempt failed, now in backoff
+    const t = Date.now();
+    m.close();
+    await m.ready;
+    expect(Date.now() - t).toBeLessThan(500);
+    expect(errs.length).toBeGreaterThan(0);
+  });
+});
+
 const enabled = Boolean(process.env.DATABASE_URL && process.env.REDIS_URL);
 
 describe.skipIf(!enabled)("schema mapping in the ingest service (needs DATABASE_URL and REDIS_URL)", () => {

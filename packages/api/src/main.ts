@@ -187,14 +187,18 @@ const schemaMapping: SchemaMapping | undefined = config && ingestEnabled ? start
 if (ingestEnabled) {
   (schemaMapping ? schemaMapping.ready : Promise.resolve())
     .then(() =>
-      startIngestService({
-        databaseUrl: process.env.DATABASE_URL as string,
-        redisUrl: process.env.REDIS_URL as string,
-        mapEvent: schemaMapping?.mapEvent,
-      }),
+      stopping
+        ? undefined
+        : startIngestService({
+            databaseUrl: process.env.DATABASE_URL as string,
+            redisUrl: process.env.REDIS_URL as string,
+            mapEvent: schemaMapping?.mapEvent,
+          }),
     )
     .then((s) => {
-      ingest = s;
+      if (!s) return;
+      if (stopping) void s.stop();
+      else ingest = s;
     })
     .catch((err: unknown) => console.error("ingest failed to start:", err));
 } else {
@@ -206,7 +210,7 @@ function shutdown(): void {
   stopping = true;
   server.close();
   server.closeAllConnections?.();
-  void Promise.allSettled([delivery.stop(), ingest?.stop().finally(() => schemaMapping?.close()), runbookRegistry?.close(), config?.close()])
+  void Promise.allSettled([delivery.stop(), Promise.resolve(ingest?.stop()).finally(() => schemaMapping?.close()), runbookRegistry?.close(), config?.close()])
     .then(() => Promise.allSettled([pool.end(), redis.quit(), configRedis?.quit(), deliveryRedis.quit(), subRedis.quit()])).then(() => process.exit(0));
 }
 process.on("SIGTERM", shutdown);

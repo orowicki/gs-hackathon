@@ -52,6 +52,8 @@ export function startSchemaMapping(
   const onError =
     opts.onError ?? ((err: Error) => (opts.logger ?? console).error(`schema mapping: ${err.message}`));
   let closed = false;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let wake: (() => void) | undefined;
   let registry: SchemaRegistry = createSchemaRegistry(store, { onError });
   const mapEvent = createSchemaMapEvent({ classify: (p) => registry.classify(p) }, { onError });
   const ready = (async () => {
@@ -60,12 +62,19 @@ export function startSchemaMapping(
       try {
         await registry.ready;
         return;
-      } catch {
-        // already reported through onError by the registry
+      } catch (err) {
+        // the registry reports load failures itself; this makes every failed attempt visible
+        onError(err instanceof Error ? err : new Error(String(err)));
       }
       registry.close();
       if (closed) return;
-      await new Promise((r) => setTimeout(r, delay));
+      await new Promise<void>((resolve) => {
+        wake = resolve;
+        timer = setTimeout(resolve, delay);
+        timer.unref();
+      });
+      timer = undefined;
+      wake = undefined;
       delay = Math.min(delay * 2, 30000);
       if (closed) return;
       registry = createSchemaRegistry(store, { onError });
@@ -76,6 +85,8 @@ export function startSchemaMapping(
     ready,
     close() {
       closed = true;
+      if (timer) clearTimeout(timer);
+      wake?.();
       registry.close();
     },
   };
