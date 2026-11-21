@@ -43,6 +43,15 @@
   (a new field to show, a new page), finish the backend part and file an issue describing
   the UI change, without the ap:task label. Keep the API the UI uses backwards compatible;
   if you must change a response shape, say so under "Contract change" in the PR.
+  ONE EXCEPTION, the accounts UI (SPEC M14: sign-in page, "Signed in as / Sign out" in the
+  gear panel replacing the profile picker): an autopilot may build it ONLY if the
+  `frontend-design` skill is in its own available skill list. Check that list before you
+  start. If it is there, load it and use it for this work, follow docs/design/UI.md tokens
+  and "Do not" list, and you may update UI.md's "Decided" note about profiles to describe
+  sign-in. Touch only the files this needs. If the skill is not in your list, don't touch
+  packages/web: comment once on the issue ("needs an autopilot with the frontend-design
+  skill") and do something else. The UI task is assigned to one person on GitHub, so only
+  that person's autopilot claims it.
   Your focus, in this order:
   1. FULL FUNCTIONALITY FIRST: every feature in SPEC.md built and working in the running
      app (`just up`): event in -> parsed -> schema-mapped -> rule matched -> alert stored ->

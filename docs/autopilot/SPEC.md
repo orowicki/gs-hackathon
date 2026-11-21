@@ -26,7 +26,9 @@ mobile push). Alerts are deduplicated, delivery is retried and never lost, and r
 automation) tell people what to do next and can run approved actions. **Everything a user can do in
 the UI is also possible through the HTTP API and the YAML config**, so a user can ask an external
 LLM agent such as Claude to configure sources, schemas and rules for them. Anything a real product
-needs but the demo does not (auth, multi-tenancy, credentials management) is out of scope.
+needs but the demo does not (passwords and real authentication, multi-tenancy, credentials
+management) is out of scope. **Accounts are in scope (must-have):** people sign in as themselves,
+without a password.
 
 ## Concepts (the data model; build exactly these)
 
@@ -66,8 +68,23 @@ needs but the demo does not (auth, multi-tenancy, credentials management) is out
   templates, list of fields to show, optional severity/colour override). Every matching rule fires;
   each person is notified at most once per alert. Rules change at runtime without restart.
 - **People & groups:** a directory of people (name, role, `canCreateRules`, ntfy topic) and named
-  groups of people. Rules route to people or groups. People are also the **profiles** the UI lets
-  you pick (no password).
+  groups of people. Rules route to people or groups. Every person is also an **account**.
+- **Account (must-have, no passwords):** an account is a Person; there is no separate user table.
+  - **Sign up:** create an account with a name (role optional; `canCreateRules` false by default).
+    It is the same Person a rule can route to.
+  - **Sign in:** pick your account from a list. No password, no email check. The server starts a
+    session (random token stored server-side, sent as an httpOnly cookie) and remembers it across
+    reloads and restarts until you sign out.
+  - **Sign out:** ends the session.
+  - API: `POST /api/accounts` (sign up), `POST /api/session` `{ personId }` (sign in),
+    `GET /api/session` (who am I; 401 when signed out), `DELETE /api/session` (sign out). API
+    clients such as an LLM agent may send `X-Account: <personId>` instead of the cookie.
+  - The **current account** replaces the profile picker. It is the actor recorded for
+    acknowledge, resolve, runbook approvals and config changes. Its `canCreateRules` is checked
+    on the server (403 when false), not only by hiding `+` in the UI. "My notifications" and
+    starred filters belong to it.
+  - Signed out, the UI shows a sign-in page (account list plus "Create account"). The gear panel
+    shows "Signed in as <name> (role)" and "Sign out".
 - **Preferences:** per person or group: which channels for which severity, plus quiet hours, stored
   as filter conditions (`alert.severity = critical` → `ntfy-urgent`); the UI shows a simple
   severity × channel grid with quiet hours.
@@ -142,6 +159,14 @@ needs but the demo does not (auth, multi-tenancy, credentials management) is out
 13. **Visual quality:** each UI milestone commits screenshots of every page (light and dark) to
     `docs/screenshots/`; the UI follows UI.md's tokens and "Do not" list. A human review decision
     is opened in DECISIONS.md for each UI milestone before it counts as done.
+14. **Accounts (must-have):**
+    - Signing up, signing in by picking an account, reloading the page and signing out all work
+      in the running app (`just up`), with no password anywhere.
+    - Acknowledging an alert and approving a runbook step record the signed-in account as the
+      actor in the audit log.
+    - `POST /api/rules` as an account without `canCreateRules` returns 403.
+    - The seeded demo people can sign in.
+    - Only a few unit tests for the session logic are needed; bigger tests come later.
 
 ## Constraints
 
@@ -166,7 +191,8 @@ needs but the demo does not (auth, multi-tenancy, credentials management) is out
 
 ## Out of scope
 
-- Authentication, authorisation beyond the `canCreateRules` flag, multi-tenancy.
+- Passwords, OAuth/SSO, email verification or any real authentication (accounts are in scope,
+  without passwords; see Account). Authorisation beyond the `canCreateRules` flag. Multi-tenancy.
 - SMS and phone call channels (README explains they would be one plugin, e.g. Twilio).
 - Polled-API source, XML/CSV parsers, conditional schema mapping.
 - Automatic detection of unseen schemas (schemas are set up by a user first).
@@ -188,4 +214,5 @@ M9 Track C, live feed & detail: UI.md landing page (filter bar, validation, auto
 M10 Track C, runbooks: runbook matching, text runbooks with templating, automation runner (http, escalate, wait), approvals via API/UI/ntfy, audit log on alert detail, fake demo service for actions.
 M11 Track C, onboarding: README quick start (commands, timings, what is mocked, how to add a source/schema/channel/action type, how to let Claude configure it via the API), seeded demo data and a demo event generator script.
 M12 Integration: full pipeline end to end with all Appendix A events and Appendix B runbooks, OpenAPI coverage test, all acceptance criteria re-verified.
+M14 Accounts (MUST-HAVE: do it before M12 and before any M13 stretch work; numbered last only because it was added late): backend sessions (table or Redis keys), the four account/session endpoints and the `X-Account` header, actor taken from the session for ack/resolve/approvals/config changes, server-side `canCreateRules` check, OpenAPI entries, seeded people can sign in. UI (sign-in page, "Signed in as / Sign out" in the gear panel, replacing the profile picker) is a separate task that ONLY an autopilot with the `frontend-design` skill may do (see NOTES-HUMAN); every other autopilot does only the backend.
 M13 Stretch (first free track takes one at a time): Kafka source plugin, grouping (group by fields per window), email channel over SMTP (Mailpit by default), MCP server wrapping the API, LLM conversion of text runbooks into automation steps.
