@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import RedisMock from "ioredis-mock";
 import type { Redis } from "ioredis";
 import type { Alert, Event, Notification, Rule } from "@alerting/shared";
+import { deterministicId } from "../src/ids.js";
 import { createGrouping, groupingOf, parseDuration, type GroupingContext } from "../src/index.js";
 
 const note = (i: number, over: Partial<Notification> = {}): Notification => ({
@@ -100,6 +101,90 @@ describe("grouping", () => {
     for (let i = 0; i < 3; i++) await g1.beforeEnqueue(note(i), ctx());
     await Promise.all([g1.flushDue(clock + 60_000), g2.flushDue(clock + 60_000)]);
     expect(sent).toHaveLength(1);
+  });
+
+  it("counts a redelivered notification once", async () => {
+    const g = mk();
+    await g.beforeEnqueue(note(0), ctx());
+    await g.beforeEnqueue(note(0), ctx());
+    await g.flushDue(clock + 60_000);
+    expect(sent).toHaveLength(1);
+    expect(sent[0]!.id).toBe("n0"); // still a single-item group
+  });
+
+  it("puts a push during the flush into a new window", async () => {
+    let pushed = false;
+    const g: ReturnType<typeof mk> = createGrouping({
+      redis,
+      now: () => clock,
+      deliver: async (n) => {
+        sent.push(n);
+        if (!pushed) {
+          pushed = true;
+          await g.beforeEnqueue(note(9), ctx());
+        }
+      },
+    });
+    await g.beforeEnqueue(note(0), ctx());
+    await g.beforeEnqueue(note(1), ctx());
+    await g.flushDue(clock + 60_000);
+    expect(sent).toHaveLength(1);
+    expect(await g.flushDue(clock + 61_000)).toBe(0); // new window is a full window long
+    expect(await g.flushDue(clock + 120_000)).toBe(1);
+    expect(sent[1]!.id).toBe("n9");
+  });
+
+  it("does not strand a push between the empty read and the drop", async () => {
+    const g = mk();
+    await g.beforeEnqueue(note(0), ctx());
+    const key = (await redis.zrange("alerting:groupdue", 0, -1))[0]!;
+    await redis.del(`alerting:group:${key}`);
+    const realLrange = redis.lrange.bind(redis);
+    (redis as unknown as { lrange: unknown }).lrange = async (...a: Parameters<Redis["lrange"]>) => {
+      const r = await realLrange(...a);
+      await g.beforeEnqueue(note(1), ctx());
+      return r;
+    };
+    await g.flushDue(clock + 60_000);
+    (redis as unknown as { lrange: unknown }).lrange = realLrange;
+    expect(sent).toHaveLength(0);
+    expect(await g.flushDue(clock + 200_000)).toBe(1);
+    expect(sent[0]!.id).toBe("n1");
+  });
+
+  it("survives a corrupt entry and still flushes later groups", async () => {
+    const errors: string[] = [];
+    const g = createGrouping({ redis, deliver: (n) => void sent.push(n), now: () => clock, logger: { error: (m: string) => void errors.push(m) } });
+    await g.beforeEnqueue(note(0), ctx("h1"));
+    await g.beforeEnqueue(note(1), ctx("h2"));
+    const key = (await redis.zrange("alerting:groupdue", 0, 0))[0]!;
+    await redis.rpush(`alerting:group:${key}`, "{not json");
+    await g.flushDue(clock + 60_000);
+    expect(sent).toHaveLength(2);
+    expect(errors.length).toBeGreaterThan(0);
+  });
+
+  it("gives distinct ids to groups of different windows", async () => {
+    const g = mk();
+    const ids: string[] = [];
+    for (let w = 0; w < 2; w++) {
+      await g.beforeEnqueue(note(0, { id: "same" }), ctx());
+      await g.beforeEnqueue(note(w + 1, { id: `x${w}` }), ctx());
+      clock += 60_000;
+      await g.flushDue(clock);
+      clock += 1;
+    }
+    ids.push(...sent.map((n) => n.id));
+    expect(sent).toHaveLength(2);
+    expect(new Set(ids).size).toBe(2);
+  });
+
+  it("fixes the id of a severity_increased item like the dedup hook", async () => {
+    const g = mk();
+    await g.beforeEnqueue(note(0, { severity: "critical" }), { ...ctx(), kind: "severity_increased" });
+    await g.flushDue(clock + 60_000);
+    expect(sent[0]!.id).toBe(deterministicId("notification", "a0", "bob", "ntfy", "critical"));
+    expect(sent[0]!.id).not.toBe("n0");
   });
 
   it("parses durations", () => {

@@ -175,9 +175,25 @@ Directory `config/rules/` (kind `rule`). Who is told about which alerts, and how
 
 **Grouping.** With `groupBy` and `groupWindow` set, alerts are still created per dedup key, but each recipient gets one notification per group and window instead of one per alert. The first alert of a group starts the window; when it ends the recipient gets a single notification (`N alerts: <rule name>`, severity of the highest alert, titles listed in the body). A group with one alert is sent unchanged. Missing values group as the empty string. Rules with `force` channels still group (grouping is opt-in per rule); the grouped notification then goes through the normal throttle.
 
-```text
+Complete rule with grouping:
+
+<!-- kind: rules -->
+```yaml
+id: disk-full-grouped
+name: Disk full
+enabled: true
+when: 'alert.severity >= warning'
+who:
+  - recipients:
+      - { type: group, id: pricing-team }
+    force: [ui]
+looks:
+  titleTemplate: '{{alert.title}}'
+  fields: [alert.source]
 groupBy: [source, environment]
 groupWindow: 5m
+createdAt: '2026-11-01T00:00:00Z'
+updatedAt: '2026-11-01T00:00:00Z'
 ```
 
 A `who` row: `recipients` (list of `{ type: person | group, id }`, required); `condition` (filter, optional, omit for "everyone else"); `force` (list of channel ids such as `ui`, `ntfy`, optional, overrides the recipients' preferences).

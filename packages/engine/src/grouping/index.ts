@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import type { Redis } from "ioredis";
-import { PREFIX, SEVERITY_ORDER, type Alert, type Event, type Notification, type Rule, type Severity } from "@alerting/shared";
+import { PREFIX, SEVERITY_ORDER, type Alert, type AlertEvent, type Event, type Notification, type Rule, type Severity } from "@alerting/shared";
 import { deterministicId } from "../ids.js";
 import { parseDuration } from "./duration.js";
 
@@ -10,11 +10,17 @@ export { parseDuration } from "./duration.js";
 export const GROUP_PREFIX = `${PREFIX}group:`;
 export const ZSET_GROUP_DUE = `${PREFIX}groupdue`;
 export const groupListKey = (hash: string): string => `${GROUP_PREFIX}${hash}`;
+/** Hash with `start` (first push, epoch ms) and `window` (ms) of the open group. */
+export const groupMetaKey = (hash: string): string => `${PREFIX}groupmeta:${hash}`;
+/** Set of notification ids already pushed (makes redelivery idempotent); expires on its own. */
+export const groupIdsKey = (hash: string): string => `${PREFIX}groupids:${hash}`;
+const IDS_TTL_MS = 3_600_000;
 
 export interface GroupingContext {
   rule: { rule: Rule };
   event: Event;
   alert: Alert;
+  kind?: AlertEvent["kind"];
 }
 
 export interface GroupingOptions {
@@ -59,7 +65,7 @@ const text = (v: unknown): string | undefined =>
 
 /** Value of a groupBy field: known alert field first, else dotted path in the event (then parsed, common). */
 export function groupValue(field: string, alert: Alert, event: Event): string {
-  if (!field.includes(".") && field in alert) {
+  if (!field.includes(".") && Object.hasOwn(alert, field)) {
     const v = (alert as unknown as Record<string, unknown>)[field];
     if (v === null || typeof v !== "object") return text(v) ?? "";
   }
@@ -75,25 +81,46 @@ interface Stored {
   rule: string;
 }
 
-// KEYS: list, due zset. ARGV: due time, member, json. Schedule the flush only for the first item.
+// KEYS: list, due zset, meta, ids. ARGV: now, window ms, member, json, notification id, ids ttl ms.
+// A redelivered notification id is ignored. The first item of a group starts its window.
 const PUSH = `
-local len = redis.call('rpush', KEYS[1], ARGV[3])
-if len == 1 then redis.call('zadd', KEYS[2], ARGV[1], ARGV[2]) else redis.call('zadd', KEYS[2], 'NX', ARGV[1], ARGV[2]) end
-return len`;
+if redis.call('sadd', KEYS[4], ARGV[5]) == 0 then return 0 end
+redis.call('pexpire', KEYS[4], tonumber(ARGV[2]) + tonumber(ARGV[6]))
+local len = redis.call('rpush', KEYS[1], ARGV[4])
+if len == 1 then
+  redis.call('hset', KEYS[3], 'start', ARGV[1], 'window', ARGV[2])
+  redis.call('zadd', KEYS[2], tonumber(ARGV[1]) + tonumber(ARGV[2]), ARGV[3])
+else
+  redis.call('zadd', KEYS[2], 'NX', tonumber(ARGV[1]) + tonumber(ARGV[2]), ARGV[3])
+end
+return 1`;
 // KEYS: due zset. ARGV: now, lease-until, member. Claim = move the due time into the future, once.
 const CLAIM = `
 local s = redis.call('zscore', KEYS[1], ARGV[3])
 if s and tonumber(s) <= tonumber(ARGV[1]) then redis.call('zadd', KEYS[1], ARGV[2], ARGV[3]) return 1 end
 return 0`;
-// KEYS: list, due zset. ARGV: sent count, member, retry-at. Drop what was sent; reschedule leftovers
-// (items pushed while the group was being sent), which start a fresh window.
+// KEYS: list, due zset, meta. ARGV: member, now. Drop the group only if nothing was pushed meanwhile.
+const DROP_IF_EMPTY = `
+if redis.call('llen', KEYS[1]) == 0 then redis.call('zrem', KEYS[2], ARGV[1]) redis.call('del', KEYS[3])
+else redis.call('zadd', KEYS[2], tonumber(ARGV[2]), ARGV[1]) end
+return 1`;
+// KEYS: list, due zset, meta. ARGV: sent count, member, next due (now + window), now.
+// Drop what was sent; leftovers (pushed during the flush) start a new window.
 const FINISH = `
 redis.call('ltrim', KEYS[1], tonumber(ARGV[1]), -1)
-if redis.call('llen', KEYS[1]) == 0 then redis.call('zrem', KEYS[2], ARGV[2])
-else redis.call('zadd', KEYS[2], tonumber(ARGV[3]), ARGV[2]) end
+if redis.call('llen', KEYS[1]) == 0 then redis.call('zrem', KEYS[2], ARGV[2]) redis.call('del', KEYS[3])
+else
+  redis.call('zadd', KEYS[2], tonumber(ARGV[3]), ARGV[2])
+  redis.call('hset', KEYS[3], 'start', ARGV[4])
+end
 return 1`;
+// KEYS: due zset. ARGV: expected lease score, new due, member. Retry only while this claim is held.
+const RETRY = `
+local s = redis.call('zscore', KEYS[1], ARGV[3])
+if s and tonumber(s) == tonumber(ARGV[1]) then redis.call('zadd', KEYS[1], ARGV[2], ARGV[3]) return 1 end
+return 0`;
 
-export function buildGroup(items: Stored[], key: string, at: Date): Notification {
+export function buildGroup(items: Stored[], key: string, start: string, at: Date): Notification {
   const first = items[0]!.n;
   let severity: Severity = first.severity;
   for (const i of items) if (SEVERITY_ORDER[i.n.severity] > SEVERITY_ORDER[severity]) severity = i.n.severity;
@@ -102,7 +129,7 @@ export function buildGroup(items: Stored[], key: string, at: Date): Notification
   const titles = items.slice(0, 10).map((i) => `- ${i.n.title}`);
   if (items.length > 10) titles.push(`and ${items.length - 10} more`);
   return {
-    id: deterministicId("group", key, first.id),
+    id: deterministicId("group", key, start, String(items.length), first.id, items[items.length - 1]!.n.id),
     alertId: first.alertId,
     recipientId: first.recipientId,
     channel: first.channel,
@@ -131,8 +158,16 @@ export function createGrouping(opts: GroupingOptions): Grouping {
     if (!g) return n;
     const values = g.by.map((f) => groupValue(f, ctx.alert, ctx.event));
     const key = groupHash(rule.id, values, n.recipientId, n.channel);
-    const stored: Stored = { n, rule: rule.name ?? "" };
-    await redis.eval(PUSH, 2, groupListKey(key), ZSET_GROUP_DUE, now() + g.windowMs, key, JSON.stringify(stored));
+    // same id fix-up as the dedup hook: a severity increase is a new notification, not a duplicate
+    const out =
+      ctx.kind === "severity_increased"
+        ? { ...n, id: deterministicId("notification", n.alertId, n.recipientId, n.channel, n.severity) }
+        : n;
+    const stored: Stored = { n: out, rule: rule.name ?? "" };
+    await redis.eval(
+      PUSH, 4, groupListKey(key), ZSET_GROUP_DUE, groupMetaKey(key), groupIdsKey(key),
+      now(), g.windowMs, key, JSON.stringify(stored), out.id, IDS_TTL_MS,
+    );
     return null;
   }
 
@@ -143,21 +178,38 @@ export function createGrouping(opts: GroupingOptions): Grouping {
       const claimed = await redis.eval(CLAIM, 1, ZSET_GROUP_DUE, nowMs, nowMs + leaseMs, member);
       if (Number(claimed) !== 1) continue;
       const lk = groupListKey(member);
-      const raw = await redis.lrange(lk, 0, -1);
-      if (raw.length === 0) {
-        await redis.zrem(ZSET_GROUP_DUE, member);
-        continue;
-      }
-      const items = raw.map((r) => JSON.parse(r) as Stored);
+      const mk = groupMetaKey(member);
       try {
-        await opts.deliver(items.length === 1 ? items[0]!.n : buildGroup(items, member, new Date(nowMs)));
+        const raw = await redis.lrange(lk, 0, -1);
+        if (raw.length === 0) {
+          await redis.eval(DROP_IF_EMPTY, 3, lk, ZSET_GROUP_DUE, mk, member, nowMs);
+          continue;
+        }
+        const items: Stored[] = [];
+        for (const r of raw) {
+          try {
+            items.push(JSON.parse(r) as Stored);
+          } catch {
+            logger.error(`grouping: dropping unparseable entry of group ${member}`);
+          }
+        }
+        const meta = await redis.hgetall(mk);
+        const windowMs = Number(meta.window) > 0 ? Number(meta.window) : 1000;
+        if (items.length > 0) {
+          try {
+            await opts.deliver(items.length === 1 ? items[0]!.n : buildGroup(items, member, meta.start ?? "", new Date(nowMs)));
+          } catch (err) {
+            logger.error(`grouping: group ${member} failed, will retry: ${(err as Error).message}`);
+            await redis.eval(RETRY, 1, ZSET_GROUP_DUE, nowMs + leaseMs, nowMs + 1000, member);
+            continue;
+          }
+        }
+        await redis.eval(FINISH, 3, lk, ZSET_GROUP_DUE, mk, raw.length, member, nowMs + windowMs, nowMs);
+        if (items.length > 0) sent++;
       } catch (err) {
         logger.error(`grouping: group ${member} failed, will retry: ${(err as Error).message}`);
-        await redis.zadd(ZSET_GROUP_DUE, nowMs + 1000, member);
-        continue;
+        await redis.eval(RETRY, 1, ZSET_GROUP_DUE, nowMs + leaseMs, nowMs + 1000, member).catch(() => undefined);
       }
-      await redis.eval(FINISH, 2, lk, ZSET_GROUP_DUE, raw.length, member, nowMs + 1000);
-      sent++;
     }
     return sent;
   }
