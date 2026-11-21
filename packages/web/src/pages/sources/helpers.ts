@@ -59,6 +59,19 @@ export const SOURCE_EXAMPLES: SourceExample[] = [
     },
   },
   {
+    id: "payments-kafka",
+    what: "Consume payment events from a Kafka topic.",
+    sample: '{"type":"PAYMENT_DECLINED","service":"payments-api","amount":1200,"reason":"CARD_EXPIRED"}',
+    source: {
+      id: "payments-kafka",
+      name: "Payment events (Kafka)",
+      enabled: true,
+      type: "kafka",
+      config: { brokers: "redpanda:9092", topic: "payments.events", groupId: "alerting" },
+      parser: { type: "json" },
+    },
+  },
+  {
     id: "trades-stream",
     what: "Read trade events from a Redis stream.",
     sample: '{"type":"TRADE_REJECTED","desk":"rates","notional":25000000,"reason":"LIMIT_BREACH"}',
@@ -111,6 +124,10 @@ export function sourceSentence(s: Source): string {
     return `Follows ${typeof s.config.path === "string" && s.config.path ? s.config.path : "the files you choose"} and ${parse}, one line at a time.`;
   if (s.type === "redis_stream")
     return `Reads the Redis stream ${typeof s.config.stream === "string" && s.config.stream ? `"${s.config.stream}"` : "you choose"} and ${parse}.`;
+  if (s.type === "kafka")
+    return `Consumes the Kafka topic ${typeof s.config.topic === "string" && s.config.topic ? `"${s.config.topic}"` : "you choose"}${
+      typeof s.config.brokers === "string" && s.config.brokers ? ` on ${s.config.brokers}` : ""
+    } and ${parse}.`;
   return `Receives events from a ${sourceTypeLabel(s.type)} source and ${parse}.`;
 }
 
