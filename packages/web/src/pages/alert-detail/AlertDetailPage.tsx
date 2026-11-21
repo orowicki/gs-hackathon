@@ -693,7 +693,14 @@ function StateActions({
         disabled={busy || resolving}
         onClick={onResolve}
       >
-        {resolving ? <Icon as={Check} /> : null} Resolve…
+        {/* Both labels share one grid cell, so the button keeps the width of the wider one
+            and doesn't grow when the check appears. */}
+        <span className="stable-label">
+          <span className={resolving ? undefined : "invisible"}>
+            <Icon as={Check} /> Resolve…
+          </span>
+          <span className={resolving ? "invisible" : undefined}>Resolve…</span>
+        </span>
       </button>
     </div>
   );
