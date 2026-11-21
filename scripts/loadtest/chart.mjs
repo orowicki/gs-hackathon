@@ -66,7 +66,7 @@ export function renderChart(results) {
       const e = r.latencyMs?.e2e ?? {};
       const rg = r.aggregate?.range;
       const withRange = (v, pair) => (pair && pair[0] !== pair[1] ? `${fmt(v)} (${fmt(pair[0])}-${fmt(pair[1])})` : fmt(v));
-      return `<tr><td>${esc(label)}</td><td>${fmt(r.config?.workers)}</td><td>${fmt(r.throughput?.sendRate)}</td><td>${withRange(r.throughput?.processedPerSec, rg?.processedPerSec)}</td><td>${withRange(e.p50, rg?.e2e?.p50)}</td><td>${withRange(e.p99, rg?.e2e?.p99)}</td><td>${fmt(r.lost)}</td><td class="${r.targets?.met ? "ok" : "bad"}">${r.targets?.met ? "yes" : "no"}</td></tr>`;
+      return `<tr><td>${esc(label)}</td><td>${fmt(r.config?.workers)}</td><td>${fmt(r.throughput?.sendRate)}</td><td>${withRange(r.throughput?.processedPerSec, rg?.processedPerSec)}</td><td>${withRange(e.p50, rg?.e2e?.p50)}</td><td>${withRange(e.p99, rg?.e2e?.p99)}</td><td>${fmt(r.lost)}</td><td>${fmt(r.backlogAtEnd)}</td><td class="${r.overloaded ? "bad" : "ok"}">${r.overloaded ? "yes" : "no"}</td><td class="${r.targets?.met ? "ok" : "bad"}">${r.targets?.met ? "yes" : "no"}</td></tr>`;
     })
     .join("");
   return `<!doctype html>
@@ -84,7 +84,7 @@ p.note{color:var(--mute)}
 </style></head><body>
 <h1>Load test results</h1>
 <p>${legend}</p>
-<table><thead><tr><th>run</th><th>workers</th><th>send/s</th><th>processed/s</th><th>p50 ms</th><th>p99 ms</th><th>lost</th><th>targets met</th></tr></thead><tbody>${rows}</tbody></table>
+<table><thead><tr><th>run</th><th>workers</th><th>send/s</th><th>processed/s</th><th>p50 ms</th><th>p99 ms</th><th>lost</th><th>backlog</th><th>overloaded</th><th>targets met</th></tr></thead><tbody>${rows}</tbody></table>
 <h2>Throughput per second</h2><p class="note">Solid: alerts processed. Dashed: events sent.</p>
 ${lineChart(series)}
 <h2>End-to-end latency</h2>

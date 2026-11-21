@@ -70,8 +70,8 @@ export function perSecondSeries(sent, processed, start) {
 /** Targets from the issue: p50 < 50 ms, p99 < 250 ms, nothing lost. */
 export const TARGETS = { p50: 50, p99: 250, lost: 0 };
 
-export function evaluateTargets(e2e, lost, coverageOk = true) {
-  const met = coverageOk && e2e.count > 0 && e2e.p50 <= TARGETS.p50 && e2e.p99 <= TARGETS.p99 && lost <= TARGETS.lost;
+export function evaluateTargets(e2e, lost, coverageOk = true, backlogAtEnd = 0) {
+  const met = coverageOk && backlogAtEnd === 0 && e2e.count > 0 && e2e.p50 <= TARGETS.p50 && e2e.p99 <= TARGETS.p99 && lost <= TARGETS.lost;
   return { ...TARGETS, met };
 }
 
@@ -102,12 +102,14 @@ export function medianSummary(summaries) {
  * Merge per-run result objects (as produced by run.mjs) into one result: latency/throughput fields are medians
  * across runs, counts are sums, `runs` keeps the full per-run objects, `aggregate` documents the method and ranges.
  */
-export function aggregateRuns(runs) {
+export function aggregateRuns(runs, planned = runs.length) {
   const first = runs[0];
   const sum = (k) => runs.reduce((n, r) => n + (r[k] ?? 0), 0);
   const e2e = medianSummary(runs.map((r) => r.latencyMs.e2e));
   const lost = sum("lost");
   const coverageOk = runs.every((r) => r.e2eCoverage >= 1);
+  const backlogAtEnd = sum("backlogAtEnd");
+  const overloaded = runs.some((r) => r.overloaded);
   const e2eCoverage = Math.min(...runs.map((r) => r.e2eCoverage));
   const sendRate = round2(median(runs.map((r) => r.throughput.sendRate)));
   const processedPerSec = round2(median(runs.map((r) => r.throughput.processedPerSec)));
@@ -120,6 +122,11 @@ export function aggregateRuns(runs) {
     rejected: sum("rejected"),
     httpErrors: sum("httpErrors"),
     alertsSeen: sum("alertsSeen"),
+    unprocessedAtEnd: sum("unprocessedAtEnd"),
+    backlogAtEnd,
+    overloaded,
+    windowsCompleted: runs.length,
+    windowsPlanned: planned,
     lost,
     wallTimeSec: round2(sum("wallTimeSec")),
     throughput: {
@@ -136,7 +143,7 @@ export function aggregateRuns(runs) {
       notification: medianSummary(runs.map((r) => r.latencyMs.notification)),
     },
     e2eCoverage,
-    targets: evaluateTargets(e2e, lost, coverageOk),
+    targets: withOverload(evaluateTargets(e2e, lost, coverageOk, backlogAtEnd), overloaded),
     aggregate: {
       repeats: runs.length,
       method: "median of per-run values",
@@ -151,4 +158,8 @@ export function aggregateRuns(runs) {
     measurement: first.measurement,
     runs,
   };
+}
+
+function withOverload(t, overloaded) {
+  return { ...t, met: t.met && !overloaded };
 }

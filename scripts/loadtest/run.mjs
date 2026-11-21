@@ -13,6 +13,10 @@ import { aggregateRuns, evaluateTargets, perSecondSeries, summarize } from "./st
 const STREAM_EVENTS = "alerting:events";
 const STREAM_ALERTS = "alerting:alerts";
 const CHANNEL_UI_PUSH = "alerting:ui:push";
+const STREAM_RAW = "alerting:events:raw";
+const GROUP_PARSE = "parse";
+const GROUP_ENGINE = "engine";
+const PREFLIGHT_THRESHOLD = 100;
 // Temporary entities carry this prefix plus the run id; stale ones from crashed runs are deleted at start.
 const TMP_PREFIX = "lt-tmp-";
 const ids = (runId) => ({ source: `${TMP_PREFIX}${runId}`, person: `${TMP_PREFIX}bot-${runId}`, rule: `${TMP_PREFIX}rule-${runId}` });
@@ -30,7 +34,7 @@ export const MEASUREMENT =
   "lost = events accepted (HTTP 202) with no alert observed after the drain.";
 
 export function parseArgs(argv, env = process.env, now = new Date()) {
-  const o = { rate: 5000, duration: 60, workers: 1, smoke: false, chart: true, repeat: undefined };
+  const o = { rate: 5000, duration: 60, workers: 1, smoke: false, chart: true, repeat: undefined, preflightTimeout: 600 };
   const num = (flag, v) => {
     const n = Number(v);
     if (!Number.isFinite(n) || n <= 0) throw new Error(`${flag} needs a positive number`);
@@ -51,6 +55,7 @@ export function parseArgs(argv, env = process.env, now = new Date()) {
     else if (a === "--config-dir") next(); // accepted and ignored (config goes straight into the store)
     else if (a === "--out") o.out = next();
     else if (a === "--smoke") o.smoke = true;
+    else if (a === "--preflight-timeout") o.preflightTimeout = num(a, next());
     else if (a === "--repeat") o.repeat = Math.floor(num(a, next()));
     else if (a === "--no-chart") o.chart = false;
     else throw new Error(`unknown argument ${a}`);
@@ -160,6 +165,76 @@ function makePoster(baseUrl, sourceId, maxSockets) {
 }
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+/** XINFO GROUPS reply (array of flat key/value arrays) -> {name: {lag, pending, entriesRead}}. */
+export function parseGroups(reply) {
+  const out = {};
+  for (const g of reply ?? []) {
+    const o = {};
+    for (let i = 0; i + 1 < g.length; i += 2) o[g[i]] = g[i + 1];
+    out[o.name] = { lag: o.lag ?? null, pending: Number(o.pending ?? 0), entriesRead: o["entries-read"] ?? null };
+  }
+  return out;
+}
+
+/** Queued work of one group: lag (undelivered) + pending (delivered, not acked). A missing group has none. */
+export function groupBacklog(group, entriesAdded) {
+  if (!group) return 0;
+  let lag = group.lag;
+  if (lag === null || lag === undefined) {
+    // Redis could not compute the lag (stream was trimmed or deleted entries): estimate from the counters
+    lag = group.entriesRead !== null && entriesAdded !== null ? Math.max(0, entriesAdded - group.entriesRead) : 0;
+  }
+  return Number(lag) + group.pending;
+}
+
+async function streamBacklog(conn, stream, group) {
+  let groups;
+  try {
+    groups = parseGroups(await conn.xinfo("GROUPS", stream));
+  } catch (e) {
+    if (String(e.message).includes("no such key")) return 0;
+    throw e;
+  }
+  const g = groups[group];
+  let added = null;
+  if (g && (g.lag === null || g.lag === undefined)) {
+    const info = await conn.xinfo("STREAM", stream);
+    const i = info.indexOf("entries-added");
+    added = i >= 0 ? Number(info[i + 1]) : null;
+  }
+  return groupBacklog(g, added);
+}
+
+/** Queued events in the parse group (raw stream) and the engine group (events stream). */
+export async function readBacklog(conn) {
+  const [parse, engine] = await Promise.all([
+    streamBacklog(conn, STREAM_RAW, GROUP_PARSE),
+    streamBacklog(conn, STREAM_EVENTS, GROUP_ENGINE),
+  ]);
+  return { parse, engine, total: parse + engine };
+}
+
+/** Wait until both groups are (nearly) idle; throws after timeoutMs. Never touches the streams. */
+async function waitForIdle(conn, timeoutMs, label) {
+  const start = Date.now();
+  let lastLog = 0;
+  for (;;) {
+    const b = await readBacklog(conn);
+    if (b.parse <= PREFLIGHT_THRESHOLD && b.engine <= PREFLIGHT_THRESHOLD) return Date.now() - start;
+    if (Date.now() - start > timeoutMs) {
+      throw new Error(
+        `${label}: pipeline did not become idle within ${Math.round(timeoutMs / 1000)} s (parse backlog ${b.parse}, engine backlog ${b.engine}). ` +
+          "Wait for the workers to catch up or raise --preflight-timeout; streams are left untouched.",
+      );
+    }
+    if (Date.now() - lastLog >= 10_000) {
+      console.error(`loadtest: ${label}: waiting for backlog to drain (parse ${b.parse}, engine ${b.engine})`);
+      lastLog = Date.now();
+    }
+    await sleep(1000);
+  }
+}
 
 /** Collects the three observation streams. Seqs < 0 are probes. */
 function createCollector(redisUrl, runId) {
@@ -303,7 +378,14 @@ async function main() {
   const post = makePoster(opts.baseUrl, sourceId, 16);
   let result;
   let phase = "setup";
+  let probeConn;
   try {
+    probeConn = new Redis(opts.redis, { maxRetriesPerRequest: 3 });
+    probeConn.on("error", () => {});
+    phase = "preflight";
+    const waited = await waitForIdle(probeConn, opts.preflightTimeout * 1000, "preflight");
+    if (waited > 2000) console.error(`loadtest: preflight waited ${Math.round(waited / 1000)} s for the existing backlog`);
+    phase = "setup";
     store = createConfigStore({ databaseUrl: opts.databaseUrl, redisUrl: opts.redis });
     cleanup = await installConfig(store, runId);
     await collector.start();
@@ -323,18 +405,29 @@ async function main() {
     const runs = [];
     let seqBase = 0;
     for (let k = 1; k <= opts.repeat; k++) {
+      phase = "preflight";
+      await waitForIdle(probeConn, opts.preflightTimeout * 1000, `window ${k}/${opts.repeat} preflight`);
+      phase = "measurement";
       console.error(`loadtest: measurement window ${k}/${opts.repeat}`);
-      const r = await measure(opts, `${runId}w${k}`, post, collector, seqBase);
+      const r = await measure(opts, `${runId}w${k}`, post, collector, seqBase, probeConn);
       seqBase += r.sent;
       runs.push(r);
+      if (r.overloaded) {
+        console.error(
+          `loadtest: window ${k} did not drain within the cap (unprocessed ${r.unprocessedAtEnd}, backlog ${r.backlogAtEnd}): overloaded, skipping the remaining ${opts.repeat - k} window(s)`,
+        );
+        break;
+      }
     }
-    result = aggregateRuns(runs);
+    result = aggregateRuns(runs, opts.repeat);
   } catch (e) {
+    probeConn?.disconnect();
     console.error(`loadtest ${phase} failed: ${e.stack ?? e.message}`);
     await collector.stop();
     await cleanExit(1);
     return;
   }
+  probeConn?.disconnect();
   await collector.stop();
   await cleanup();
   await store.close().catch(() => {});
@@ -344,12 +437,12 @@ async function main() {
   if (opts.chart) writeChart(opts.out.replace(/\.json$/, "") + ".html", [opts.out]);
   const e = result.latencyMs.e2e;
   console.log(
-    `sent=${result.sent} accepted=${result.accepted} alertsSeen=${result.alertsSeen} p50=${e.p50}ms p99=${e.p99}ms lost=${result.lost} targetsMet=${result.targets.met} -> ${opts.out}`,
+    `sent=${result.sent} accepted=${result.accepted} alertsSeen=${result.alertsSeen} p50=${e.p50}ms p99=${e.p99}ms lost=${result.lost} backlogAtEnd=${result.backlogAtEnd} overloaded=${result.overloaded} targetsMet=${result.targets.met} -> ${opts.out}`,
   );
   process.exit(0);
 }
 
-async function measure(opts, runId, post, collector, seqBase = 0) {
+async function measure(opts, runId, post, collector, seqBase = 0, probeConn) {
   const batchMs = 10;
   const maxInflight = 32;
   const sendTs = new Map(); // seq -> ts
@@ -414,6 +507,8 @@ async function measure(opts, runId, post, collector, seqBase = 0) {
     await sleep(1000);
   }
   await sleep(500); // let trailing pushes arrive
+  const drained = collector.seen() - seenBase >= okSeqs.length;
+  const backlog = await readBacklog(probeConn);
 
   const { bySeq, pushMs, notifMs, streamMs } = collector.resolve();
   const e2e = [];
@@ -421,13 +516,9 @@ async function measure(opts, runId, post, collector, seqBase = 0) {
   const stream = [];
   const processedTimes = [];
   let alertsSeen = 0;
-  let lost = 0;
   for (const s of okSeqs) {
     const alertId = bySeq.get(s);
-    if (alertId === undefined) {
-      lost++;
-      continue;
-    }
+    if (alertId === undefined) continue;
     alertsSeen++;
     const ts = sendTs.get(s);
     const push = pushMs.get(alertId);
@@ -446,6 +537,10 @@ async function measure(opts, runId, post, collector, seqBase = 0) {
   const sendSecs = Math.max(0.001, (sendEnd - startMs) / 1000);
   const procSecs = Math.max(0.001, (lastProcessed - startMs) / 1000);
   const e2eSummary = summarize(e2e.length ? e2e : stream);
+  const unprocessedAtEnd = okSeqs.length - alertsSeen;
+  const backlogAtEnd = backlog.total;
+  // events still queued in the parse/engine groups are not lost, only late
+  const lost = Math.max(0, unprocessedAtEnd - backlogAtEnd);
   const e2eCoverage = alertsSeen > 0 && e2e.length > 0 ? Math.round((e2e.length / alertsSeen) * 10000) / 10000 : 0;
   const round = (v) => Math.round(v * 10) / 10;
 
@@ -465,6 +560,10 @@ async function measure(opts, runId, post, collector, seqBase = 0) {
     rejected,
     httpErrors,
     alertsSeen,
+    unprocessedAtEnd,
+    backlogAtEnd,
+    backlog,
+    overloaded: !drained,
     lost,
     throughput: {
       targetRate: opts.rate,
@@ -479,7 +578,7 @@ async function measure(opts, runId, post, collector, seqBase = 0) {
       notification: notif.length ? summarize(notif) : null,
     },
     e2eCoverage,
-    targets: evaluateTargets(e2eSummary, lost, e2eCoverage >= 1),
+    targets: { ...evaluateTargets(e2eSummary, lost, e2eCoverage >= 1, backlogAtEnd), met: drained && evaluateTargets(e2eSummary, lost, e2eCoverage >= 1, backlogAtEnd).met },
     measurement: MEASUREMENT,
   };
 }

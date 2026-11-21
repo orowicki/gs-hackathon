@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { renderChart } from "./chart.mjs";
-import { buildBatch, parseArgs } from "./run.mjs";
+import { buildBatch, groupBacklog, parseArgs, parseGroups } from "./run.mjs";
 import { aggregateRuns, evaluateTargets, median, histogram, percentile, perSecondSeries, summarize } from "./stats.mjs";
 
 describe("stats", () => {
@@ -119,5 +119,32 @@ describe("repeat aggregation", () => {
     expect(parseArgs(["--smoke"], {}).repeat).toBe(1);
     expect(parseArgs(["--repeat", "5"], {}).repeat).toBe(5);
     expect(parseArgs(["--smoke"], {}, new Date("2026-11-21T10:00:00Z")).out).toBe("results/smoke/loadtest-2026-11-21.json");
+  });
+});
+
+describe("backlog and overload", () => {
+  it("parses XINFO GROUPS and sums lag and pending", () => {
+    const g = parseGroups([["name", "engine", "consumers", 2, "pending", 5, "last-delivered-id", "1-0", "entries-read", 10, "lag", 7]]);
+    expect(g.engine).toEqual({ lag: 7, pending: 5, entriesRead: 10 });
+    expect(groupBacklog(g.engine, null)).toBe(12);
+    expect(groupBacklog(undefined, null)).toBe(0);
+  });
+  it("estimates lag from counters when Redis reports nil", () => {
+    expect(groupBacklog({ lag: null, pending: 1, entriesRead: 90 }, 100)).toBe(11);
+    expect(groupBacklog({ lag: null, pending: 0, entriesRead: null }, null)).toBe(0);
+  });
+  it("aggregate keeps overload, backlog and completed windows; backlog fails targets", () => {
+    const base = {
+      date: "d", commit: "c", config: {}, sent: 10, accepted: 10, rejected: 0, httpErrors: 0, alertsSeen: 5, unprocessedAtEnd: 5, backlogAtEnd: 5,
+      overloaded: true, lost: 0, wallTimeSec: 1, e2eCoverage: 1,
+      throughput: { targetRate: 1, sendRate: 1, processedPerSec: 1, perSecond: [] },
+      latencyMs: { e2e: summarize([1, 2]), e2eSource: "ui-push", alertStream: summarize([1]), notification: null },
+      measurement: "m",
+    };
+    const a = aggregateRuns([base], 3);
+    expect(a).toMatchObject({ overloaded: true, windowsCompleted: 1, windowsPlanned: 3, backlogAtEnd: 5, unprocessedAtEnd: 5, lost: 0 });
+    expect(a.targets.met).toBe(false);
+    expect(evaluateTargets(summarize([1]), 0, true, 3).met).toBe(false);
+    expect(parseArgs(["--preflight-timeout", "30"], {}).preflightTimeout).toBe(30);
   });
 });

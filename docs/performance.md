@@ -29,7 +29,8 @@ Each event has a unique sequence number and a send timestamp (`Date.now()` in th
 
 - **e2e**: time from sending the event over ingest HTTP to the generator receiving the alert push (`{type:alert,alertId}`) on the UI push channel `alerting:ui:push`. Send time is taken just before the HTTP batch is written, so it includes HTTP, XADD, parse worker, Postgres insert, engine and pub/sub.
 - **notification**: `Notification.createdAt` (enqueue time in the engine) minus send time, read from the UI channel notification push. It measures enqueue, not delivery.
-- **lost**: events accepted (HTTP 202) for which no alert was observed after the drain.
+- **lost**: events accepted (HTTP 202) with no alert observed after the drain and not still queued: `lost = max(0, accepted - alertsSeen - backlogAtEnd)`, where `backlogAtEnd` is lag + pending of the parse and engine consumer groups at the end of the drain. Queued events are reported as `unprocessedAtEnd`/`backlogAtEnd` (late, not lost).
+- **overload**: before each window a preflight waits until both groups are idle (lag + pending <= 100). A window that does not drain within 60 s is flagged `overloaded`, later windows are skipped and only completed windows are aggregated. `processedPerSec` is then the sustainable rate (alerts observed per second over send window plus drain), and `targets.met` is false.
 - Latency covers events whose alert was observed.
 
 The exact wording is in the `measurement` field of each JSON file.
