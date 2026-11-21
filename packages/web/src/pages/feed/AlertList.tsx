@@ -15,9 +15,11 @@ interface ListProps {
   flash: ReadonlyMap<string, number>;
   /** Acknowledge from the expanded row; omitted = no button. */
   onAck?(id: string): Promise<void>;
+  /** Unacknowledge (back to open) from the expanded row; omitted = no button. */
+  onUnack?(id: string): Promise<void>;
 }
 
-export function AlertList({ alerts, now, expanded, onToggle, flash, onAck }: ListProps) {
+export function AlertList({ alerts, now, expanded, onToggle, flash, onAck, onUnack }: ListProps) {
   const navigate = useNavigate();
   const root = useRef<HTMLUListElement>(null);
   const [focusId, setFocusId] = useState<string | null>(null);
@@ -62,7 +64,7 @@ export function AlertList({ alerts, now, expanded, onToggle, flash, onAck }: Lis
         const open = expanded.has(a.id);
         const token = flash.get(a.id);
         return (
-          <li key={a.id} className={"row sev-" + a.severity}>
+          <li key={a.id} className={"row sev-" + a.severity + " state-" + a.state}>
             <div
               className="row-head"
               role="button"
@@ -79,6 +81,9 @@ export function AlertList({ alerts, now, expanded, onToggle, flash, onAck }: Lis
               <span className={open ? "chevron open" : "chevron"}>
                 <Icon as={ChevronRight} />
               </span>
+              {a.state !== "open" && (
+                <span className="state-tag">{a.state === "acknowledged" ? "Acknowledged" : "Resolved"}</span>
+              )}
               <span className="row-title">{a.title}</span>
               <span className="row-source muted">{a.source}</span>
               <time className="row-time muted" dateTime={a.lastSeen} title={new Date(a.lastSeen).toLocaleString()}>
@@ -86,7 +91,7 @@ export function AlertList({ alerts, now, expanded, onToggle, flash, onAck }: Lis
               </time>
               <span className="row-count muted">{a.count > 1 ? "×" + a.count : ""}</span>
             </div>
-            {open && <RowDetails alert={a} onAck={onAck} />}
+            {open && <RowDetails alert={a} onAck={onAck} onUnack={onUnack} />}
           </li>
         );
       })}
@@ -94,17 +99,27 @@ export function AlertList({ alerts, now, expanded, onToggle, flash, onAck }: Lis
   );
 }
 
-function RowDetails({ alert: a, onAck }: { alert: Alert; onAck?(id: string): Promise<void> }) {
+function RowDetails({
+  alert: a,
+  onAck,
+  onUnack,
+}: {
+  alert: Alert;
+  onAck?(id: string): Promise<void>;
+  onUnack?(id: string): Promise<void>;
+}) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const ack = () => {
-    if (!onAck) return;
+  const run = (action: ((id: string) => Promise<void>) | undefined, failed: string) => {
+    if (!action) return;
     setBusy(true);
     setError(null);
-    onAck(a.id).catch((e: unknown) => {
-      setError(e instanceof Error ? e.message : "Could not acknowledge.");
-      setBusy(false);
-    });
+    action(a.id)
+      .then(() => setBusy(false))
+      .catch((e: unknown) => {
+        setError(e instanceof Error ? e.message : failed);
+        setBusy(false);
+      });
   };
   const when = (iso: string) => new Date(iso).toLocaleString();
   const facts: Array<[string, string]> = [
@@ -128,8 +143,19 @@ function RowDetails({ alert: a, onAck }: { alert: Alert; onAck?(id: string): Pro
       </dl>
       <div className="row-actions">
         {onAck && a.state === "open" && (
-          <button type="button" className="row-ack" disabled={busy} onClick={ack}>
+          <button type="button" className="row-ack" disabled={busy} onClick={() => run(onAck, "Could not acknowledge.")}>
             Acknowledge
+          </button>
+        )}
+        {onUnack && a.state === "acknowledged" && (
+          <button
+            type="button"
+            className="row-ack"
+            title="Move the alert back to open"
+            disabled={busy}
+            onClick={() => run(onUnack, "Could not unacknowledge.")}
+          >
+            Unacknowledge
           </button>
         )}
         <Link className="row-open" to={"/alerts/" + encodeURIComponent(a.id)}>

@@ -229,7 +229,8 @@ The full event is shown as a clean, readable list of fields. The user should nev
 
 Colours: Grafana dark palette by default, light theme via `data-theme="light"`. The single source
 is `packages/web/src/styles/tokens.css` (severity: critical `#F2495C`, error `#FF9830`,
-warning `#FADE2A`, info `#5794F2`; valid `#73BF69`; accent `#6E9FFF`). Don't hard-code colours in
+warning `#FADE2A`, info `#5794F2`; valid `#73BF69`; accent `#6E9FFF`; alert state:
+acknowledged `#B877D9` (purple), resolved `#73BF69`). Don't hard-code colours in
 page CSS; use the variables.
 
 ### Do not
@@ -237,7 +238,8 @@ page CSS; use the variables.
 - gradients, glassmorphism, blurred backgrounds, glowing effects;
 - emoji anywhere in the UI;
 - cards inside cards, big rounded cards with soft shadows around every element;
-- coloured badges on every field; colour is for severity, validity and the accent only;
+- coloured badges on every field; colour is for severity, alert state (acknowledged, resolved),
+  validity and the accent only;
 - default, untouched component-library styling (re-theme it with the tokens above first);
 - placeholder content (`Lorem ipsum`, `John Doe`, invented statistics); use realistic alerts based
   on the samples in `docs/human/GIVEN_SPEC.md` Appendix A;

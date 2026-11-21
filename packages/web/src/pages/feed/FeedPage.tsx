@@ -5,7 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { Icon } from "../../components/Icon";
 import { withFilter } from "../../filterUrl";
-import { parseRange, withRange, withRangeTree, type TimeRange } from "../../timeRange";
+import { rangeNode, rangeOf, setRange, withoutRange, type TimeRange } from "../../timeRange";
 import { TimeRangePicker } from "../../components/time-range/TimeRangePicker";
 import { AlertList, SkeletonRows } from "./AlertList";
 import { createSource, isDemoSource } from "./data";
@@ -20,8 +20,10 @@ import {
   newStarred,
   parseFilter,
   parseTab,
+  STATE_TOGGLES,
   starredTexts,
   tabAlerts,
+  toggleTab,
   upsertAlert,
   valuesFor,
   type FeedTab,
@@ -55,7 +57,6 @@ export function FeedPage() {
   const navigate = useNavigate();
   const q = params.get("q") ?? "";
   const tab = parseTab(params.get("tab"));
-  const range = parseRange(params.get("range"));
   const input = useRef<HTMLInputElement>(null);
   const scroller = useRef<HTMLElement>(null);
 
@@ -79,9 +80,9 @@ export function FeedPage() {
   }, [applied]);
   // Keep showing the last valid result when the applied text is invalid.
   const [lastTree, setLastTree] = useState<FilterNode | null>(tree);
-  const userTree = parseFilter(applied).ok ? tree : lastTree;
-  // The time range picker adds `alert.lastSeen >= now-<range>` to whatever the user typed.
-  const activeTree = useMemo(() => withRangeTree(userTree, range), [userTree, range]);
+  const activeTree = parseFilter(applied).ok ? tree : lastTree;
+  // The time range lives in the filter text (`alert.occurredAt >= now-24h`); the picker reads it from there.
+  const range = rangeOf(applied);
   const applyText = useCallback((text: string) => {
     setApplied(text);
     const r = parseFilter(text);
@@ -90,7 +91,7 @@ export function FeedPage() {
 
   // `now` ticks, so alerts drop out of a relative range as time passes.
   const matching = useMemo(() => filterAlerts(alerts ?? [], activeTree), [alerts, activeTree, now]);
-  const inRange = useMemo(() => filterAlerts(alerts ?? [], withRangeTree(null, range)), [alerts, range, now]);
+  const inRange = useMemo(() => filterAlerts(alerts ?? [], rangeNode(range)), [alerts, range, now]);
   const statusInFilter = mentionsStatus(activeTree);
   const visible = useMemo(() => tabAlerts(matching, tab, activeTree), [matching, tab, activeTree]);
   const tabCounts = useMemo(
@@ -228,6 +229,15 @@ export function FeedPage() {
     [source],
   );
 
+  const unack = useCallback(
+    async (id: string) => {
+      if (!source?.unack) return;
+      const updated = await source.unack(id);
+      setAlerts((prev) => upsertAlert(prev ?? [], updated));
+    },
+    [source],
+  );
+
   // "/" focuses the filter.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -288,7 +298,13 @@ export function FeedPage() {
     if (visible.length === 0 && !q && !statusInFilter) {
       return (
         <div className="empty">
-          <p className="muted">{tab === "active" ? "Nothing needs attention. All alerts are acknowledged or resolved." : "No acknowledged alerts."}</p>
+          <p className="muted">
+            {tab === "active"
+              ? "Nothing needs attention. All alerts are acknowledged or resolved."
+              : tab === "acknowledged"
+                ? "No acknowledged alerts."
+                : "No resolved alerts."}
+          </p>
         </div>
       );
     }
@@ -310,7 +326,9 @@ export function FeedPage() {
       );
     }
     return (
-      <AlertList alerts={visible} now={now} expanded={expanded} onToggle={toggle} flash={flash} onAck={source?.ack ? ack : undefined} />
+      <AlertList alerts={visible} now={now} expanded={expanded} onToggle={toggle} flash={flash} onAck={source?.ack ? ack : undefined}
+        onUnack={source?.unack ? unack : undefined}
+      />
     );
   }
 
@@ -329,7 +347,11 @@ export function FeedPage() {
         />
         <TimeRangePicker
           value={range}
-          onChange={(r: TimeRange) => setParams((p) => withRange(p, r), { replace: true })}
+          onChange={(r: TimeRange) => {
+            const text = setRange(q, r);
+            setQ(text);
+            applyText(text);
+          }}
         />
         {canCreate && (
           <button type="button" className="icon-btn square" title="New rule" aria-label="New rule" onClick={() => navigate("/rules/new")}>
@@ -340,8 +362,10 @@ export function FeedPage() {
       {alerts && alerts.length > 0 && (
         <StatPanels
           alerts={inRange}
-          filter={q}
-          onFilter={(text) => {
+          filter={withoutRange(q)}
+          onFilter={(picked) => {
+            // Panels set the whole filter; keep the chosen time range on it.
+            const text = setRange(picked, range);
             setParams((p) => {
               const n = withFilter(p, text);
               n.delete("tab");
@@ -353,39 +377,37 @@ export function FeedPage() {
       )}
       {alerts && alerts.length > 0 && (
         <nav className="feed-tabs" aria-label="Alert state">
-          <div role="tablist">
-            {FEED_TABS.map((t) => (
-              <button
-                key={t.id}
-                type="button"
-                role="tab"
-                aria-selected={!statusInFilter && tab === t.id}
-                className={!statusInFilter && tab === t.id ? "feed-tab active" : "feed-tab"}
-                onClick={() => {
-                  // A status filter overrides tabs; picking a tab drops it.
-                  setTab(t.id, statusInFilter);
-                  if (statusInFilter) applyText("");
-                }}
-              >
-                {t.label}
-                <span className="feed-tab-count">{tabCounts[t.id]}</span>
-              </button>
-            ))}
-          </div>
           {statusInFilter ? (
             <span className="feed-tabs-note muted">Your filter picks the status, so all states are shown.</span>
           ) : (
-            <button
-              type="button"
-              className="link-btn feed-tabs-note"
-              onClick={() => {
-                setQ("alert.status = resolved");
-                applyText("alert.status = resolved");
-              }}
-            >
-              Show resolved
-            </button>
+            <span className={"feed-showing state-" + FEED_TABS.find((t) => t.id === tab)!.state}>
+              {FEED_TABS.find((t) => t.id === tab)!.label} alerts
+              <span className="feed-tab-count">{tabCounts[tab]}</span>
+            </span>
           )}
+          <div className="state-toggles" role="group" aria-label="Show only">
+            {STATE_TOGGLES.map((t) => {
+              const on = !statusInFilter && tab === t.id;
+              return (
+                <button
+                  key={t.id}
+                  type="button"
+                  aria-pressed={on}
+                  title={on ? "Back to active alerts" : `Show only ${t.label.toLowerCase()} alerts`}
+                  className={"state-toggle state-" + t.state + (on ? " on" : "")}
+                  onClick={() => {
+                    // A status filter overrides the buttons; pressing one drops it.
+                    setTab(statusInFilter ? t.id : toggleTab(tab, t.id), statusInFilter);
+                    if (statusInFilter) applyText("");
+                  }}
+                >
+                  <span className="state-dot" aria-hidden="true" />
+                  {t.label}
+                  <span className="feed-tab-count">{tabCounts[t.id]}</span>
+                </button>
+              );
+            })}
+          </div>
         </nav>
       )}
       {isDemoSource(source) && (

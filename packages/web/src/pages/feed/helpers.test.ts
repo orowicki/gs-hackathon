@@ -1,7 +1,7 @@
 import { tryParse } from "@alerting/filter";
 import type { Alert } from "@alerting/shared";
 import { describe, expect, it } from "vitest";
-import { alertContext, fieldNames, filterAlerts, labelKey, mentionsStatus, parseFilter, relativeTime, severityLabel, sortAlerts, tabAlerts, upsertAlert, valuesFor } from "./helpers";
+import { alertContext, fieldNames, filterAlerts, labelKey, mentionsStatus, parseFilter, parseTab, relativeTime, severityLabel, sortAlerts, tabAlerts, toggleTab, upsertAlert, valuesFor } from "./helpers";
 import { seedAlerts } from "./mockSource";
 
 const NOW = Date.parse("2026-11-21T12:00:00Z");
@@ -92,9 +92,17 @@ describe("helpers", () => {
 describe("feed tabs", () => {
   const mk = (id: string, state: Alert["state"]) => ({ id, state }) as Alert;
   const list = [mk("a", "open"), mk("b", "acknowledged"), mk("c", "resolved")];
-  it("splits open and acknowledged, hides resolved", () => {
+  it("shows only open alerts normally, and only one state when its button is on", () => {
     expect(tabAlerts(list, "active", null).map((a) => a.id)).toEqual(["a"]);
     expect(tabAlerts(list, "acknowledged", null).map((a) => a.id)).toEqual(["b"]);
+    expect(tabAlerts(list, "resolved", null).map((a) => a.id)).toEqual(["c"]);
+  });
+  it("toggles a state button on, switches between them, and back off to the normal feed", () => {
+    expect(toggleTab("active", "resolved")).toBe("resolved");
+    expect(toggleTab("resolved", "acknowledged")).toBe("acknowledged");
+    expect(toggleTab("acknowledged", "acknowledged")).toBe("active");
+    expect(parseTab("resolved")).toBe("resolved");
+    expect(parseTab("nonsense")).toBe("active");
   });
   it("lets a status filter override the tab", () => {
     expect(tabAlerts(list, "active", tree("alert.status = resolved")).map((a) => a.id)).toEqual(["a", "b", "c"]);
