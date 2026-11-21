@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Alert, AutomationRunbook } from "@alerting/shared";
+import { validateRunbook } from "../src/index.js";
 import { createActionRegistry, createApprovalNotifier, createMemoryRunStore, createRunner } from "../src/index.js";
 import type { ActionPlugin, ApprovalNotification } from "../src/index.js";
 import { workflowAlert } from "./helpers.js";
@@ -80,5 +81,14 @@ describe("approval notifications", () => {
     const run = await runner.start(rb(step("x", "required")), tpl());
     expect(run.status).toBe("awaiting_approval");
     expect(errors).toEqual(["down"]);
+  });
+
+  it("validates approvers on steps", () => {
+    const base = { id: "r", name: "n", type: "automation", matches: "", steps: [{ action: "escalate", group: "g", approval: "required" }] };
+    const withApprovers = (approvers: unknown) => ({ ...base, steps: [{ ...base.steps[0], approvers }] });
+    const ok = validateRunbook(withApprovers("grp"));
+    expect(ok.ok && (ok.runbook as AutomationRunbook).steps[0]!.approvers).toBe("grp");
+    expect(validateRunbook(withApprovers("")).ok).toBe(false);
+    expect(validateRunbook(withApprovers(5)).ok).toBe(false);
   });
 });

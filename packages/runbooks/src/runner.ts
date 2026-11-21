@@ -134,6 +134,7 @@ export function createRunner(opts: RunnerOptions): Runner {
         setStep(run, next.index, "awaiting_approval");
         run.status = "awaiting_approval";
         const saved = await save(run);
+        // At-most-once: a crash between the save above and this hook loses the notification.
         if (opts.onAwaitingApproval) {
           try {
             await opts.onAwaitingApproval(structuredClone(saved), next.index);

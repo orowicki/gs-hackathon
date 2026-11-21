@@ -2749,7 +2749,7 @@ Type: { id: string, name: string, type: "text", matches: [Filter](#schema-filter
 
 ### RunbookStep
 
-Type: { action: "http", name?: string, method: string, url: string, headers?: map<string, string>, body?: string, approval: "none" \| "required" } \| { action: "escalate", name?: string, group: string, approval: "none" \| "required" } \| { action: "wait", name?: string, duration: string, approval: "none" \| "required" }
+Type: { action: "http", name?: string, method: string, url: string, headers?: map<string, string>, body?: string, approval: "none" \| "required", approvers?: string } \| { action: "escalate", name?: string, group: string, approval: "none" \| "required", approvers?: string } \| { action: "wait", name?: string, duration: string, approval: "none" \| "required", approvers?: string }
 
 <a id="schema-schema"></a>
 

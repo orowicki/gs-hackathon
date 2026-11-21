@@ -1,8 +1,8 @@
 import type pg from "pg";
 import type { Redis } from "ioredis";
-import { CHANNEL_UI_PUSH, type Alert, type Event, type Notification, type UiPush } from "@alerting/shared";
+import { CHANNEL_UI_PUSH, type Alert, type Rule, type Event, type Notification, type UiPush } from "@alerting/shared";
 import type { ConfigStore } from "@alerting/config";
-import { compileRule, createDirectory, defaultChannels, routeAlert, type Directory } from "@alerting/engine";
+import { compileRule, createDirectory, defaultChannels, routeAlert, type CompiledRule, type Directory } from "@alerting/engine";
 import {
   createApprovalNotifier,
   createDefaultActions,
@@ -56,25 +56,60 @@ export function createRunbookRuntime(o: RunbookRuntimeOptions): RunbookRuntime {
   // One audit log: runbook audit entries are written to (and read from) the alerts audit store.
   const runStore = createPgRunStore(o.pool, { ready });
 
-  /** Who to notify for an approval: routed like the alert itself (preferences apply), optionally to the step's approvers group. */
+  const approverRules = new Map<string, CompiledRule>();
+  /** Synthetic rule routing to the approvers group; memoised so compileRule's cache hits. */
+  function approversRule(rule: Rule, group: string): CompiledRule {
+    const key = `${rule.id}\u0000${rule.updatedAt}\u0000${group}`;
+    let c = approverRules.get(key);
+    if (!c) {
+      c = compileRule({ ...rule, id: `${rule.id}#approvers:${group}`, who: [{ recipients: [{ type: "group", id: group }] }] });
+      approverRules.set(key, c);
+    }
+    return c;
+  }
+
+  /** Who to notify for an approval: routed like the alert itself (preferences apply), optionally to the step's approvers group; ntfy is ensured for people with a topic. */
   async function approvalRecipients(alert: Alert, approvers: string | undefined) {
     if (!config || !directory) return [];
     await directory.ready;
+    const out: Array<{ recipientId: string; channel: string }> = [];
     const rule = await config.get("rule", alert.ruleId);
     const event = await events.getEvents([alert.eventId]).then((m) => m.get(alert.eventId));
     if (rule && event) {
-      const compiled = compileRule(approvers ? { ...rule, id: `${rule.id}#approvers:${approvers}`, who: [{ recipients: [{ type: "group", id: approvers }] }] } : rule);
-      return routeAlert({ alert, event, rule: compiled, directory, now: new Date() }).map((n) => ({
-        recipientId: n.recipientId,
-        channel: n.channel,
-      }));
+      try {
+        const compiled = approvers ? approversRule(rule, approvers) : compileRule(rule);
+        for (const n of routeAlert({ alert, event, rule: compiled, directory, now: new Date() })) {
+          out.push({ recipientId: n.recipientId, channel: n.channel });
+        }
+      } catch (e) {
+        onError(e instanceof Error ? e : new Error(String(e)));
+      }
     }
-    // fallback: the approvers group members with the default channels
-    const group = approvers ? directory.group(approvers) : undefined;
-    return (group?.memberIds ?? []).flatMap((id) => {
-      const person = directory.person(id);
-      return person ? defaultChannels(person, alert.severity).map((channel) => ({ recipientId: id, channel })) : [];
-    });
+    if (out.length === 0) {
+      const group = approvers ? directory.group(approvers) : undefined;
+      let ids: string[];
+      if (approvers) {
+        ids = group?.memberIds ?? [];
+        if (ids.length === 0) onError(new Error(`approvers group ${approvers} is unknown or empty`));
+      } else {
+        ids = [];
+        for (const w of rule?.who ?? [])
+          for (const r of w.recipients) {
+            if (r.type === "person") ids.push(r.id);
+            else ids.push(...(directory.group(r.id)?.memberIds ?? []));
+          }
+      }
+      for (const id of new Set(ids)) {
+        const person = directory.person(id);
+        if (person) for (const channel of defaultChannels(person, alert.severity)) out.push({ recipientId: id, channel });
+      }
+    }
+    for (const id of new Set(out.map((r) => r.recipientId))) {
+      if (directory.person(id)?.ntfyTopic && !out.some((r) => r.recipientId === id && r.channel === "ntfy")) {
+        out.push({ recipientId: id, channel: "ntfy" });
+      }
+    }
+    return out;
   }
   const runner = createRunner({
     store: {
