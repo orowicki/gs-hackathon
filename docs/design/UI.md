@@ -235,7 +235,7 @@ The single source is `packages/web/src/styles/tokens.css`; never hard-code colou
 | Brand / highlight (links, focus, active nav, primary buttons) | `#7399C6` (links `#8FB2DD`, buttons `#3E6AA6`) | `#2F5D97` |
 | Critical (text / fill) | hipred `#EE454A` / `#EE454A` | `#D31319` / `#EE454A` |
 | Error | hiporange `#FC5E1F` / `#FC5E1F` | `#D13E03` / `#FC5E1F` |
-| Warning | hipyellow `#FABB2D` / deeper hipyellow `#BB8304` | `#9A6C03` / `#BB8304` |
+| Warning | hipyellow `#FABB2D` / brighter-but-deep hipyellow `#D29406` | `#9A6C03` / `#D29406` |
 | Info | hipblue `#3995DA` / `#3995DA` | `#2071AE` / `#3995DA` |
 | OK / healthy, resolved | hipgreen `#3CB538` | `#277624` |
 | Neutral tags | hipgray `#6C7788` | `#515966` |

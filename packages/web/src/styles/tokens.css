@@ -42,7 +42,7 @@
   --valid-tint: rgba(60, 181, 56, 0.15);
   --critical-fill: #ee454a;
   --error-fill: #fc5e1f;
-  --warning-fill: #bb8304;
+  --warning-fill: #d29406;
   --info-fill: #3995da;
   --on-fill: #ffffff;
   --on-warning-fill: #ffffff;
@@ -112,7 +112,7 @@
   --valid-tint: rgba(60, 181, 56, 0.12);
   --critical-fill: #ee454a;
   --error-fill: #fc5e1f;
-  --warning-fill: #bb8304;
+  --warning-fill: #d29406;
   --info-fill: #3995da;
   --on-fill: #ffffff;
   --on-warning-fill: #ffffff;
