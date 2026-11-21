@@ -59,8 +59,7 @@ export function FilterBar(props: FilterBarProps) {
 
   function accept(s: Suggestion) {
     if (s.kind === "starred") {
-      onChange(s.insert);
-      onApply(s.insert);
+      onChange(s.insert); // the debounced effect applies it
       caret.current = s.insert.length;
       setCursor(s.insert.length);
     } else {
@@ -73,6 +72,12 @@ export function FilterBar(props: FilterBarProps) {
     // Keep the list open only if there is a follow-up to offer; it recomputes from the new text.
     setOpen(s.kind !== "starred");
     local.current?.focus();
+  }
+
+  /** The full filter text this row would produce, when that is a complete valid filter. */
+  function resultingText(s: Suggestion): string | null {
+    const text = (s.kind === "starred" ? s.insert : applyReplacement(value, cursor, s.insert).text).trim();
+    return text !== "" && tryParse(text).ok ? text : null;
   }
 
   function onKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
@@ -217,11 +222,27 @@ export function FilterBar(props: FilterBarProps) {
               >
                 <span className="filter-option-label">{s.label}</span>
                 {s.description && <span className="filter-option-hint">{s.description}</span>}
-                {s.kind === "starred" && (
-                  <span className="filter-option-star" aria-label="starred">
-                    <Icon as={Star} />
-                  </span>
-                )}
+                {(() => {
+                  const text = resultingText(s);
+                  if (!text) return null;
+                  const on = starred.includes(text);
+                  return (
+                    <button
+                      type="button"
+                      tabIndex={-1}
+                      className={`filter-option-star${on ? " on" : ""}`}
+                      aria-label={on ? "Unstar filter" : "Star filter"}
+                      aria-pressed={on}
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        onToggleStar(text);
+                      }}
+                    >
+                      <Icon as={Star} />
+                    </button>
+                  );
+                })()}
               </li>
             ))}
         </ul>

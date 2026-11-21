@@ -1,3 +1,4 @@
+import type { FilterNode } from "@alerting/filter";
 import type { Alert, Person, StarredFilter } from "@alerting/shared";
 import { Plus } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -6,7 +7,7 @@ import { Icon } from "../../components/Icon";
 import { SettingsMenu } from "../../components/SettingsPanel";
 import { withFilter } from "../../filterUrl";
 import { AlertList, SkeletonRows } from "./AlertList";
-import { createSource } from "./data";
+import { createSource, isDemoSource } from "./data";
 import type { FeedSource } from "./data";
 import { FilterBar } from "../../components/filter-bar";
 import { fieldNames, filterAlerts, newStarred, parseFilter, starredTexts, upsertAlert, valuesFor } from "./helpers";
@@ -46,7 +47,7 @@ export function FeedPage() {
   const [live, setLive] = useState(true);
   const [applied, setApplied] = useState(q);
   const [people, setPeople] = useState<Person[]>([]);
-  const [profileId, setProfileId] = useState<string | null>(() => localStorage.getItem(PROFILE_KEY));
+  const [profileId, setProfileId] = useState<string | null>(() => readLocal<string | null>(PROFILE_KEY, null));
   const [starred, setStarred] = useState<StarredFilter[]>([]);
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
   const [flash, setFlash] = useState<ReadonlyMap<string, number>>(new Map());
@@ -59,9 +60,13 @@ export function FeedPage() {
     return r.ok ? r.tree : null;
   }, [applied]);
   // Keep showing the last valid result when the applied text is invalid.
-  const lastTree = useRef(tree);
-  const activeTree = parseFilter(applied).ok ? tree : lastTree.current;
-  lastTree.current = activeTree;
+  const [lastTree, setLastTree] = useState<FilterNode | null>(tree);
+  const activeTree = parseFilter(applied).ok ? tree : lastTree;
+  const applyText = useCallback((text: string) => {
+    setApplied(text);
+    const r = parseFilter(text);
+    if (r.ok) setLastTree(r.tree);
+  }, []);
 
   const visible = useMemo(() => filterAlerts(alerts ?? [], activeTree), [alerts, activeTree]);
   const visibleIds = useRef(new Set<string>());
@@ -90,6 +95,13 @@ export function FeedPage() {
   // Live updates.
   useEffect(() => {
     if (!source) return;
+    let down = false;
+    let stopped = false;
+    const resync = () =>
+      source
+        .listAlerts()
+        .then((list) => !stopped && setAlerts(list))
+        .catch(() => undefined);
     const unsubscribe = source.subscribe(
       (push) => {
         if (push.type !== "alert" || !("alertId" in push)) return; // notification, event, dead_letter: not shown in the feed
@@ -103,11 +115,21 @@ export function FeedPage() {
             const el = scroller.current;
             if (matches && kind === "created" && el && el.scrollTop > SCROLLED) setPending((n) => n + 1);
           })
-          .catch(() => undefined);
+          .catch(() => void resync());
       },
-      setLive,
+      (isLive) => {
+        setLive(isLive);
+        if (!isLive) down = true;
+        else if (down) {
+          down = false;
+          void resync(); // pick up alerts missed while disconnected
+        }
+      },
     );
-    return unsubscribe;
+    return () => {
+      stopped = true;
+      unsubscribe();
+    };
   }, [source]);
 
   useEffect(() => {
@@ -202,7 +224,7 @@ export function FeedPage() {
         starred={starred}
         onApply={(t) => {
           setQ(t);
-          setApplied(t);
+          applyText(t);
         }}
         onRemove={(id) => saveStarred(starred.filter((s) => s.id !== id))}
       />
@@ -239,7 +261,7 @@ export function FeedPage() {
             className="link-btn"
             onClick={() => {
               setQ("");
-              setApplied("");
+              applyText("");
             }}
           >
             Clear filter
@@ -257,7 +279,7 @@ export function FeedPage() {
         <FilterBar
           value={q}
           onChange={setQ}
-          onApply={setApplied}
+          onApply={applyText}
           fields={fields}
           valuesFor={(f) => valuesFor(alerts ?? [], f)}
           starred={starredList}
@@ -270,6 +292,11 @@ export function FeedPage() {
           </button>
         )}
       </header>
+      {isDemoSource(source) && (
+        <div className="live-bar" role="status">
+          Demo data — API not reachable
+        </div>
+      )}
       {!live && (
         <div className="live-bar" role="status">
           Live updates paused — reconnecting…

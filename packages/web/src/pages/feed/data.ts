@@ -12,13 +12,17 @@ export interface FeedSource {
   getStarred(personId: string): Promise<StarredFilter[]>;
   putStarred(personId: string, list: StarredFilter[]): Promise<StarredFilter[]>;
   suggestFields?(): Promise<string[]>;
+  /** True when the data is the built-in fixture mock, not a real API. */
+  demo?: boolean;
 }
 
 export const ALERTS_URL = "/api/alerts?limit=200";
 
+const NO_BACKEND = [404, 502, 503, 504];
+
 export type Probe = { ok: true; alerts: Alert[] } | { ok: false };
 
-/** First GET /api/alerts. A 404, a non-JSON body or a network error means there is no API: use the mock. */
+/** First GET /api/alerts. A 404/502/503/504 (proxy without backend), a non-JSON body or a network error means there is no API: use the mock. */
 export async function probeApi(fetchFn: typeof fetch): Promise<Probe> {
   let res: Response;
   try {
@@ -26,7 +30,7 @@ export async function probeApi(fetchFn: typeof fetch): Promise<Probe> {
   } catch {
     return { ok: false };
   }
-  if (res.status === 404) return { ok: false };
+  if (NO_BACKEND.includes(res.status)) return { ok: false };
   if (!res.ok) throw new Error("GET /api/alerts failed with " + res.status);
   try {
     const body: unknown = await res.json();
@@ -88,14 +92,22 @@ export function createHttpSource(first: Alert[], fetchFn: typeof fetch = (...a) 
   };
 }
 
+/** True when the source serves fixture data and the page should say so. */
+export function isDemoSource(source: Pick<FeedSource, "demo"> | null): boolean {
+  return source?.demo === true;
+}
+
+function demoSource(): Promise<FeedSource> {
+  return import("./mockSource").then((m) => Object.assign(m.createMockSource(), { demo: true }));
+}
+
 export function wantsMock(search: string): boolean {
   return new URLSearchParams(search).get("mock") === "1";
 }
 
 /** Picks the real API when it answers, otherwise the fixture-backed mock. ?mock=1 forces the mock. */
 export async function createSource(search: string, fetchFn: typeof fetch = (...a) => fetch(...a)): Promise<FeedSource> {
-  const { createMockSource } = await import("./mockSource");
-  if (wantsMock(search)) return createMockSource();
+  if (wantsMock(search)) return demoSource();
   const probe = await probeApi(fetchFn);
-  return probe.ok ? createHttpSource(probe.alerts, fetchFn) : createMockSource();
+  return probe.ok ? createHttpSource(probe.alerts, fetchFn) : demoSource();
 }

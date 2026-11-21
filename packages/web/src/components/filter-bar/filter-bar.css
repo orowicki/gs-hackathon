@@ -86,10 +86,18 @@
 
 .filter-option-star {
   display: flex;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.filter-option-star.on {
   color: var(--accent);
 }
 
-.filter-option-star svg {
+.filter-option-star.on svg {
   fill: currentColor;
 }
 

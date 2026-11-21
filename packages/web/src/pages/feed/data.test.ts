@@ -1,6 +1,6 @@
 import type { Alert } from "@alerting/shared";
 import { describe, expect, it, vi } from "vitest";
-import { createHttpSource, createSource, probeApi, wantsMock } from "./data";
+import { createHttpSource, createSource, isDemoSource, probeApi, wantsMock } from "./data";
 import { seedAlerts } from "./mockSource";
 
 const res = (status: number, body: unknown) =>
@@ -18,6 +18,9 @@ describe("probeApi", () => {
     expect((await probeApi((() => res(200, "<html>")) as typeof fetch)).ok).toBe(false);
     expect((await probeApi((() => res(200, { a: 1 })) as typeof fetch)).ok).toBe(false);
     expect((await probeApi((() => Promise.reject(new Error("down"))) as typeof fetch)).ok).toBe(false);
+  });
+  it("falls back on 502, 503 and 504 (proxy without backend)", async () => {
+    for (const code of [502, 503, 504]) expect((await probeApi((() => res(code, "x")) as typeof fetch)).ok).toBe(false);
   });
   it("throws on server errors", async () => {
     await expect(probeApi((() => res(500, "x")) as typeof fetch)).rejects.toThrow(/500/);
@@ -43,6 +46,10 @@ describe("sources", () => {
     const forced = vi.fn() as unknown as typeof fetch;
     await createSource("?mock=1", forced);
     expect(forced).not.toHaveBeenCalled();
+    expect(isDemoSource(s)).toBe(true);
+    expect(isDemoSource(await createSource("?mock=1", forced))).toBe(true);
+    expect(isDemoSource(null)).toBe(false);
+    expect(isDemoSource(createHttpSource([], forced))).toBe(false);
     expect(wantsMock("?mock=1")).toBe(true);
     expect(wantsMock("")).toBe(false);
   });

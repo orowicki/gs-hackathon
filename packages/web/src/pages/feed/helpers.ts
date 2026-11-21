@@ -17,7 +17,9 @@ export function alertContext(alert: Alert): { alert: Record<string, unknown>; ev
       title: alert.title,
       source: alert.source,
       environment: alert.environment,
-      // common.status is the event status (firing/resolved); the UI filters on the alert state.
+      // alert.status is our lifecycle (open/acknowledged/resolved); the source's firing/resolved is sourceStatus.
+      // TODO: drop the common.status fallback once shared renames the field to sourceStatus.
+      sourceStatus: (alert.common as Record<string, unknown>).sourceStatus ?? alert.common.status,
       status: alert.state,
       state: alert.state,
       count: alert.count,

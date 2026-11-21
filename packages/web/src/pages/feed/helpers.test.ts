@@ -19,6 +19,14 @@ describe("helpers", () => {
     expect(labelKey("---")).toBe("");
   });
 
+  it("alertContext exposes the source status as sourceStatus", () => {
+    const a = seedAlerts()[0]!;
+    const legacy = { ...a, common: { ...a.common, status: "firing" as const } };
+    expect(alertContext(legacy).alert.sourceStatus).toBe("firing");
+    const renamed = { ...a, common: { ...a.common, sourceStatus: "resolved" } } as unknown as typeof a;
+    expect(alertContext(renamed).alert.sourceStatus).toBe("resolved");
+    expect(alertContext(renamed).alert.status).toBe(a.state);
+  });
   it("alertContext maps lifecycle state to alert.status", () => {
     const a = alerts.find((x) => x.state === "resolved")!;
     expect(alertContext(a).alert.status).toBe("resolved");
