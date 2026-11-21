@@ -1,0 +1,75 @@
+import { evaluate, tryParse } from "@alerting/filter";
+import type { Alert, Event, FilterNode, Runbook } from "@alerting/shared";
+
+export interface MatchContext {
+  alert: Alert;
+  event?: Event;
+}
+
+const cache = new Map<string, FilterNode | null | undefined>();
+
+/** undefined = unparseable. */
+function treeOf(f: Runbook["matches"] | null | undefined): FilterNode | null | undefined {
+  if (f === null || f === undefined) return null;
+  if (typeof f !== "string") return f;
+  if (cache.has(f)) return cache.get(f);
+  const r = tryParse(f);
+  const tree = r.ok ? r.tree : undefined;
+  if (cache.size > 1000) cache.clear();
+  cache.set(f, tree);
+  return tree;
+}
+
+function alertContext(alert: Alert): Record<string, unknown> {
+  return { ...alert.common, ...alert, status: alert.state, schema: alert.schemaId };
+}
+
+export function matchRunbooks(runbooks: Runbook[], ctx: MatchContext): Runbook[] {
+  const evalCtx = { alert: alertContext(ctx.alert), event: ctx.event?.parsed };
+  return runbooks.filter((rb) => {
+    try {
+      const tree = treeOf(rb.matches);
+      if (tree === undefined) return false;
+      return evaluate(tree, evalCtx);
+    } catch {
+      return false;
+    }
+  });
+}
+
+const DURATION = /^\d+(ms|s|m|h)$/;
+const isStr = (v: unknown): v is string => typeof v === "string" && v.length > 0;
+const isObj = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
+
+export type ValidateResult = { ok: true; runbook: Runbook } | { ok: false; error: string };
+
+export function validateRunbook(x: unknown): ValidateResult {
+  const fail = (error: string): ValidateResult => ({ ok: false, error });
+  if (!isObj(x)) return fail("runbook must be an object");
+  if (!isStr(x.id)) return fail("id must be a non-empty string");
+  if (!isStr(x.name)) return fail("name must be a non-empty string");
+  if (x.matches !== undefined && x.matches !== null && typeof x.matches !== "string" && !isObj(x.matches))
+    return fail("matches must be filter text or a filter tree");
+  const matches = (x.matches ?? "") as Runbook["matches"];
+  if (x.type === "text") {
+    if (typeof x.content !== "string") return fail("text runbook needs a content string");
+    return { ok: true, runbook: { ...x, matches } as unknown as Runbook };
+  }
+  if (x.type !== "automation") return fail('type must be "text" or "automation"');
+  if (!Array.isArray(x.steps)) return fail("automation runbook needs a steps array");
+  const steps: unknown[] = [];
+  for (const [i, raw] of x.steps.entries()) {
+    const at = `steps[${i}]`;
+    if (!isObj(raw)) return fail(`${at} must be an object`);
+    if (typeof raw.action !== "string" || !raw.action) return fail(`${at}.action must be a string`);
+    const approval = raw.approval ?? "none";
+    if (approval !== "none" && approval !== "required") return fail(`${at}.approval must be "none" or "required"`);
+    if (raw.action === "http" && (!isStr(raw.method) || !isStr(raw.url)))
+      return fail(`${at}: http step needs method and url`);
+    if (raw.action === "escalate" && !isStr(raw.group)) return fail(`${at}: escalate step needs group`);
+    if (raw.action === "wait" && !(typeof raw.duration === "string" && DURATION.test(raw.duration)))
+      return fail(`${at}: wait step needs duration like 30s, 2m, 1h`);
+    steps.push({ ...raw, approval });
+  }
+  return { ok: true, runbook: { ...x, matches, steps } as unknown as Runbook };
+}
