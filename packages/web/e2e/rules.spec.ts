@@ -11,17 +11,30 @@ const rule = {
   when: "alert.severity = critical",
   who: [{ condition: "alert.environment = prod", recipients: [{ type: "group", id: "oncall" }], force: ["sms"] }],
   looks: { titleTemplate: "{{alert.title}}", fields: ["alert.source"] },
+  dedupFields: ["source"],
   createdAt: "2026-01-01T00:00:00Z",
   updatedAt: "2026-01-01T00:00:00Z",
 };
 
-async function mock(page: Page) {
+async function mock(page: Page, saves: unknown[] = []) {
   const suggestions = [
     { id: "s1", ruleId: "r1", author: "ana", text: "Also page the DBA group", status: "open", createdAt: "2026-01-02T00:00:00Z" },
     { id: "s2", ruleId: "r1", author: "bo", text: "Old idea", status: "dismissed", createdAt: "2026-01-02T00:00:00Z" },
   ];
-  await page.route("**/api/rules", (r) => r.fulfill({ json: [rule] }));
-  await page.route("**/api/rules/r1", (r) => r.fulfill({ json: rule }));
+  await page.route("**/api/rules", (r) => {
+    if (r.request().method() === "POST") {
+      saves.push(r.request().postDataJSON());
+      return r.fulfill({ status: 201, json: r.request().postDataJSON() });
+    }
+    return r.fulfill({ json: [rule] });
+  });
+  await page.route("**/api/rules/r1", (r) => {
+    if (r.request().method() === "PUT") {
+      saves.push(r.request().postDataJSON());
+      return r.fulfill({ json: r.request().postDataJSON() });
+    }
+    return r.fulfill({ json: rule });
+  });
   await page.route("**/api/rules/r1/suggestions", (r) => r.fulfill({ json: suggestions }));
   await page.route("**/api/rules/r1/export", (r) =>
     r.fulfill({ contentType: "application/yaml", body: "id: r1\nname: Critical prod alerts\n" }),
@@ -36,7 +49,8 @@ for (const scheme of ["light", "dark"] as const) {
     test.use({ colorScheme: scheme, viewport: { width: 1280, height: 1000 } });
 
     test("list, editor, test filter, suggestions", async ({ page }) => {
-      await mock(page);
+      const saves: Array<Record<string, unknown>> = [];
+      await mock(page, saves);
       await page.goto("/rules");
       await expect(page.getByRole("link", { name: "Critical prod alerts" })).toBeVisible();
       await expect(page.getByRole("link", { name: "New rule" })).toBeVisible();
@@ -52,6 +66,18 @@ for (const scheme of ["light", "dark"] as const) {
       await expect(page.getByText("Old idea")).toHaveCount(0);
       await page.screenshot({ path: path.join(shots, `rules-${scheme}.png`), fullPage: true });
 
+      await page.getByRole("button", { name: "Save rule" }).click();
+      await expect(page.getByText("Saved")).toBeVisible();
+      expect(saves[0]).toMatchObject({ id: "r1", dedupFields: ["source"] });
+
+      await page.goto("/rules/new");
+      await page.getByLabel("Name").fill("Brand New");
+      await expect(page.getByLabel("Id")).toHaveValue("brand-new");
+      await page.getByRole("button", { name: "Save rule" }).click();
+      await expect.poll(() => saves.length).toBe(2);
+      expect(saves[1]).toMatchObject({ id: "brand-new", name: "Brand New" });
+
+      await page.goto("/rules/r1");
       await page.getByRole("button", { name: "Accept" }).click();
       await expect(page.getByText("Also page the DBA group")).toHaveCount(0);
     });

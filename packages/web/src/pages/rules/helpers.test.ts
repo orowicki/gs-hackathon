@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildPayload, emptyDraft, filterText, moveRow, parseRecipients, ruleToDraft, shortText, validateDraft } from "./helpers";
+import { buildPayload, buildRule, newWhoDraft, slugify, emptyDraft, filterText, moveRow, parseRecipients, ruleToDraft, shortText, validateDraft } from "./helpers";
 
 describe("rules helpers", () => {
   it("parses recipients", () => {
@@ -12,7 +12,7 @@ describe("rules helpers", () => {
 
   it("builds a payload omitting empty optionals", () => {
     const d = { ...emptyDraft(), name: " N ", when: " alert.severity = critical ", fields: "a, b" };
-    d.who = [{ condition: "", recipients: "group:oncall", force: "sms, push" }];
+    d.who = [newWhoDraft({ recipients: "group:oncall", force: "sms, push" })];
     expect(buildPayload(d)).toEqual({
       name: "N",
       enabled: true,
@@ -24,7 +24,7 @@ describe("rules helpers", () => {
 
   it("validates", () => {
     expect(validateDraft(emptyDraft())).toEqual(["Name is required."]);
-    const d = { ...emptyDraft(), name: "x", who: [{ condition: "", recipients: "", force: "" }] };
+    const d = { ...emptyDraft(), name: "x", who: [newWhoDraft()] };
     expect(validateDraft(d)).toHaveLength(1);
   });
 
@@ -49,5 +49,27 @@ describe("rules helpers", () => {
     expect(moveRow([1, 2, 3], 0, -1)).toEqual([1, 2, 3]);
     expect(shortText("a".repeat(100), 10)).toHaveLength(10);
     expect(filterText(undefined)).toBe("");
+  });
+
+  it("builds full entities for create and update", () => {
+    const d = { ...emptyDraft(), id: "r1", name: "N" };
+    const created = buildRule(d, { id: "r1", now: "T" });
+    expect(created).toMatchObject({ id: "r1", createdAt: "T", updatedAt: "T", name: "N" });
+    const loaded = {
+      id: "r1", name: "Old", enabled: true, when: "", who: [], looks: { titleTemplate: "t", fields: [] },
+      dedupFields: ["source"], createdAt: "C", updatedAt: "U",
+    } as never;
+    const updated = buildRule(d, { id: "r1", loaded, now: "T" }) as unknown as Record<string, unknown>;
+    expect(updated).toMatchObject({ id: "r1", name: "N", dedupFields: ["source"], createdAt: "C", updatedAt: "T" });
+    expect(JSON.stringify(updated)).not.toContain("key");
+  });
+
+  it("validates ids on create and slugifies", () => {
+    expect(slugify("Critical Prod!")).toBe("critical-prod");
+    const ok = { ...emptyDraft(), name: "x", id: "ok-1" };
+    expect(validateDraft(ok, true)).toEqual([]);
+    expect(validateDraft({ ...ok, id: "import" }, true)).toHaveLength(1);
+    expect(validateDraft({ ...ok, id: "Bad Id" }, true)).toHaveLength(1);
+    expect(validateDraft({ ...ok, id: "" }, false)).toEqual([]);
   });
 });

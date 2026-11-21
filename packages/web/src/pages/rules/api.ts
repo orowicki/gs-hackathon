@@ -1,5 +1,4 @@
 import type { Rule } from "@alerting/shared";
-import type { RulePayload } from "./helpers";
 
 export interface Suggestion {
   id: string;
@@ -38,15 +37,16 @@ async function errorOf(res: Response): Promise<Error> {
 async function send<T>(method: string, url: string, body?: BodyInit, type?: string): Promise<T> {
   const res = await fetch(url, { method, headers: type ? { "content-type": type } : undefined, body });
   if (!res.ok) throw await errorOf(res);
-  return (await res.json()) as T;
+  const text = await res.text();
+  return (text.trim() === "" ? undefined : JSON.parse(text)) as T;
 }
 
 const jsonBody = (v: unknown) => JSON.stringify(v);
 
 export const listRules = () => send<Rule[]>("GET", "/api/rules");
 export const getRule = (id: string) => send<Rule>("GET", "/api/rules/" + encodeURIComponent(id));
-export const createRule = (p: RulePayload) => send<Rule>("POST", "/api/rules", jsonBody(p), "application/json");
-export const updateRule = (id: string, p: RulePayload) =>
+export const createRule = (p: Rule) => send<Rule>("POST", "/api/rules", jsonBody(p), "application/json");
+export const updateRule = (id: string, p: Rule) =>
   send<Rule>("PUT", "/api/rules/" + encodeURIComponent(id), jsonBody(p), "application/json");
 export const testFilter = (filter: string) =>
   send<TestResult>("POST", "/api/events/test-filter", jsonBody({ filter }), "application/json");

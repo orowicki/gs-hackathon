@@ -2,6 +2,8 @@ import { print, type FilterNode } from "@alerting/filter";
 import type { Filter, RecipientRef, Rule, Severity } from "@alerting/shared";
 
 export interface WhoDraft {
+  /** Stable client-side key, never sent to the server. */
+  key: string;
   condition: string;
   /** Comma separated `person:id` / `group:id` (a bare id means person). */
   recipients: string;
@@ -10,6 +12,7 @@ export interface WhoDraft {
 }
 
 export interface RuleDraft {
+  id: string;
   name: string;
   enabled: boolean;
   when: string;
@@ -23,8 +26,25 @@ export interface RuleDraft {
 
 export const SEVERITY_OPTIONS: Severity[] = ["critical", "error", "warning", "info"];
 
+let keySeq = 0;
+export function newWhoDraft(p: Partial<WhoDraft> = {}): WhoDraft {
+  keySeq += 1;
+  return { key: "w" + keySeq, condition: "", recipients: "", force: "", ...p };
+}
+
+const RESERVED_IDS = new Set(["import", "export", "test"]);
+export const ID_PATTERN = /^[a-z0-9][a-z0-9_-]*$/;
+
+export function slugify(name: string): string {
+  return name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
 export function emptyDraft(): RuleDraft {
   return {
+    id: "",
     name: "",
     enabled: true,
     when: "",
@@ -72,10 +92,11 @@ export function recipientsText(r: RecipientRef[]): string {
 
 export function ruleToDraft(rule: Rule): RuleDraft {
   return {
+    id: rule.id,
     name: rule.name,
     enabled: rule.enabled,
     when: filterText(rule.when),
-    who: rule.who.map((w) => ({
+    who: rule.who.map((w) => newWhoDraft({
       condition: filterText(w.condition),
       recipients: recipientsText(w.recipients),
       force: (w.force ?? []).join(", "),
@@ -89,6 +110,13 @@ export function ruleToDraft(rule: Rule): RuleDraft {
 }
 
 export type RulePayload = Pick<Rule, "name" | "enabled" | "when" | "who" | "looks">;
+
+/** Full entity for POST/PUT: the loaded rule's extra fields are kept (PUT replaces the entity). */
+export function buildRule(d: RuleDraft, opts: { id: string; loaded?: Rule; now?: string }): Rule {
+  const now = opts.now ?? new Date().toISOString();
+  const base = opts.loaded ?? { createdAt: now };
+  return { ...base, ...buildPayload(d), id: opts.id, updatedAt: now } as Rule;
+}
 
 export function buildPayload(d: RuleDraft): RulePayload {
   const looks: RulePayload["looks"] = { titleTemplate: d.titleTemplate, fields: splitList(d.fields) };
@@ -111,8 +139,12 @@ export function buildPayload(d: RuleDraft): RulePayload {
 }
 
 /** Returns a list of problems; empty when the draft can be saved. */
-export function validateDraft(d: RuleDraft): string[] {
+export function validateDraft(d: RuleDraft, isNew = false): string[] {
   const errs: string[] = [];
+  if (isNew) {
+    if (!ID_PATTERN.test(d.id)) errs.push("Id must use lowercase letters, digits, - or _.");
+    else if (RESERVED_IDS.has(d.id)) errs.push(`"${d.id}" is reserved and cannot be used as an id.`);
+  }
   if (d.name.trim() === "") errs.push("Name is required.");
   if (d.titleTemplate.trim() === "") errs.push("Title template is required.");
   d.who.forEach((w, i) => {

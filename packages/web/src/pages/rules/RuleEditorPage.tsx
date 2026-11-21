@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
+import type { Rule } from "@alerting/shared";
 import { FilterBar } from "../../components/filter-bar";
 import {
   acceptSuggestion,
@@ -14,7 +15,7 @@ import {
   type Suggestion,
   type TestResult,
 } from "./api";
-import { buildPayload, emptyDraft, moveRow, ruleToDraft, SEVERITY_OPTIONS, validateDraft, type RuleDraft, type WhoDraft } from "./helpers";
+import { buildRule, emptyDraft, moveRow, newWhoDraft, ruleToDraft, slugify, SEVERITY_OPTIONS, validateDraft, type RuleDraft, type WhoDraft } from "./helpers";
 import "./rules.css";
 
 const FIELDS = [
@@ -36,11 +37,14 @@ const noop = () => {};
 export function RuleEditorPage() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
+  const [loadedRule, setLoadedRule] = useState<Rule | undefined>(undefined);
+  const [idTouched, setIdTouched] = useState(false);
   const isNew = id === undefined;
   const [draft, setDraft] = useState<RuleDraft>(emptyDraft());
   const [loaded, setLoaded] = useState(isNew);
   const [errors, setErrors] = useState<string[]>([]);
-  const [saved, setSaved] = useState(false);
+  const [saved, setSaved] = useState((location.state as { saved?: boolean } | null)?.saved === true);
   const [test, setTest] = useState<TestResult | null>(null);
   const [testError, setTestError] = useState<string | null>(null);
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
@@ -53,6 +57,7 @@ export function RuleEditorPage() {
     getRule(id).then(
       (r) => {
         if (!live) return;
+        setLoadedRule(r);
         setDraft(ruleToDraft(r));
         setLoaded(true);
       },
@@ -60,29 +65,35 @@ export function RuleEditorPage() {
     );
     listSuggestions(id).then(
       (s) => live && setSuggestions(s.filter((x) => x.status === "open")),
-      () => {},
+      (e: Error) => live && setSugError("Could not load suggestions: " + e.message),
     );
     return () => {
       live = false;
     };
   }, [id]);
 
-  const set = (p: Partial<RuleDraft>) => {
-    setDraft((d) => ({ ...d, ...p }));
+  const set = (p: Partial<RuleDraft> | ((d: RuleDraft) => Partial<RuleDraft>)) => {
+    setDraft((d) => ({ ...d, ...(typeof p === "function" ? p(d) : p) }));
     setSaved(false);
   };
-  const setRow = (i: number, p: Partial<WhoDraft>) => set({ who: draft.who.map((w, j) => (j === i ? { ...w, ...p } : w)) });
+  const setRow = (key: string, p: Partial<WhoDraft>) =>
+    set((d) => ({ who: d.who.map((w) => (w.key === key ? { ...w, ...p } : w)) }));
 
   async function save() {
-    const problems = validateDraft(draft);
+    const problems = validateDraft(draft, isNew);
     setErrors(problems);
     setSaved(false);
     if (problems.length > 0) return;
     try {
-      const payload = buildPayload(draft);
-      const rule = isNew ? await createRule(payload) : await updateRule(id, payload);
-      setSaved(true);
-      if (isNew) navigate("/rules/" + encodeURIComponent(rule.id), { replace: true });
+      if (isNew) {
+        const rule = await createRule(buildRule(draft, { id: draft.id }));
+        navigate("/rules/" + encodeURIComponent(rule.id), { replace: true, state: { saved: true } });
+      } else {
+        const rule = await updateRule(id, buildRule(draft, { id, loaded: loadedRule }));
+        setLoadedRule(rule);
+        setDraft(ruleToDraft(rule));
+        setSaved(true);
+      }
     } catch (e) {
       setErrors([(e as Error).message]);
     }
@@ -142,15 +153,36 @@ export function RuleEditorPage() {
         <h2 id="step-when">When</h2>
         <label>
           Name
-          <input type="text" value={draft.name} onChange={(e) => set({ name: e.target.value })} />
+          <input
+            type="text"
+            value={draft.name}
+            onChange={(e) => set(idTouched || !isNew ? { name: e.target.value } : { name: e.target.value, id: slugify(e.target.value) })}
+          />
         </label>
+        {isNew && (
+          <label>
+            Id
+            <input
+              type="text"
+              value={draft.id}
+              onChange={(e) => {
+                setIdTouched(true);
+                set({ id: e.target.value });
+              }}
+            />
+          </label>
+        )}
         <label className="inline">
           <input type="checkbox" checked={draft.enabled} onChange={(e) => set({ enabled: e.target.checked })} />
           Enabled
         </label>
         <FilterBar
           value={draft.when}
-          onChange={(t) => set({ when: t })}
+          onChange={(t) => {
+            set({ when: t });
+            setTest(null);
+            setTestError(null);
+          }}
           onApply={noop}
           fields={FIELDS}
           valuesFor={valuesFor}
@@ -179,33 +211,33 @@ export function RuleEditorPage() {
         <h2 id="step-who">Who</h2>
         {draft.who.length === 0 && <p className="muted">No rows. Add one to notify people.</p>}
         {draft.who.map((w, i) => (
-          <div key={i} className="who-row" role="group" aria-label={`Who row ${i + 1}`}>
+          <div key={w.key} className="who-row" role="group" aria-label={`Who row ${i + 1}`}>
             <label>
               Condition (optional)
-              <input type="text" value={w.condition} onChange={(e) => setRow(i, { condition: e.target.value })} />
+              <input type="text" value={w.condition} onChange={(e) => setRow(w.key, { condition: e.target.value })} />
             </label>
             <label>
               Recipients (person:id or group:id, comma separated)
-              <input type="text" value={w.recipients} onChange={(e) => setRow(i, { recipients: e.target.value })} />
+              <input type="text" value={w.recipients} onChange={(e) => setRow(w.key, { recipients: e.target.value })} />
             </label>
             <label>
               Force channels (optional, comma separated)
-              <input type="text" value={w.force} onChange={(e) => setRow(i, { force: e.target.value })} />
+              <input type="text" value={w.force} onChange={(e) => setRow(w.key, { force: e.target.value })} />
             </label>
             <div className="actions">
-              <button type="button" disabled={i === 0} onClick={() => set({ who: moveRow(draft.who, i, i - 1) })}>
+              <button type="button" disabled={i === 0} onClick={() => set((d) => ({ who: moveRow(d.who, i, i - 1) }))}>
                 Move up
               </button>
-              <button type="button" disabled={i === draft.who.length - 1} onClick={() => set({ who: moveRow(draft.who, i, i + 1) })}>
+              <button type="button" disabled={i === draft.who.length - 1} onClick={() => set((d) => ({ who: moveRow(d.who, i, i + 1) }))}>
                 Move down
               </button>
-              <button type="button" onClick={() => set({ who: draft.who.filter((_, j) => j !== i) })}>
+              <button type="button" onClick={() => set((d) => ({ who: d.who.filter((x) => x.key !== w.key) }))}>
                 Remove row
               </button>
             </div>
           </div>
         ))}
-        <button type="button" onClick={() => set({ who: [...draft.who, { condition: "", recipients: "", force: "" }] })}>
+        <button type="button" onClick={() => set((d) => ({ who: [...d.who, newWhoDraft()] }))}>
           Add row
         </button>
       </section>
@@ -262,7 +294,7 @@ export function RuleEditorPage() {
       {!isNew && (
         <section className="step" aria-labelledby="step-sug">
           <h2 id="step-sug">Suggestions</h2>
-          {suggestions.length === 0 && <p className="muted">No open suggestions.</p>}
+          {suggestions.length === 0 && !sugError && <p className="muted">No open suggestions.</p>}
           {sugError && (
             <p role="alert" className="error">
               {sugError}
