@@ -32,7 +32,10 @@ const sourceShape = {
   type: z.enum(["http", "file_tail", "redis_stream", "kafka"]),
   config: z
     .record(z.string(), z.unknown())
-    .describe("http: {}. file_tail: { path }. redis_stream: { stream, consumerGroup }. kafka: { brokers, topic, groupId }"),
+    .describe(
+      "http: {}. file_tail: { path }. redis_stream: { stream, consumerGroup }. " +
+        "kafka: { brokers (comma-separated), topic, groupId, fromBeginning? }",
+    ),
 };
 
 const fieldMapping = z
