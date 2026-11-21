@@ -8,3 +8,4 @@ export * from "./event-store.js";
 export * from "./worker.js";
 export * from "./runner.js";
 export { migrate as migrateIngest } from "./migrate.js";
+export * from "./map-event.js";
