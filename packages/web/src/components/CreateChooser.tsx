@@ -41,24 +41,45 @@ export function CreateChooser({
           <p className="page-intro">{intro}</p>
         </div>
       </header>
-      <div className="chooser-grid" role="radiogroup" aria-label="How to create it">
-        {options.map((o) => (
-          <button
-            key={o.id}
-            type="button"
-            role="radio"
-            aria-checked={selected === o.id}
-            className={selected === o.id ? "choice selected" : "choice"}
-            onClick={() => onSelect(o.id)}
-          >
-            <span className="choice-icon">
+      {idle ? (
+        <div className="chooser-grid" role="radiogroup" aria-label="How to create it">
+          {options.map((o) => (
+            <button
+              key={o.id}
+              type="button"
+              role="radio"
+              aria-checked={selected === o.id}
+              className={selected === o.id ? "choice selected" : "choice"}
+              onClick={() => onSelect(o.id)}
+            >
+              <span className="choice-icon">
+                <Icon as={o.icon} />
+              </span>
+              <span className="choice-title">{o.title}</span>
+              <span className="choice-text">{o.description}</span>
+            </button>
+          ))}
+        </div>
+      ) : (
+        // Once a way is picked, the options become tabs: one click to switch, and the
+        // chosen panel gets the page.
+        <div className="chooser-tabs" role="radiogroup" aria-label="How to create it">
+          {options.map((o) => (
+            <button
+              key={o.id}
+              type="button"
+              role="radio"
+              aria-checked={selected === o.id}
+              title={o.description}
+              className={selected === o.id ? "chooser-tab on" : "chooser-tab"}
+              onClick={() => onSelect(o.id)}
+            >
               <Icon as={o.icon} />
-            </span>
-            <span className="choice-title">{o.title}</span>
-            <span className="choice-text">{o.description}</span>
-          </button>
-        ))}
-      </div>
+              {o.title}
+            </button>
+          ))}
+        </div>
+      )}
       {hasContent(children) && <div className="chooser-panel">{children}</div>}
     </div>
   );
