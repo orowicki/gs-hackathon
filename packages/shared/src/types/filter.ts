@@ -1,49 +1,29 @@
-export const COMPARISON_OPS = [
-  "=",
-  "!=",
-  ">",
-  ">=",
-  "<",
-  "<=",
-  "contains",
-  "in",
-  "matches",
-] as const;
-export type ComparisonOp = (typeof COMPARISON_OPS)[number];
+// Mirrors packages/filter/src/types.ts (contract: docs/autopilot/interfaces/filter.md).
+// Duplicated on purpose so shared has no dependency on @alerting/filter.
 
-/** Value is a scalar, or a list for `in`. `matches` takes a glob string. */
-export type FilterValue = string | number | boolean | null | Array<string | number | boolean>;
+/** Comparison operators that take a single value (`in` is its own node). */
+export const COMPARISON_OPS = ["=", "!=", ">", ">=", "<", "<=", "contains", "matches"] as const;
+export type CmpOp = (typeof COMPARISON_OPS)[number];
+export type ComparisonOp = CmpOp;
+
+export type FilterValue = string | number;
 
 /**
- * Field is `alert.<commonField>` (also `alert.schema`) or a raw event path
- * such as `payload.notional` or `error.code`.
+ * The parsed JSON tree of a filter expression. Field is `alert.<commonField>`
+ * (also `alert.schema`) or a raw event path such as `payload.notional`.
  */
-export interface FilterComparison {
-  type: "comparison";
-  field: string;
-  op: ComparisonOp;
-  value: FilterValue;
-}
-export interface FilterAnd {
-  type: "and";
-  children: FilterNode[];
-}
-export interface FilterOr {
-  type: "or";
-  children: FilterNode[];
-}
-export interface FilterNot {
-  type: "not";
-  child: FilterNode;
-}
-/** The parsed JSON tree of a filter expression. */
-export type FilterNode = FilterComparison | FilterAnd | FilterOr | FilterNot;
+export type FilterNode =
+  | { type: "and"; children: FilterNode[] }
+  | { type: "or"; children: FilterNode[] }
+  | { type: "not"; child: FilterNode }
+  | { type: "cmp"; field: string; op: CmpOp; value: FilterValue }
+  | { type: "in"; field: string; values: FilterValue[] };
 
 /** A filter is stored and accepted either as text or as the JSON tree. */
 export type Filter = string | FilterNode;
 
 export interface FilterParseError {
   message: string;
-  /** 0-based character offset into the text. */
+  /** 1-based column into the text. */
   position: number;
 }

@@ -7,7 +7,7 @@ Source of truth: `packages/shared/src/types/*.ts` (import from `@alerting/shared
 | Event | `event.ts` | id, sourceId, receivedAt, raw, parsed, schemaId or null, `common` (Partial when no schema matched) |
 | Source | `source.ts` | `http`, `file_tail`, `redis_stream` with per-type config; parser `json`, `logfmt`, `regex`, `raw` |
 | Schema, FieldMapping | `schema.ts` | `match` filter + mapping per common field: path, constant or template, optional valueMap and default |
-| Filter, FilterNode | `filter.ts` | text, or JSON tree: comparison (ops `= != > >= < <= contains in matches`), and, or, not |
+| Filter, FilterNode | `filter.ts` | text, or JSON tree with node types `cmp` (`field`, `op` in `= != > >= < <= contains matches`, `value`), `in` (`field`, `values`), `and`, `or`, `not`; source of truth is `filter.md` |
 | Rule | `rule.ts` | `when` filter, `who` rows (condition, recipients, optional `force`), `looks` |
 | Person, Group, Preference | `people.ts` | preferences are filter to channels rules plus quiet hours |
 | Alert, AuditEntry, Suggestion | `alert.ts` | states open, acknowledged, resolved |
