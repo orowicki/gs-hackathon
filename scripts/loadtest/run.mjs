@@ -7,6 +7,7 @@ import { dirname, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { createConfigStore } from "@alerting/config";
 import { Redis } from "ioredis";
+import pg from "pg";
 import { writeChart } from "./chart.mjs";
 import { TMP_PREFIX, purgeLoadtestData } from "./cleanup.mjs";
 import { aggregateRuns, evaluateTargets, perSecondSeries, summarize } from "./stats.mjs";
@@ -19,7 +20,7 @@ const GROUP_PARSE = "parse";
 const GROUP_ENGINE = "engine";
 const PREFLIGHT_THRESHOLD = 100;
 // Temporary entities carry this prefix plus the run id; stale ones from crashed runs are deleted at start.
-const ids = (runId) => ({ source: `${TMP_PREFIX}${runId}`, person: `${TMP_PREFIX}bot-${runId}`, rule: `${TMP_PREFIX}rule-${runId}` });
+const ids = (runId) => ({ source: `${TMP_PREFIX}${runId}`, person: `${TMP_PREFIX}bot-${runId}`, rule: `${TMP_PREFIX}rule-${runId}`, schema: `${TMP_PREFIX}schema-${runId}` });
 export const WORKERS_NOTE =
   "The api process runs an in-process ingest parse worker, so N workers means N engines and N+1 parse consumers (N standalone ingest workers plus the api's own).";
 
@@ -59,6 +60,7 @@ export function parseArgs(argv, env = process.env, now = new Date()) {
     else if (a === "--cleanup-only") o.cleanupOnly = true;
     else if (a === "--preflight-timeout") o.preflightTimeout = num(a, next());
     else if (a === "--repeat") o.repeat = Math.floor(num(a, next()));
+    else if (a === "--repeat-keys") o.repeatKeys = Math.floor(num(a, next()));
     else if (a === "--no-chart") o.chart = false;
     else throw new Error(`unknown argument ${a}`);
   }
@@ -73,6 +75,13 @@ export function parseArgs(argv, env = process.env, now = new Date()) {
   const date = now.toISOString().slice(0, 10);
   o.out ??= `results/${o.smoke ? "smoke/" : ""}loadtest-${date}${o.workers > 1 ? `-workers${o.workers}` : ""}.json`;
   return o;
+}
+
+/** Identical events (one dedup key): the temporary schema maps them all to the same common.dedupKey. */
+export function buildRepeatBatch(runId, firstSeq, count, ts) {
+  const out = [];
+  for (let i = 0; i < count; i++) out.push({ run: `${runId}rk`, repeat: true, seq: firstSeq + i, ts, message: `loadtest ${runId} repeat` });
+  return out;
 }
 
 /** Event payloads for one batch. Every event is unique (seq in message) so dedup cannot merge them. */
@@ -90,6 +99,13 @@ function entities(runId) {
   const stamp = "2026-11-01T00:00:00Z";
   return {
     source: { id: SOURCE_ID, name: "Load test (temporary)", type: "http", enabled: true, parser: { type: "json" }, config: {} },
+    // only matches the repeat-keys events; gives them one constant dedupKey so the engine folds them into one alert
+    schema: {
+      id: ids(runId).schema,
+      name: `Load test repeat keys (temporary, ${runId})`,
+      match: `run matches "${runId}rk*"`,
+      mapping: { dedupKey: { kind: "constant", value: `${TMP_PREFIX}rk-${runId}` }, title: { kind: "constant", value: "loadtest repeat" } },
+    },
     person: { id: PERSON_ID, name: "Load test bot", role: "temporary", canCreateRules: false },
     rule: {
       id: RULE_ID,
@@ -107,7 +123,7 @@ function entities(runId) {
 /** Remove temporary config entries (ids created by this script) left over from crashed earlier runs. */
 async function purgeStaleConfig(store) {
   let n = 0;
-  for (const kind of ["rule", "source", "person"]) {
+  for (const kind of ["rule", "source", "person", "schema"]) {
     for (const x of await store.list(kind)) {
       if (String(x.id).startsWith(TMP_PREFIX)) {
         await store.delete(kind, x.id);
@@ -119,11 +135,11 @@ async function purgeStaleConfig(store) {
 }
 
 /** Upsert the temporary source, person and rule into the config store; returns an async cleanup. */
-async function installConfig(store, runId) {
+async function installConfig(store, runId, withSchema = false) {
   const e = entities(runId);
   await purgeStaleConfig(store);
   const undo = async () => {
-    for (const [kind, entity] of [["rule", e.rule], ["source", e.source], ["person", e.person]]) {
+    for (const [kind, entity] of [["rule", e.rule], ["source", e.source], ["person", e.person], ["schema", e.schema]]) {
       try {
         await store.delete(kind, entity.id);
       } catch (err) {
@@ -135,6 +151,7 @@ async function installConfig(store, runId) {
     await store.upsert("person", e.person);
     await store.upsert("source", e.source);
     await store.upsert("rule", e.rule);
+    if (withSchema) await store.upsert("schema", e.schema);
   } catch (err) {
     await undo();
     throw err;
@@ -418,7 +435,7 @@ async function main() {
     phase = "setup";
     store = createConfigStore({ databaseUrl: opts.databaseUrl, redisUrl: opts.redis });
     if (!opts.keepData) await purgeLoadtestData({ redis: probeConn, databaseUrl: opts.databaseUrl });
-    const undoConfig = await installConfig(store, runId);
+    const undoConfig = await installConfig(store, runId, !!opts.repeatKeys);
     cleanup = async () => {
       await undoConfig();
       if (!opts.keepData) await purgeLoadtestData({ redis: probeConn, databaseUrl: opts.databaseUrl }).catch((e) => console.error(`loadtest: data purge failed: ${e.message}`));
@@ -455,6 +472,13 @@ async function main() {
       }
     }
     result = aggregateRuns(runs, opts.repeat);
+    if (opts.repeatKeys) {
+      phase = "repeat-keys";
+      await waitForIdle(probeConn, opts.preflightTimeout * 1000, "repeat-keys preflight");
+      result.repeatKeys = await runRepeatKeys(opts, runId, post);
+      console.error(`loadtest: repeat-keys ${JSON.stringify(result.repeatKeys)}`);
+      if (!result.repeatKeys.ok) result.targets = { ...result.targets, met: false };
+    }
   } catch (e) {
     console.error(`loadtest ${phase} failed: ${e.stack ?? e.message}`);
     await collector.stop();
@@ -474,6 +498,44 @@ async function main() {
     `sent=${result.sent} accepted=${result.accepted} alertsSeen=${result.alertsSeen} p50=${e.p50}ms p99=${e.p99}ms lost=${result.lost} backlogAtEnd=${result.backlogAtEnd} overloaded=${result.overloaded} targetsMet=${result.targets.met} -> ${opts.out}`,
   );
   process.exit(0);
+}
+
+/**
+ * Send `opts.repeatKeys` identical events (one dedup key) and check Postgres: exactly one alert with
+ * count == events. Events go in batches of 50 so the stream order is the send order.
+ */
+async function runRepeatKeys(opts, runId, post) {
+  const events = opts.repeatKeys;
+  const ruleId = ids(runId).rule;
+  const key = `${TMP_PREFIX}rk-${runId}`;
+  await sleep(1000); // let the schema reach the ingest workers
+  let accepted = 0;
+  for (let sent = 0; sent < events; ) {
+    const n = Math.min(50, events - sent);
+    const r = await post(JSON.stringify(buildRepeatBatch(runId, sent, n, Date.now())));
+    if (r.status !== 202) throw new Error(`repeat-keys: ingest answered ${r.status}`);
+    accepted += Number.isFinite(r.accepted) ? Math.min(r.accepted, n) : n;
+    sent += n;
+  }
+  const pool = new pg.Pool({ connectionString: opts.databaseUrl, max: 1 });
+  let alerts = 0;
+  let count = 0;
+  try {
+    const deadline = Date.now() + 60_000;
+    for (;;) {
+      const r = await pool.query(
+        "SELECT count(*)::int AS alerts, COALESCE(sum((data->>'count')::int), 0)::int AS count FROM alerts WHERE rule_id = $1 AND dedup_key = $2",
+        [ruleId, key],
+      );
+      alerts = r.rows[0].alerts;
+      count = r.rows[0].count;
+      if (count >= accepted || Date.now() > deadline) break;
+      await sleep(250);
+    }
+  } finally {
+    await pool.end();
+  }
+  return { events, accepted, alerts, count, ok: accepted === events && alerts === 1 && count === events };
 }
 
 async function measure(opts, runId, post, collector, seqBase = 0, probeConn) {

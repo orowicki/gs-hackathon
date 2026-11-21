@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { PG_STATEMENTS, REDIS_PATTERNS, purgeRedisPattern } from "./cleanup.mjs";
 import { renderChart } from "./chart.mjs";
-import { buildBatch, groupBacklog, parseArgs, parseGroups } from "./run.mjs";
+import { buildBatch, buildRepeatBatch, groupBacklog, parseArgs, parseGroups } from "./run.mjs";
 import { aggregateRuns, evaluateTargets, median, histogram, percentile, perSecondSeries, summarize } from "./stats.mjs";
 
 describe("stats", () => {
@@ -169,5 +169,17 @@ describe("cleanup", () => {
     for (const [, sql] of PG_STATEMENTS) expect(sql).toContain("LIKE $1");
     expect(PG_STATEMENTS.map(([n]) => n)).toEqual(["alert_audit", "suggestions", "alerts", "events"]);
     expect(parseArgs(["--keep-data", "--cleanup-only"], {})).toMatchObject({ keepData: true, cleanupOnly: true });
+  });
+});
+
+describe("repeat-keys", () => {
+  it("parseArgs and identical-key batch", () => {
+    expect(parseArgs(["--repeat-keys", "500"], {}).repeatKeys).toBe(500);
+    expect(parseArgs([], {}).repeatKeys).toBeUndefined();
+    expect(() => parseArgs(["--repeat-keys", "0"], {})).toThrow();
+    const b = buildRepeatBatch("abc", 10, 3, 1);
+    expect(b).toHaveLength(3);
+    expect(new Set(b.map((e) => e.run))).toEqual(new Set(["abcrk"]));
+    expect(new Set(b.map((e) => e.message)).size).toBe(1);
   });
 });

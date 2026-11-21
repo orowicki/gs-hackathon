@@ -72,21 +72,27 @@ export interface ProcessResult {
   failed: Array<{ ruleId: string; error: Error }>;
 }
 
-export function buildAlert(event: Event, rule: CompiledRule, at: Date, entryId: string = event.id): Alert {
-  const looks = renderLooks(rule.rule, event);
+/** The dedup key buildAlert gives the alert of `event` under `rule` (falls back to the unique alert id). */
+export function alertDedupKey(event: Event, rule: CompiledRule, entryId: string = event.id): string {
   const c = event.common as Record<string, unknown>;
-  const id = deterministicId("alert", entryId, rule.rule.id);
   const dedupFromFields = (rule.rule.dedupFields ?? [])
     .map((f) => c[f])
     .filter((v) => v !== undefined && v !== null)
     .join("|");
+  return (c.dedupKey as string | undefined) || dedupFromFields || deterministicId("alert", entryId, rule.rule.id);
+}
+
+export function buildAlert(event: Event, rule: CompiledRule, at: Date, entryId: string = event.id): Alert {
+  const looks = renderLooks(rule.rule, event);
+  const c = event.common as Record<string, unknown>;
+  const id = deterministicId("alert", entryId, rule.rule.id);
   const iso = at.toISOString();
   const alert: Record<string, unknown> = {
     id,
     ruleId: rule.rule.id,
     eventId: event.id,
     schemaId: event.schemaId,
-    dedupKey: (c.dedupKey as string | undefined) || dedupFromFields || id,
+    dedupKey: alertDedupKey(event, rule, entryId),
     state: "open",
     status: "open",
     severity: looks.severity,
@@ -171,6 +177,8 @@ export interface EngineOptions {
   reclaimEveryMs?: number;
   /** Minimum idle time before a pending entry is reclaimed (ms, default 30000). */
   reclaimMinIdleMs?: number;
+  /** Entries read per XREADGROUP and processed concurrently (default 200). */
+  batchSize?: number;
   /** Deliveries after which an event is given up on (logged and acked; default 5). */
   maxDeliveries?: number;
 }
@@ -189,6 +197,7 @@ export function createEngine(opts: EngineOptions): Engine {
   const reclaimEveryMs = opts.reclaimEveryMs ?? 5000;
   const reclaimMinIdleMs = opts.reclaimMinIdleMs ?? 30_000;
   const maxDeliveries = opts.maxDeliveries ?? 5;
+  const batchSize = opts.batchSize ?? 200;
   const queue = createDeliveryQueue(opts.redis);
   let running = false;
   let loop: Promise<void> | undefined;
@@ -252,6 +261,36 @@ export function createEngine(opts: EngineOptions): Engine {
     await ack(id);
   };
 
+  /**
+   * Process a batch concurrently. Entries that resolve to the same (rule, dedupKey) run one after
+   * the other in stream order; everything else overlaps. Never rejects (handle() swallows errors).
+   */
+  const handleBatch = async (entries: Entries) => {
+    const tails = new Map<string, Promise<void>>();
+    const all: Array<Promise<void>> = [];
+    for (const [id, fields] of entries) {
+      let keys: string[] = [];
+      try {
+        const i = fields.indexOf("data");
+        const event = JSON.parse(fields[i + 1] ?? "") as Event;
+        keys = [
+          ...new Set(
+            matchRules(event, rules!.rules(), logger).map((r) => `${r.rule.id}\u0000${alertDedupKey(event, r, id)}`),
+          ),
+        ];
+      } catch {
+        // invalid entries are dropped by handle()
+      }
+      const waits = keys.map((k) => tails.get(k)).filter((p): p is Promise<void> => !!p);
+      const done = (waits.length ? Promise.all(waits).then(() => undefined) : Promise.resolve()).then(() =>
+        handle(id, fields),
+      );
+      for (const k of keys) tails.set(k, done);
+      all.push(done);
+    }
+    await Promise.all(all);
+  };
+
   const deliveryCount = async (id: string): Promise<number> => {
     const r = (await opts.redis.xpending(STREAM_EVENTS, GROUP_ENGINE, id, id, 1)) as unknown as Array<
       [string, string, number, number]
@@ -309,7 +348,7 @@ export function createEngine(opts: EngineOptions): Engine {
           GROUP_ENGINE,
           consumer,
           "COUNT",
-          10,
+          batchSize,
           "BLOCK",
           blockMs,
           "STREAMS",
@@ -317,7 +356,7 @@ export function createEngine(opts: EngineOptions): Engine {
           ">",
         )) as Array<[string, Entries]> | null;
         if (!res) continue;
-        for (const [, entries] of res) for (const [id, fields] of entries) await handle(id, fields);
+        for (const [, entries] of res) await handleBatch(entries);
       } catch (err) {
         if (!running) return;
         const msg = (err as Error).message ?? String(err);
