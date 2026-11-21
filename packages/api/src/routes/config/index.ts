@@ -22,7 +22,7 @@ import {
 import { validateRunbook } from "@alerting/runbooks";
 import type { Preference, Runbook, StarredFilter } from "@alerting/shared";
 import { send } from "../../http.js";
-import { lookupFailed, ruleWriteForbidden } from "../accounts/actor.js";
+import { accountOf, lookupFailed, ruleWriteForbidden } from "../accounts/actor.js";
 
 export interface ConfigDeps {
   config?: ConfigStore;
@@ -113,11 +113,20 @@ function isObj(x: unknown): x is Record<string, unknown> {
   return typeof x === "object" && x !== null && !Array.isArray(x);
 }
 
-/** Accounts whose person has canCreateRules false may not create or edit rules (no account: allowed). */
-function checkRuleWrite(kind: Kind, req: http.IncomingMessage): void {
-  if (kind !== "rule") return;
+const GUARDED: Partial<Record<Kind, string>> = { rule: "rules", person: "people", group: "groups" };
+
+/**
+ * Accounts whose person has canCreateRules false may not create, edit or delete rules, people or
+ * groups (no account: allowed). One exception: editing your own person (name, role, ntfy topic);
+ * changing canCreateRules is still refused by checkPersonPermission.
+ */
+function checkRuleWrite(kind: Kind, req: http.IncomingMessage, own?: { method: string; id?: string }): void {
+  const what = GUARDED[kind];
+  if (!what) return;
   if (lookupFailed(req)) throw new HttpError(503, "account lookup failed; try again");
-  if (ruleWriteForbidden(req)) throw new HttpError(403, "this account may not create or edit rules");
+  if (!ruleWriteForbidden(req)) return;
+  if (kind === "person" && own?.method === "PUT" && own.id !== undefined && own.id === accountOf(req)?.id) return;
+  throw new HttpError(403, `this account may not create, edit or delete ${what}`);
 }
 
 /** An account without canCreateRules may not grant or change that permission on any person. */
@@ -191,7 +200,7 @@ async function handleCrud(
     return send(res, 200, e), true;
   }
   if (method === "PUT") {
-    checkRuleWrite(kind, req);
+    checkRuleWrite(kind, req, { method, id });
     const text = await readText(req, res);
     if (text === undefined) return true;
     const body = parseJson(text);
@@ -209,6 +218,7 @@ async function handleCrud(
     return send(res, 200, entity), true;
   }
   if (method === "DELETE") {
+    checkRuleWrite(kind, req, { method, id });
     if (!(await store.delete(kind, id))) throw new HttpError(404, `${kind} not found: ${id}`);
     res.writeHead(204);
     res.end();

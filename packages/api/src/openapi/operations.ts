@@ -87,22 +87,24 @@ const limitParam = (def: number, max: number): ParamSpec =>
 /** Config store routes can answer 503 when the store is not wired. */
 const CFG = [503];
 
-function crud(type: string, plural: string, base: string): Record<string, OperationSpec> {
+/** guarded: writes answer 403 for an account without canCreateRules (rules, people, groups). */
+function crud(type: string, plural: string, base: string, guarded = false): Record<string, OperationSpec> {
   const cap = type;
+  const G = guarded ? [403] : [];
   return {
     [`GET ${base}`]: { success: json(200, `All ${plural}`, list(cap)), errors: CFG },
     [`POST ${base}`]: {
       request: body(cap, true, `The id must be unique; "import", "export" and "test" are reserved ids.`),
       success: json(201, `The created ${cap} (echo of the request body)`, ref(cap)),
-      errors: [400, 409, 413, ...CFG],
+      errors: [400, ...G, 409, 413, ...CFG],
     },
     [`GET ${base}/{id}`]: { success: json(200, `The ${cap}`, ref(cap)), errors: [400, 404, ...CFG] },
     [`PUT ${base}/{id}`]: {
       request: body(cap, true, "The id in the body must equal the id in the path."),
       success: json(200, `The replaced ${cap}`, ref(cap)),
-      errors: [400, 404, 413, ...CFG],
+      errors: [400, ...G, 404, 413, ...CFG],
     },
-    [`DELETE ${base}/{id}`]: { success: { status: 204, description: `${cap} deleted` }, errors: [400, 404, ...CFG] },
+    [`DELETE ${base}/{id}`]: { success: { status: 204, description: `${cap} deleted` }, errors: [400, ...G, 404, ...CFG] },
   };
 }
 
@@ -177,9 +179,9 @@ export const operationSpecs: Record<string, OperationSpec> = {
 
   ...crud("Source", "sources", "/api/sources"),
   ...crud("Schema", "schemas", "/api/schemas"),
-  ...crud("Rule", "rules", "/api/rules"),
-  ...crud("Person", "people", "/api/people"),
-  ...crud("Group", "groups", "/api/groups"),
+  ...crud("Rule", "rules", "/api/rules", true),
+  ...crud("Person", "people", "/api/people", true),
+  ...crud("Group", "groups", "/api/groups", true),
   ...crud("Runbook", "runbooks", "/api/runbooks"),
   ...prefs("person", "/api/people"),
   ...prefs("group", "/api/groups"),
