@@ -1,0 +1,24 @@
+id: settlement-timeout
+name: Settlement workflow timeout
+type: automation
+matches: type = WORKFLOW_FAILED AND error.code = TIMEOUT
+# Note: the original "if retry fails twice" condition is approximated by the
+# approval gate on the escalate step (our format has no conditional steps).
+steps:
+  - name: Check counterparty-service health
+    action: http
+    method: GET
+    url: http://demo-service:4100/health
+    approval: none
+  - name: "Retry workflow {{workflowId}}"
+    action: http
+    method: POST
+    url: "http://demo-service:4100/workflows/{{workflowId}}/retry"
+    headers:
+      content-type: application/json
+    body: '{"workflowId":"{{workflowId}}","reason":"{{error.code}}"}'
+    approval: none
+  - name: Escalate to counterparty-support
+    action: escalate
+    group: counterparty-support
+    approval: required

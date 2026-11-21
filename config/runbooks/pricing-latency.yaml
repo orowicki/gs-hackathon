@@ -1,0 +1,6 @@
+id: pricing-latency
+name: Pricing latency
+type: text
+matches: alert.source matches "pricing-engine*" OR labels.service matches "pricing-engine*"
+content: |
+  When pricing latency goes over a second, it's usually the cache. Restart the pricing-engine instance named in the alert ({{alert.entity}}), wait 2 minutes, and if latency is still high, call the pricing on-call person.
