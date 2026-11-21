@@ -10,7 +10,7 @@
   },
   "scripts": {
     "build": "tsc -b packages/shared packages/filter packages/api",
-    "lint": "eslint . && tsc -b packages/shared packages/filter packages/api && tsc -p packages/api/tsconfig.test.json && tsc -p packages/filter/tsconfig.test.json",
+    "lint": "eslint . && tsc -b packages/shared packages/filter packages/api && tsc -p packages/api/tsconfig.test.json && tsc -p packages/filter/tsconfig.test.json && tsc -p packages/shared/test/tsconfig.json",
     "test": "vitest run"
   },
   "devDependencies": {

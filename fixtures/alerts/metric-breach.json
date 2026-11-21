@@ -1,0 +1,31 @@
+{
+  "id": "alert-hier-0001",
+  "ruleId": "rule-anna-payments-critical",
+  "eventId": "evt-metric-breach",
+  "schemaId": "schema-metric-breach",
+  "dedupKey": "HighErrorRate-payments-api",
+  "state": "acknowledged",
+  "severity": "critical",
+  "title": "HighErrorRate on payments-api",
+  "body": "Error rate 12% over the last 5 minutes",
+  "source": "payments-api",
+  "environment": "prod",
+  "count": 3,
+  "firstSeen": "2026-10-23T09:13:00.000Z",
+  "lastSeen": "2026-10-23T09:16:00.000Z",
+  "acknowledgedBy": "anna",
+  "acknowledgedAt": "2026-10-23T09:17:30.000Z",
+  "fields": [
+    { "label": "Region", "value": "eu-west" },
+    { "label": "Summary", "value": "Error rate 12% over the last 5 minutes" }
+  ],
+  "common": {
+    "severity": "critical",
+    "title": "HighErrorRate on payments-api",
+    "source": "payments-api",
+    "environment": "prod",
+    "dedupKey": "HighErrorRate-payments-api",
+    "status": "firing",
+    "occurredAt": "2026-10-23T09:13:00.000Z"
+  }
+}
