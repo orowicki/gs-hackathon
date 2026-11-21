@@ -31,7 +31,8 @@ services:
       retries: 10
       start_period: 5s
 
-  # Standalone ingest parse worker + rule engine in one container; scale with WORKERS=N.
+  # Standalone ingest parse worker + rule engine + runbook worker in one container; scale with WORKERS=N.
+  # The runbook worker is its own consumer group ("runbooks") on the alerts stream, so replicas share the work.
   worker:
     build: .
     command:
@@ -40,9 +41,10 @@ services:
       - |
         node packages/ingest/dist/main.js & p1=$$!
         node packages/engine/dist/main.js & p2=$$!
-        trap 'kill $$p1 $$p2 2>/dev/null' TERM INT
-        while kill -0 $$p1 2>/dev/null && kill -0 $$p2 2>/dev/null; do sleep 1; done
-        kill $$p1 $$p2 2>/dev/null
+        node packages/api/dist/runbook-worker.js & p3=$$!
+        trap 'kill $$p1 $$p2 $$p3 2>/dev/null' TERM INT
+        while kill -0 $$p1 2>/dev/null && kill -0 $$p2 2>/dev/null && kill -0 $$p3 2>/dev/null; do sleep 1; done
+        kill $$p1 $$p2 $$p3 2>/dev/null
         exit 1
     environment:
       DATABASE_URL: ${DATABASE_URL:-postgres://alerting:alerting@postgres:5432/alerting}
