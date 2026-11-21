@@ -32,6 +32,7 @@ import {
   ruleToDraft,
   slugify,
   splitList,
+  RULE_INTRO,
   SEVERITY_OPTIONS,
   validateDraft,
   type RuleDraft,
@@ -346,7 +347,11 @@ function Summary({ draft, dir }: { draft: RuleDraft; dir: Directory }) {
   );
 }
 
-export function RuleEditorPage({ initial, tabs }: { initial?: RuleDraft; tabs?: React.ReactNode } = {}) {
+export function RuleEditorPage({
+  initial,
+  tabs,
+  notice,
+}: { initial?: RuleDraft; tabs?: React.ReactNode; notice?: string } = {}) {
   const { id } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
@@ -467,11 +472,12 @@ export function RuleEditorPage({ initial, tabs }: { initial?: RuleDraft; tabs?: 
         <div>
           <h1>{isNew ? "New rule" : draft.name || "Edit rule"}</h1>
           <p className="page-intro">
-            {isNew ? "Four steps. The summary on the right shows what the rule will do." : `Rule id ${draft.id}`}
+            {isNew ? RULE_INTRO : `Rule id ${draft.id}`}
           </p>
         </div>
       </header>
       {tabs}
+      {notice && <p className="callout info">{notice}</p>}
 
       <div className="re-layout">
         <div className="re-steps">

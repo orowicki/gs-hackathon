@@ -26,6 +26,9 @@ export interface RuleDraft {
   dedupFields: string;
 }
 
+/** Intro under "New rule": the same on every tab and in the editor. */
+export const RULE_INTRO = "A rule decides which events become alerts and who gets notified.";
+
 export const SEVERITY_OPTIONS: Severity[] = ["critical", "error", "warning", "info"];
 
 let keySeq = 0;
@@ -172,4 +175,38 @@ export function moveRow<T>(rows: readonly T[], from: number, to: number): T[] {
 export function shortText(s: string, max = 60): string {
   const t = s.replace(/\s+/g, " ").trim();
   return t.length > max ? t.slice(0, max - 1) + "…" : t;
+}
+
+/**
+ * Pasted or uploaded rule YAML -> an editor draft, so an import is reviewed (with the
+ * summary) before it is saved. Same shape as GET /api/rules/:id/export.
+ */
+export function yamlToDraft(text: string, parse: (t: string) => unknown): RuleDraft {
+  let v: unknown;
+  try {
+    v = parse(text);
+  } catch (e) {
+    throw new Error("That isn't valid YAML: " + (e as Error).message.split("\n")[0]);
+  }
+  if (!v || typeof v !== "object" || Array.isArray(v)) throw new Error("Expected one rule (a YAML mapping with name, when, who, looks).");
+  const r = v as Partial<Rule> & Record<string, unknown>;
+  if (typeof r.name !== "string" && typeof r.id !== "string") throw new Error("The rule needs at least a name or an id.");
+  const rule: Rule = {
+    id: typeof r.id === "string" ? r.id : slugify(String(r.name)),
+    name: typeof r.name === "string" ? r.name : String(r.id),
+    enabled: r.enabled !== false,
+    when: r.when ?? "",
+    who: Array.isArray(r.who) ? r.who.map((w) => ({ ...w, recipients: Array.isArray(w?.recipients) ? w.recipients : [] })) : [],
+    looks: {
+      titleTemplate: r.looks?.titleTemplate ?? "{{alert.title}}",
+      fields: Array.isArray(r.looks?.fields) ? r.looks.fields : [],
+      ...(r.looks?.bodyTemplate ? { bodyTemplate: r.looks.bodyTemplate } : {}),
+      ...(r.looks?.severityOverride ? { severityOverride: r.looks.severityOverride } : {}),
+      ...(r.looks?.colour ? { colour: r.looks.colour } : {}),
+    },
+    ...(Array.isArray(r.dedupFields) ? { dedupFields: r.dedupFields } : {}),
+    createdAt: "",
+    updatedAt: "",
+  };
+  return ruleToDraft(rule);
 }
