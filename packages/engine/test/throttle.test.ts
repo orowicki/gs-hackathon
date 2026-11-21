@@ -100,6 +100,18 @@ describe("throttle", () => {
     expect(out[0]!.digestAlertIds).toEqual(["a1", "a2"]);
   });
 
+  it("a digest is not lost when the sending instance dies, another takes over after the lease", async () => {
+    const dead = createThrottle({ redis, max: 1, windowMs: 60_000, now: () => clock, enqueue: () => new Promise(() => {}) });
+    for (let i = 0; i < 4; i++) await dead.beforeEnqueue(note(i));
+    void dead.flushDue(clock + 61_000); // claims, then hangs forever
+    await new Promise((r) => setTimeout(r, 50));
+    const t2 = mk(1);
+    expect(await t2.flushDue(clock + 62_000)).toBe(0); // still leased
+    expect(await t2.flushDue(clock + 61_000 + 31_000)).toBe(1);
+    expect(sent[0]!.digestAlertIds).toEqual(["a1", "a2", "a3"]);
+    expect(await t2.flushDue(clock + 200_000)).toBe(0);
+  });
+
   it("timer start/stop sends due digests", async () => {
     const out: Notification[] = [];
     const t = createThrottle({ redis, max: 1, windowMs: 50, enqueue: (n) => void out.push(n), tickMs: 20 });

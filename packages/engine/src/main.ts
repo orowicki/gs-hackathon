@@ -12,7 +12,8 @@ if (!redisUrl || !databaseUrl) {
 }
 const redis = new Redis(redisUrl);
 const store = createConfigStore({ databaseUrl, redisUrl });
-const pool = new pg.Pool({ connectionString: databaseUrl });
+const pool = new pg.Pool({ connectionString: databaseUrl, statement_timeout: 10_000 });
+pool.on("error", (err) => console.error(`engine: postgres pool error: ${err.message}`));
 const queue = createDeliveryQueue(redis);
 const throttle = createThrottle({ redis, ...throttleConfigFromEnv(), enqueue: (n) => queue.enqueue(n) });
 const hooks = createDedupHooks({ redis, repo: createPgAlertRepo(pool), throttle });

@@ -2,7 +2,7 @@ import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import RedisMock from "ioredis-mock";
 import { Redis } from "ioredis";
 import pg from "pg";
-import type { Alert, Event, Notification, Person, Rule } from "@alerting/shared";
+import type { Event, Notification, Person, Rule } from "@alerting/shared";
 import {
   createDedupHooks,
   createMemoryAlertRepo,
@@ -65,17 +65,23 @@ class Harness {
   }
 }
 
-function suite(name: string, make: () => Promise<{ redis: Redis; repo: AlertRepo; done(): Promise<void> }>) {
+type UiSetState = (id: string, state: "acknowledged" | "resolved") => Promise<void>;
+
+function suite(
+  name: string,
+  make: () => Promise<{ redis: Redis; repo: AlertRepo; ui: UiSetState; done(): Promise<void> }>,
+) {
   describe(name, () => {
     let redis: Redis;
     let repo: AlertRepo;
+    let ui: UiSetState;
     let done: () => Promise<void>;
     let rule: Rule;
     let n = 0;
     let h: Harness;
     beforeEach(async () => {
       if (done) await done();
-      ({ redis, repo, done } = await make());
+      ({ redis, repo, ui, done } = await make());
       rule = mkRule(`r-${Date.now()}-${n++}`);
       h = new Harness(createDedupHooks({ redis, repo }), rule);
     });
@@ -121,8 +127,7 @@ function suite(name: string, make: () => Promise<{ redis: Redis; repo: AlertRepo
     it("opens a new alert after auto-resolve and handles acknowledged state", async () => {
       const first = await h.feed(mkEvent("e1"));
       const id = first.alerts[0]!.id;
-      const stored = (await repo.get(id))!;
-      await repo.upsert({ ...stored, state: "acknowledged" } as Alert);
+      await ui(id, "acknowledged");
       const dup = await h.feed(mkEvent("e2"));
       expect(dup.alerts[0]!.id).toBe(id);
       expect(dup.alerts[0]!.state).toBe("acknowledged");
@@ -142,6 +147,40 @@ function suite(name: string, make: () => Promise<{ redis: Redis; repo: AlertRepo
       expect(again.notifications.length).toBeGreaterThan(0);
     });
 
+    it("a UI ack is not overwritten by later duplicates and the count keeps growing", async () => {
+      const first = await h.feed(mkEvent("e1"));
+      const id = first.alerts[0]!.id;
+      await ui(id, "acknowledged");
+      await h.feed(mkEvent("e2"));
+      await h.feed(mkEvent("e3", { severity: "critical" }));
+      const stored = (await repo.get(id))!;
+      expect(stored.state).toBe("acknowledged");
+      expect(stored.count).toBe(3);
+      expect(stored.severity).toBe("critical");
+    });
+
+    it("repo.bump and repo.resolve never touch a resolved alert", async () => {
+      const first = await h.feed(mkEvent("e1"));
+      const id = first.alerts[0]!.id;
+      await ui(id, "resolved");
+      const input = { lastSeen: new Date().toISOString(), severity: "critical" as const, common: {} };
+      expect(await repo.bump(id, input)).toBeNull();
+      expect(await repo.resolve(id, input.lastSeen, {})).toBeNull();
+      const again = await repo.create(first.alerts[0]!);
+      expect(again.created).toBe(false);
+      expect(again.alert.state).toBe("resolved");
+    });
+
+    it("recovers when the creating event is redelivered after a crash before the map was set", async () => {
+      const first = await h.feed(mkEvent("e1"), "1-0");
+      await redis.flushall(); // lose dedup map and marker, alert remains in the repo
+      const again = await h.feed(mkEvent("e1"), "1-0");
+      expect(again.alerts[0]!.id).toBe(first.alerts[0]!.id);
+      const next = await h.feed(mkEvent("e2"), "2-0");
+      expect(next.alerts[0]!.id).toBe(first.alerts[0]!.id);
+      expect(next.alerts[0]!.count).toBe(2);
+    });
+
     it("accepts the legacy `status` field for resolved", async () => {
       const first = await h.feed(mkEvent("e1"));
       const res = await h.feed(mkEvent("e2", { status: "resolved" }));
@@ -151,8 +190,7 @@ function suite(name: string, make: () => Promise<{ redis: Redis; repo: AlertRepo
 
     it("opens a new alert when the previous one was resolved elsewhere (UI)", async () => {
       const first = await h.feed(mkEvent("e1"));
-      const stored = (await repo.get(first.alerts[0]!.id))!;
-      await repo.upsert({ ...stored, state: "resolved" } as Alert);
+      await ui(first.alerts[0]!.id, "resolved");
       const next = await h.feed(mkEvent("e2"));
       expect(next.alerts[0]!.id).not.toBe(first.alerts[0]!.id);
       expect(next.alerts[0]!.count).toBe(1);
@@ -201,6 +239,33 @@ function suite(name: string, make: () => Promise<{ redis: Redis; repo: AlertRepo
       for (const [, c] of perChannel) expect(c).toBe(1);
     });
 
+    it("500 events through the real pipeline (dedup + throttle max 5): one alert, no flood", async () => {
+      const sent: Notification[] = [];
+      const throttle = createThrottle({ redis, max: 5, windowMs: 60_000, enqueue: (x) => void sent.push(x) });
+      const hh = new Harness(createDedupHooks({ redis, repo, throttle }), rule);
+      for (let i = 0; i < 500; i++) await hh.feed(mkEvent(`t-${i}`, { severity: "error" }));
+      const ids = new Set(hh.published.map((p) => p.alertId));
+      expect(ids.size).toBe(1);
+      expect((await repo.get([...ids][0]!))!.count).toBe(500);
+      const per = new Map<string, number>();
+      for (const x of hh.sent) per.set(`${x.recipientId}/${x.channel}`, (per.get(`${x.recipientId}/${x.channel}`) ?? 0) + 1);
+      for (const [, c] of per) expect(c).toBe(1);
+      expect(await throttle.flushDue(Date.now() + 120_000)).toBe(0);
+    });
+
+    it("500 distinct alerts: at most 5 per recipient+channel go out, the rest is one digest", async () => {
+      const sent: Notification[] = [];
+      const throttle = createThrottle({ redis, max: 5, windowMs: 60_000, enqueue: (x) => void sent.push(x) });
+      const hh = new Harness(createDedupHooks({ redis, repo, throttle }), rule);
+      for (let i = 0; i < 500; i++) await hh.feed(mkEvent(`d-${i}`, { severity: "error", dedupKey: `k-${i}` }));
+      const ntfyA = hh.sent.filter((x) => x.channel === "ntfy" && x.recipientId === "a");
+      expect(ntfyA).toHaveLength(5);
+      expect(hh.sent.filter((x) => x.channel === "ui")).toHaveLength(1000);
+      expect(await throttle.flushDue(Date.now() + 120_000)).toBe(2);
+      const digestA = sent.find((x) => x.recipientId === "a")!;
+      expect(digestA.digestAlertIds).toHaveLength(495);
+    });
+
     it("applies the throttle through beforeEnqueue", async () => {
       const sent: Notification[] = [];
       const throttle = createThrottle({ redis, max: 1, windowMs: 60_000, enqueue: (x) => void sent.push(x) });
@@ -219,7 +284,12 @@ function suite(name: string, make: () => Promise<{ redis: Redis; repo: AlertRepo
 suite("dedup (memory repo, mock redis)", async () => {
   const redis = new RedisMock() as unknown as Redis;
   await redis.flushall();
-  return { redis, repo: createMemoryAlertRepo(), done: async () => void redis.disconnect() };
+  const repo = createMemoryAlertRepo();
+  const ui: UiSetState = async (id, state) => {
+    const a = repo.alerts.get(id)!;
+    a.state = state;
+  };
+  return { redis, repo, ui, done: async () => void redis.disconnect() };
 });
 
 const REDIS_URL = process.env.REDIS_URL;
@@ -239,7 +309,10 @@ describe.skipIf(!REDIS_URL || !DATABASE_URL)("dedup (real redis + postgres)", ()
   suite("pg", async () => {
     await pool.query(DDL);
     const redis = mk();
-    return { redis, repo: createPgAlertRepo(pool), done: async () => undefined };
+    const ui: UiSetState = async (id, state) => {
+      await pool.query("UPDATE alerts SET state = $2, data = jsonb_set(data, '{state}', to_jsonb($2::text)) WHERE id = $1", [id, state]);
+    };
+    return { redis, repo: createPgAlertRepo(pool), ui, done: async () => undefined };
   });
 
   it("two engine instances processing interleaved events concurrently count exactly", async () => {

@@ -13,7 +13,7 @@ export interface DedupOptions {
   throttle?: { beforeEnqueue(n: Notification): Promise<Notification | null> };
   /** Lock lifetime (ms, default 10000). */
   lockTtlMs?: number;
-  /** How long to wait for a busy lock before failing (ms, default 5000). */
+  /** How long to wait for a busy lock before failing (ms, default 30000, never below lockTtlMs). */
   lockWaitMs?: number;
   /** How long an event id is remembered for redelivery detection (s, default 3600). */
   seenTtlSec?: number;
@@ -40,7 +40,7 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 export function createDedupHooks(opts: DedupOptions): EngineHooks {
   const { redis, repo } = opts;
   const lockTtlMs = opts.lockTtlMs ?? 10_000;
-  const lockWaitMs = opts.lockWaitMs ?? 5000;
+  const lockWaitMs = Math.max(opts.lockWaitMs ?? 30_000, lockTtlMs);
   const seenTtlSec = opts.seenTtlSec ?? 3600;
 
   async function withLock<T>(name: string, fn: () => Promise<T>): Promise<T> {
@@ -65,7 +65,7 @@ export function createDedupHooks(opts: DedupOptions): EngineHooks {
     const common = ctx.event.common as unknown as Record<string, unknown>;
     const isResolved = (common.sourceStatus ?? common.status) === "resolved";
     const mapKey = dedupKey(ruleId, built.dedupKey);
-    const seenKey = `${SEEN_PREFIX}${ruleId}:${ctx.event.id}`;
+    const seenKey = `${SEEN_PREFIX}${ruleId}:${built.dedupKey}:${ctx.event.id}`;
 
     const skip = (): AlertHookResult => ({ alert: built, notify: false, skip: true });
 
@@ -84,47 +84,50 @@ export function createDedupHooks(opts: DedupOptions): EngineHooks {
       }
 
       const currentId = await redis.get(mapKey);
-      const current = currentId ? await repo.get(currentId) : null;
-      const active = current && current.state !== "resolved" ? current : null;
 
-      if (!active) {
-        if (isResolved) {
+      if (isResolved) {
+        const resolved = currentId ? await repo.resolve(currentId, built.lastSeen, built.common) : null;
+        if (currentId) await redis.del(mapKey);
+        if (!resolved) {
           await remember({ skip: true });
           return skip();
         }
-        await repo.upsert(built);
-        await redis.set(mapKey, built.id);
-        await remember({ alertId: built.id, notify: true, kind: "created" });
-        return { alert: built, notify: true, kind: "created" };
-      }
-
-      if (isResolved) {
-        const resolved: Alert = {
-          ...active,
-          state: "resolved",
-          lastSeen: built.lastSeen,
-          resolvedAt: built.lastSeen,
-          common: built.common,
-        };
-        (resolved as unknown as Record<string, unknown>).status = "resolved";
-        await repo.upsert(resolved);
-        await redis.del(mapKey);
         await remember({ alertId: resolved.id, notify: false, kind: "resolved" });
         return { alert: resolved, notify: false, kind: "resolved" };
       }
 
-      const raised = compareSeverity(built.severity, active.severity) > 0;
-      const updated: Alert = {
-        ...active,
-        count: active.count + 1,
-        lastSeen: built.lastSeen,
-        common: built.common,
-        severity: raised ? built.severity : active.severity,
-      };
-      const kind: AlertEvent["kind"] = raised ? "severity_increased" : "updated";
-      await repo.upsert(updated);
-      await remember({ alertId: updated.id, notify: raised, kind });
-      return { alert: updated, notify: raised, kind };
+      // crash recovery: this very event (deterministic id) already created its alert but never got
+      // as far as the marker; reuse it instead of counting it again or opening a duplicate
+      const own = await repo.get(built.id);
+      if (own) {
+        if (own.state === "resolved") {
+          await remember({ skip: true });
+          return skip();
+        }
+        await redis.set(mapKey, own.id);
+        await remember({ alertId: own.id, notify: true, kind: "created" });
+        return { alert: own, notify: true, kind: "created" };
+      }
+
+      if (currentId) {
+        const bumped = await repo.bump(currentId, {
+          lastSeen: built.lastSeen,
+          severity: built.severity,
+          common: built.common,
+        });
+        if (bumped) {
+          const raised = compareSeverity(bumped.alert.severity, bumped.previousSeverity) > 0;
+          const kind: AlertEvent["kind"] = raised ? "severity_increased" : "updated";
+          await remember({ alertId: bumped.alert.id, notify: raised, kind });
+          return { alert: bumped.alert, notify: raised, kind };
+        }
+        // resolved (e.g. from the UI) or gone: the recurrence opens a new alert
+      }
+
+      const { alert } = await repo.create(built);
+      await redis.set(mapKey, alert.id);
+      await remember({ alertId: alert.id, notify: true, kind: "created" });
+      return { alert, notify: true, kind: "created" };
     });
   }
 

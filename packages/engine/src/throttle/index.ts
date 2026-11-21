@@ -32,6 +32,8 @@ export interface ThrottleOptions {
   /** Sends the digest notification (normally the delivery queue). */
   enqueue(n: Notification): Promise<unknown> | unknown;
   now?: () => number;
+  /** How long an instance owns a digest it is sending before another may take over (ms, default 30000). */
+  leaseMs?: number;
   /** Timer period of start() (ms, default 1000). */
   tickMs?: number;
   logger?: Pick<Console, "error">;
@@ -57,7 +59,17 @@ local ttl = redis.call('pttl', KEYS[1])
 if ttl < 0 then ttl = tonumber(ARGV[2]) redis.call('pexpire', KEYS[1], ttl) end
 redis.call('zadd', KEYS[3], 'NX', tonumber(ARGV[3]) + ttl, ARGV[4])
 return 1`;
-const DRAIN = `local l = redis.call('lrange', KEYS[1], 0, -1) redis.call('del', KEYS[1]) return l`;
+// KEYS: due zset. ARGV: now, lease-until, member. Claim = move the due time into the future, once.
+const CLAIM = `
+local s = redis.call('zscore', KEYS[1], ARGV[3])
+if s and tonumber(s) <= tonumber(ARGV[1]) then redis.call('zadd', KEYS[1], ARGV[2], ARGV[3]) return 1 end
+return 0`;
+// KEYS: buffer, due zset. ARGV: sent count, member, retry-at. Drop what was sent; reschedule leftovers.
+const FINISH = `
+redis.call('ltrim', KEYS[1], tonumber(ARGV[1]), -1)
+if redis.call('llen', KEYS[1]) == 0 then redis.call('zrem', KEYS[2], ARGV[2])
+else redis.call('zadd', KEYS[2], tonumber(ARGV[3]), ARGV[2]) end
+return 1`;
 
 export function buildDigest(items: Notification[], recipientId: string, channel: string, at: Date): Notification {
   const alertIds = [...new Set(items.map((i) => i.alertId))];
@@ -85,6 +97,7 @@ export function buildDigest(items: Notification[], recipientId: string, channel:
 export function createThrottle(opts: ThrottleOptions): Throttle {
   const { redis } = opts;
   const now = opts.now ?? Date.now;
+  const leaseMs = opts.leaseMs ?? 30_000;
   const logger = opts.logger ?? console;
   let timer: NodeJS.Timeout | undefined;
   let flushing: Promise<unknown> = Promise.resolve();
@@ -110,21 +123,27 @@ export function createThrottle(opts: ThrottleOptions): Throttle {
     const due = await redis.zrangebyscore(ZSET_DIGEST_DUE, "-inf", nowMs);
     let sent = 0;
     for (const member of due) {
-      // only the instance whose ZREM succeeds sends this digest
-      if ((await redis.zrem(ZSET_DIGEST_DUE, member)) !== 1) continue;
+      // only the instance whose claim succeeds sends this digest; the claim is a lease, so a crash
+      // before the buffer is trimmed just delays the digest until the lease runs out
+      const claimed = await redis.eval(CLAIM, 1, ZSET_DIGEST_DUE, nowMs, nowMs + leaseMs, member);
+      if (Number(claimed) !== 1) continue;
       const [recipientId, channel] = JSON.parse(member) as [string, string];
       const bk = digestKey(recipientId, channel);
-      const raw = (await redis.eval(DRAIN, 1, bk)) as string[];
-      if (raw.length === 0) continue;
+      const raw = await redis.lrange(bk, 0, -1);
+      if (raw.length === 0) {
+        await redis.zrem(ZSET_DIGEST_DUE, member);
+        continue;
+      }
       const items = raw.map((r) => JSON.parse(r) as Notification);
       try {
         await opts.enqueue(buildDigest(items, recipientId, channel, new Date(nowMs)));
-        sent++;
       } catch (err) {
         logger.error(`throttle: digest for ${recipientId}/${channel} failed, will retry: ${(err as Error).message}`);
-        await redis.lpush(bk, ...raw.slice().reverse());
         await redis.zadd(ZSET_DIGEST_DUE, nowMs + 1000, member);
+        continue;
       }
+      await redis.eval(FINISH, 2, bk, ZSET_DIGEST_DUE, raw.length, member, nowMs);
+      sent++;
     }
     return sent;
   }
