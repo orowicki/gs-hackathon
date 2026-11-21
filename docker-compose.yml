@@ -52,11 +52,12 @@ services:
 
   # Load generator (docker compose --profile loadtest run --rm loadtest ...)
   loadtest:
-    image: node:20-alpine
+    build: .
     profiles: ["loadtest"]
-    working_dir: /repo
+    working_dir: /app
     volumes:
-      - .:/repo
+      - ./scripts/loadtest:/app/scripts/loadtest:ro
+      - ./results:/app/results
     environment:
       BASE_URL: http://app:3000
       REDIS_URL: redis://redis:6379

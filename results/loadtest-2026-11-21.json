@@ -1,357 +1,379 @@
 {
-  "date": "2026-11-21T03:46:52.839Z",
-  "commit": "9b60a09",
+  "date": "2026-11-21T03:52:11.458Z",
+  "commit": "89658d1",
   "config": {
     "rate": 5000,
     "duration": 60,
     "workers": 1,
-    "smoke": false
+    "smoke": false,
+    "note": "The api process runs an in-process ingest parse worker, so N workers means N engines and N+1 parse consumers (N standalone ingest workers plus the api's own)."
   },
-  "sent": 299980,
-  "accepted": 299980,
+  "sent": 299975,
+  "accepted": 299975,
   "rejected": 0,
   "httpErrors": 0,
-  "alertsSeen": 299980,
+  "alertsSeen": 299975,
   "lost": 0,
   "throughput": {
     "targetRate": 5000,
-    "sendRate": 4999.1,
-    "processedPerSec": 4934.7,
+    "sendRate": 4999.2,
+    "processedPerSec": 4664.5,
     "perSecond": [
       {
         "t": 0,
-        "sent": 4995,
-        "processed": 3582
+        "sent": 4955,
+        "processed": 4955
       },
       {
         "t": 1,
-        "sent": 4970,
-        "processed": 3560
+        "sent": 5020,
+        "processed": 4962
       },
       {
         "t": 2,
-        "sent": 5020,
-        "processed": 5130
-      },
-      {
-        "t": 3,
-        "sent": 5010,
-        "processed": 5237
-      },
-      {
-        "t": 4,
-        "sent": 4970,
-        "processed": 5540
-      },
-      {
-        "t": 5,
-        "sent": 5015,
-        "processed": 3044
-      },
-      {
-        "t": 6,
-        "sent": 5010,
-        "processed": 4135
-      },
-      {
-        "t": 7,
-        "sent": 4980,
-        "processed": 4517
-      },
-      {
-        "t": 8,
-        "sent": 5025,
-        "processed": 5146
-      },
-      {
-        "t": 9,
-        "sent": 4985,
-        "processed": 4801
-      },
-      {
-        "t": 10,
-        "sent": 5015,
-        "processed": 5638
-      },
-      {
-        "t": 11,
-        "sent": 4955,
-        "processed": 5535
-      },
-      {
-        "t": 12,
-        "sent": 5000,
-        "processed": 5536
-      },
-      {
-        "t": 13,
-        "sent": 5040,
-        "processed": 5437
-      },
-      {
-        "t": 14,
-        "sent": 4970,
-        "processed": 5183
-      },
-      {
-        "t": 15,
-        "sent": 5010,
-        "processed": 5152
-      },
-      {
-        "t": 16,
-        "sent": 5010,
-        "processed": 5387
-      },
-      {
-        "t": 17,
-        "sent": 5005,
-        "processed": 4416
-      },
-      {
-        "t": 18,
-        "sent": 4970,
-        "processed": 5539
-      },
-      {
-        "t": 19,
-        "sent": 5020,
-        "processed": 5358
-      },
-      {
-        "t": 20,
-        "sent": 5015,
-        "processed": 5627
-      },
-      {
-        "t": 21,
-        "sent": 4995,
-        "processed": 5133
-      },
-      {
-        "t": 22,
-        "sent": 4975,
-        "processed": 4627
-      },
-      {
-        "t": 23,
-        "sent": 5015,
-        "processed": 5726
-      },
-      {
-        "t": 24,
-        "sent": 5005,
-        "processed": 5702
-      },
-      {
-        "t": 25,
-        "sent": 4969,
-        "processed": 5246
-      },
-      {
-        "t": 26,
-        "sent": 5011,
-        "processed": 4991
-      },
-      {
-        "t": 27,
         "sent": 5010,
         "processed": 5000
       },
       {
+        "t": 3,
+        "sent": 4975,
+        "processed": 4974
+      },
+      {
+        "t": 4,
+        "sent": 5000,
+        "processed": 5023
+      },
+      {
+        "t": 5,
+        "sent": 5025,
+        "processed": 4983
+      },
+      {
+        "t": 6,
+        "sent": 4965,
+        "processed": 4642
+      },
+      {
+        "t": 7,
+        "sent": 5015,
+        "processed": 5387
+      },
+      {
+        "t": 8,
+        "sent": 5025,
+        "processed": 4996
+      },
+      {
+        "t": 9,
+        "sent": 5000,
+        "processed": 5009
+      },
+      {
+        "t": 10,
+        "sent": 4995,
+        "processed": 4129
+      },
+      {
+        "t": 11,
+        "sent": 4980,
+        "processed": 2477
+      },
+      {
+        "t": 12,
+        "sent": 5005,
+        "processed": 3325
+      },
+      {
+        "t": 13,
+        "sent": 5015,
+        "processed": 4648
+      },
+      {
+        "t": 14,
+        "sent": 4970,
+        "processed": 4918
+      },
+      {
+        "t": 15,
+        "sent": 5030,
+        "processed": 4097
+      },
+      {
+        "t": 16,
+        "sent": 4980,
+        "processed": 4991
+      },
+      {
+        "t": 17,
+        "sent": 4995,
+        "processed": 5645
+      },
+      {
+        "t": 18,
+        "sent": 5005,
+        "processed": 5406
+      },
+      {
+        "t": 19,
+        "sent": 5015,
+        "processed": 5426
+      },
+      {
+        "t": 20,
+        "sent": 5000,
+        "processed": 5649
+      },
+      {
+        "t": 21,
+        "sent": 4980,
+        "processed": 3693
+      },
+      {
+        "t": 22,
+        "sent": 5000,
+        "processed": 4546
+      },
+      {
+        "t": 23,
+        "sent": 5010,
+        "processed": 4711
+      },
+      {
+        "t": 24,
+        "sent": 5005,
+        "processed": 5692
+      },
+      {
+        "t": 25,
+        "sent": 5020,
+        "processed": 5944
+      },
+      {
+        "t": 26,
+        "sent": 4960,
+        "processed": 4887
+      },
+      {
+        "t": 27,
+        "sent": 5035,
+        "processed": 5152
+      },
+      {
         "t": 28,
-        "sent": 4985,
-        "processed": 4995
+        "sent": 4965,
+        "processed": 5217
       },
       {
         "t": 29,
         "sent": 5000,
-        "processed": 5019
+        "processed": 5329
       },
       {
         "t": 30,
-        "sent": 5035,
-        "processed": 4975
+        "sent": 5040,
+        "processed": 4407
       },
       {
         "t": 31,
-        "sent": 4975,
-        "processed": 4859
+        "sent": 4955,
+        "processed": 5371
       },
       {
         "t": 32,
-        "sent": 4995,
-        "processed": 3507
+        "sent": 5005,
+        "processed": 5328
       },
       {
         "t": 33,
-        "sent": 5030,
-        "processed": 4405
+        "sent": 4995,
+        "processed": 5320
       },
       {
         "t": 34,
-        "sent": 4975,
-        "processed": 4724
+        "sent": 5015,
+        "processed": 5309
       },
       {
         "t": 35,
         "sent": 5000,
-        "processed": 5613
+        "processed": 5243
       },
       {
         "t": 36,
-        "sent": 5000,
-        "processed": 4473
+        "sent": 5010,
+        "processed": 5194
       },
       {
         "t": 37,
-        "sent": 5015,
-        "processed": 4721
+        "sent": 5010,
+        "processed": 5199
       },
       {
         "t": 38,
-        "sent": 5010,
-        "processed": 5453
+        "sent": 5005,
+        "processed": 3814
       },
       {
         "t": 39,
-        "sent": 5005,
-        "processed": 5477
+        "sent": 5000,
+        "processed": 4966
       },
       {
         "t": 40,
-        "sent": 5000,
-        "processed": 4432
+        "sent": 5005,
+        "processed": 5248
       },
       {
         "t": 41,
         "sent": 4955,
-        "processed": 3239
+        "processed": 5819
       },
       {
         "t": 42,
-        "sent": 5000,
-        "processed": 5356
+        "sent": 5020,
+        "processed": 4461
       },
       {
         "t": 43,
-        "sent": 5020,
-        "processed": 5604
+        "sent": 5005,
+        "processed": 4494
       },
       {
         "t": 44,
-        "sent": 5015,
-        "processed": 4864
+        "sent": 5005,
+        "processed": 5179
       },
       {
         "t": 45,
-        "sent": 4995,
-        "processed": 3956
+        "sent": 5005,
+        "processed": 5013
       },
       {
         "t": 46,
-        "sent": 5000,
-        "processed": 5380
+        "sent": 5005,
+        "processed": 4725
       },
       {
         "t": 47,
-        "sent": 4980,
-        "processed": 4286
+        "sent": 4985,
+        "processed": 3294
       },
       {
         "t": 48,
-        "sent": 5005,
-        "processed": 4878
+        "sent": 5020,
+        "processed": 5589
       },
       {
         "t": 49,
-        "sent": 5010,
-        "processed": 4274
+        "sent": 4985,
+        "processed": 5055
       },
       {
         "t": 50,
-        "sent": 5000,
-        "processed": 4293
+        "sent": 5005,
+        "processed": 6033
       },
       {
         "t": 51,
-        "sent": 5000,
-        "processed": 5302
+        "sent": 5010,
+        "processed": 5190
       },
       {
         "t": 52,
-        "sent": 4985,
-        "processed": 5383
+        "sent": 4970,
+        "processed": 3422
       },
       {
         "t": 53,
-        "sent": 4995,
-        "processed": 5355
+        "sent": 4985,
+        "processed": 3203
       },
       {
         "t": 54,
-        "sent": 5010,
-        "processed": 5129
+        "sent": 5000,
+        "processed": 4001
       },
       {
         "t": 55,
-        "sent": 5000,
-        "processed": 5383
+        "sent": 5010,
+        "processed": 3560
       },
       {
         "t": 56,
-        "sent": 5000,
-        "processed": 5571
+        "sent": 5010,
+        "processed": 3443
       },
       {
         "t": 57,
-        "sent": 5010,
-        "processed": 5508
+        "sent": 5005,
+        "processed": 4211
       },
       {
         "t": 58,
-        "sent": 5000,
-        "processed": 4380
+        "sent": 4995,
+        "processed": 3577
       },
       {
         "t": 59,
         "sent": 5005,
-        "processed": 5269
+        "processed": 3696
       },
       {
         "t": 60,
         "sent": 0,
-        "processed": 3992
+        "processed": 6004
+      },
+      {
+        "t": 61,
+        "sent": 0,
+        "processed": 3899
+      },
+      {
+        "t": 62,
+        "sent": 0,
+        "processed": 1984
+      },
+      {
+        "t": 63,
+        "sent": 0,
+        "processed": 1578
+      },
+      {
+        "t": 64,
+        "sent": 0,
+        "processed": 1333
       }
     ]
   },
   "latencyMs": {
     "e2e": {
-      "p50": 576,
-      "p90": 1044,
-      "p99": 1250,
-      "max": 1278,
-      "mean": 598.2,
-      "count": 299980
+      "p50": 882,
+      "p90": 1891,
+      "p99": 3560,
+      "max": 4334,
+      "mean": 967.77,
+      "count": 299975
     },
     "e2eSource": "ui-push",
     "alertStream": {
-      "p50": 576,
-      "p90": 1044,
-      "p99": 1250,
-      "max": 1278,
-      "mean": 597.66,
-      "count": 299980
+      "p50": 882,
+      "p90": 1891,
+      "p99": 3560,
+      "max": 4334,
+      "mean": 967.65,
+      "count": 299975
     },
     "notification": {
-      "p50": 576,
-      "p90": 1043,
-      "p99": 1249,
-      "max": 1278,
-      "mean": 597.59,
-      "count": 299980
+      "p50": 882,
+      "p90": 1891,
+      "p99": 3560,
+      "max": 4334,
+      "mean": 967.58,
+      "count": 299975
     }
   },
+  "e2eCoverage": 1,
   "targets": {
     "p50": 50,
     "p99": 250,

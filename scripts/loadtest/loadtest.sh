@@ -39,6 +39,10 @@ for n in "${runs[@]}"; do
   out="results/loadtest-$date.json"; [ "$n" != 1 ] && out="results/loadtest-$date-workers$n.json"
   echo "== load test with $n worker(s) ==" >&2
   if [ "$local_mode" = 1 ]; then
+    if curl -fsS "http://localhost:$port/health" >/dev/null 2>&1; then
+      echo "port $port already answers /health: stop that process or set LOADTEST_PORT" >&2
+      exit 1
+    fi
     for p in packages/api packages/ingest packages/engine; do
       [ -f "$p/dist/main.js" ] || { npm run build; break; }
     done
@@ -51,17 +55,31 @@ for n in "${runs[@]}"; do
       sleep 1
     done
     rm -f "$ready"
-    BASE_URL="http://localhost:$port" node scripts/loadtest/run.mjs "${passthru[@]}" \
+    BASE_URL="http://localhost:$port" node scripts/loadtest/run.mjs ${passthru[@]+"${passthru[@]}"} \
       --workers "$n" --base-url "http://localhost:$port" \
       --redis "${REDIS_URL:-redis://localhost:6379}" --database-url "${DATABASE_URL:-postgres://alerting:alerting@localhost:5432/alerting}" --out "$out"
     cleanup; stack_pid=""
   else
     if ! docker compose up -d --build --wait --scale "worker=$n"; then
-      docker compose up -d --build --scale "worker=$n"; wait_health
+      echo "docker compose up --wait failed; container state:" >&2
+      docker compose ps >&2 || true
+      exit 1
+    fi
+    running=$(docker compose ps --status running -q worker | wc -l | tr -d ' ')
+    if [ "$running" != "$n" ]; then
+      echo "expected $n running worker containers, found $running" >&2
+      docker compose ps >&2 || true
+      exit 1
     fi
     docker compose --profile loadtest run --rm loadtest node scripts/loadtest/run.mjs \
-      "${passthru[@]}" --workers "$n" --base-url http://app:3000 \
+      ${passthru[@]+"${passthru[@]}"} --workers "$n" --base-url http://app:3000 \
       --redis redis://redis:6379 --database-url postgres://alerting:alerting@postgres:5432/alerting --out "$out"
+    running=$(docker compose ps --status running -q worker | wc -l | tr -d ' ')
+    if [ "$running" != "$n" ]; then
+      echo "worker containers changed during the run: expected $n, found $running (result invalid)" >&2
+      docker compose ps >&2 || true
+      exit 1
+    fi
   fi
   outs+=("$out")
 done
@@ -72,4 +90,5 @@ if [ -f "results/loadtest-$date.json" ] && [ -f "results/loadtest-$date-workers2
   node scripts/loadtest/chart.mjs --out "$cmp" "results/loadtest-$date.json" "results/loadtest-$date-workers2.json"
   files+=("$cmp")
 fi
+[ "$local_mode" = 1 ] || echo "The compose stack is still running; stop it with: just down" >&2
 echo "Outputs:"; printf '  %s\n' "${files[@]}"

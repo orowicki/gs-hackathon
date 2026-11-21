@@ -82,3 +82,9 @@ describe("chart", () => {
     expect(html).not.toMatch(/<script|src=|href=/);
   });
 });
+
+describe("coverage", () => {
+  it("targets fail when push coverage is incomplete", () => {
+    expect(evaluateTargets(summarize([10, 20]), 0, false).met).toBe(false);
+  });
+});

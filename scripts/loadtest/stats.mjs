@@ -70,7 +70,7 @@ export function perSecondSeries(sent, processed, start) {
 /** Targets from the issue: p50 < 50 ms, p99 < 250 ms, nothing lost. */
 export const TARGETS = { p50: 50, p99: 250, lost: 0 };
 
-export function evaluateTargets(e2e, lost) {
-  const met = e2e.count > 0 && e2e.p50 <= TARGETS.p50 && e2e.p99 <= TARGETS.p99 && lost <= TARGETS.lost;
+export function evaluateTargets(e2e, lost, coverageOk = true) {
+  const met = coverageOk && e2e.count > 0 && e2e.p50 <= TARGETS.p50 && e2e.p99 <= TARGETS.p99 && lost <= TARGETS.lost;
   return { ...TARGETS, met };
 }

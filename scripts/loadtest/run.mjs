@@ -13,9 +13,11 @@ import { evaluateTargets, perSecondSeries, summarize } from "./stats.mjs";
 const STREAM_EVENTS = "alerting:events";
 const STREAM_ALERTS = "alerting:alerts";
 const CHANNEL_UI_PUSH = "alerting:ui:push";
-const SOURCE_ID = "loadtest";
-const PERSON_ID = "loadtest-bot";
-const RULE_ID = "loadtest-rule";
+// Temporary entities carry this prefix plus the run id; stale ones from crashed runs are deleted at start.
+const TMP_PREFIX = "lt-tmp-";
+const ids = (runId) => ({ source: `${TMP_PREFIX}${runId}`, person: `${TMP_PREFIX}bot-${runId}`, rule: `${TMP_PREFIX}rule-${runId}` });
+export const WORKERS_NOTE =
+  "The api process runs an in-process ingest parse worker, so N workers means N engines and N+1 parse consumers (N standalone ingest workers plus the api's own).";
 
 export const MEASUREMENT =
   "Each event has a unique seq and send timestamp (Date.now() in this process, same host clock assumed). " +
@@ -75,6 +77,7 @@ export function buildBatch(runId, firstSeq, count, ts) {
 }
 
 function entities(runId) {
+  const { source: SOURCE_ID, person: PERSON_ID, rule: RULE_ID } = ids(runId);
   const stamp = "2026-11-01T00:00:00Z";
   return {
     source: { id: SOURCE_ID, name: "Load test (temporary)", type: "http", enabled: true, parser: { type: "json" }, config: {} },
@@ -95,12 +98,16 @@ function entities(runId) {
 /** Upsert the temporary source, person and rule into the config store; returns an async cleanup. */
 async function installConfig(store, runId) {
   const e = entities(runId);
+  // remove leftovers of crashed earlier runs (only ids this script creates)
+  for (const kind of ["rule", "source", "person"]) {
+    for (const x of await store.list(kind)) if (String(x.id).startsWith(TMP_PREFIX)) await store.delete(kind, x.id);
+  }
   const undo = async () => {
-    for (const [kind, id] of [["rule", RULE_ID], ["source", SOURCE_ID], ["person", PERSON_ID]]) {
+    for (const [kind, entity] of [["rule", e.rule], ["source", e.source], ["person", e.person]]) {
       try {
-        await store.delete(kind, id);
+        await store.delete(kind, entity.id);
       } catch (err) {
-        console.error(`loadtest: could not delete ${kind} ${id}: ${err.message}`);
+        console.error(`loadtest: could not delete ${kind} ${entity.id}: ${err.message}`);
       }
     }
   };
@@ -115,7 +122,7 @@ async function installConfig(store, runId) {
   return undo;
 }
 
-function makePoster(baseUrl, maxSockets) {
+function makePoster(baseUrl, sourceId, maxSockets) {
   const url = new URL(baseUrl);
   const agent = new http.Agent({ keepAlive: true, maxSockets });
   return (body) =>
@@ -125,7 +132,7 @@ function makePoster(baseUrl, maxSockets) {
           agent,
           host: url.hostname,
           port: url.port || 80,
-          path: `/ingest/${SOURCE_ID}`,
+          path: `/ingest/${sourceId}`,
           method: "POST",
           headers: { "content-type": "application/json", "content-length": Buffer.byteLength(body) },
           timeout: 15000,
@@ -134,9 +141,9 @@ function makePoster(baseUrl, maxSockets) {
           const chunks = [];
           res.on("data", (c) => chunks.push(c));
           res.on("end", () => {
-            let accepted = 0;
+            let accepted;
             try {
-              accepted = JSON.parse(Buffer.concat(chunks).toString("utf8")).accepted ?? 0;
+              accepted = JSON.parse(Buffer.concat(chunks).toString("utf8")).accepted;
             } catch {
               /* ignore */
             }
@@ -145,7 +152,7 @@ function makePoster(baseUrl, maxSockets) {
         },
       );
       req.on("timeout", () => req.destroy(new Error("timeout")));
-      req.on("error", () => resolveP({ status: 0, accepted: 0 }));
+      req.on("error", () => resolveP({ status: 0, accepted: undefined }));
       req.end(body);
     });
 }
@@ -159,6 +166,15 @@ function createCollector(redisUrl, runId) {
   const alertStreamByEvent = new Map(); // eventId -> redis stream ms
   const pushMs = new Map(); // alertId -> receive time
   const notifMs = new Map(); // alertId -> createdAt ms
+  const counted = new Set(); // eventIds of this run (seq >= 0) with an alert
+  let seenCount = 0;
+  const tally = (eventId) => {
+    const seq = eventSeq.get(eventId);
+    if (seq !== undefined && seq >= 0 && alertStreamByEvent.has(eventId) && !counted.has(eventId)) {
+      counted.add(eventId);
+      seenCount++;
+    }
+  };
   const conns = [];
   let stopped = false;
   const mk = () => {
@@ -217,11 +233,15 @@ function createCollector(redisUrl, runId) {
     const al = mk();
     loops.push(
       readStream(ev, STREAM_EVENTS, (eid, e) => {
-        if (e?.parsed?.run === runId && typeof e.parsed.seq === "number") eventSeq.set(e.id ?? eid, e.parsed.seq);
+        if (e?.parsed?.run === runId && typeof e.parsed.seq === "number") {
+          eventSeq.set(e.id ?? eid, e.parsed.seq);
+          tally(e.id ?? eid);
+        }
       }),
       readStream(al, STREAM_ALERTS, (eid, a) => {
         alertEvent.set(a.alertId, a.eventId);
         alertStreamByEvent.set(a.eventId, Number(eid.split("-")[0]));
+        tally(a.eventId);
       }),
     );
     await sleep(100);
@@ -229,6 +249,7 @@ function createCollector(redisUrl, runId) {
 
   return {
     start,
+    seen: () => seenCount,
     probeSeen: () => [...alertEvent.values()].some((eid) => (eventSeq.get(eid) ?? 0) < 0),
     /** seq -> {alertId, ...} resolved lazily at the end */
     resolve() {
@@ -276,7 +297,8 @@ async function main() {
   process.on("SIGTERM", () => cleanExit(143));
 
   const collector = createCollector(opts.redis, runId);
-  const post = makePoster(opts.baseUrl, 16);
+  const sourceId = ids(runId).source;
+  const post = makePoster(opts.baseUrl, sourceId, 16);
   let result;
   let phase = "setup";
   try {
@@ -345,15 +367,14 @@ async function measure(opts, runId, post, collector) {
     inflight++;
     post(JSON.stringify(batch)).then((r) => {
       inflight--;
-      if (r.status === 202) {
-        accepted += r.accepted || count;
-        for (let i = 0; i < count; i++) okSeqs.push(first + i);
-      } else if (r.status === 0) httpErrors += count;
-      else {
-        rejected += count;
-        accepted += r.accepted;
-        for (let i = 0; i < r.accepted; i++) okSeqs.push(first + i);
-      }
+      const n =
+        r.status === 202
+          ? Number.isFinite(r.accepted) ? Math.min(r.accepted, count) : count
+          : Number.isFinite(r.accepted) ? Math.min(r.accepted, count) : 0;
+      accepted += n;
+      for (let i = 0; i < n; i++) okSeqs.push(first + i);
+      if (r.status === 0) httpErrors += count - n;
+      else rejected += count - n;
     });
   };
 
@@ -372,15 +393,14 @@ async function measure(opts, runId, post, collector) {
   let lastProgress = drainStart;
   let lastCount = -1;
   for (;;) {
-    const { bySeq } = collector.resolve();
-    const seen = okSeqs.reduce((n, s) => n + (bySeq.has(s) ? 1 : 0), 0);
+    const seen = collector.seen();
     if (seen >= okSeqs.length) break;
     if (seen !== lastCount) {
       lastCount = seen;
       lastProgress = Date.now();
     }
     if (Date.now() - lastProgress > 10_000 || Date.now() - drainStart > 60_000) break;
-    await sleep(200);
+    await sleep(1000);
   }
   await sleep(500); // let trailing pushes arrive
 
@@ -415,6 +435,7 @@ async function measure(opts, runId, post, collector) {
   const sendSecs = Math.max(0.001, (sendEnd - startMs) / 1000);
   const procSecs = Math.max(0.001, (lastProcessed - startMs) / 1000);
   const e2eSummary = summarize(e2e.length ? e2e : stream);
+  const e2eCoverage = alertsSeen > 0 && e2e.length > 0 ? Math.round((e2e.length / alertsSeen) * 10000) / 10000 : 0;
   const round = (v) => Math.round(v * 10) / 10;
 
   let commit = null;
@@ -426,7 +447,7 @@ async function measure(opts, runId, post, collector) {
   return {
     date: new Date().toISOString(),
     commit,
-    config: { rate: opts.rate, duration: opts.duration, workers: opts.workers, smoke: opts.smoke },
+    config: { rate: opts.rate, duration: opts.duration, workers: opts.workers, smoke: opts.smoke, note: WORKERS_NOTE },
     sent,
     accepted,
     rejected,
@@ -445,7 +466,8 @@ async function measure(opts, runId, post, collector) {
       alertStream: summarize(stream),
       notification: notif.length ? summarize(notif) : null,
     },
-    targets: evaluateTargets(e2eSummary, lost),
+    e2eCoverage,
+    targets: evaluateTargets(e2eSummary, lost, e2eCoverage >= 1),
     measurement: MEASUREMENT,
   };
 }
