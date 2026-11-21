@@ -166,6 +166,37 @@ export const componentSchemas: Record<string, object> = {
   SchemaTestRequest: obj({ schema: ref("Schema"), sample: ref("JsonObject") }, ["schema", "sample"]),
   SchemaTestResponse: obj({ matched: { type: "boolean" }, common: ref("CommonFields") }, ["matched", "common"]),
 
+  // ---- config changes ----
+  ConfigChange: obj(
+    {
+      id: { type: "integer" },
+      kind: strEnum(["source", "schema", "rule", "person", "group", "runbook"]),
+      itemId: str("Id of the changed item"),
+      action: strEnum(["create", "update", "delete", "import"]),
+      actor: {
+        description: "The signed-in person who made the change; null without an account",
+        oneOf: [obj({ id: str(), name: str() }, ["id", "name"]), { type: "null" }],
+      },
+      occurredAt: str("ISO timestamp"),
+    },
+    ["id", "kind", "itemId", "action", "actor", "occurredAt"],
+    {
+      examples: [
+        { id: 12, kind: "rule", itemId: "r1", action: "update", actor: { id: "anna", name: "Anna" }, occurredAt: "2026-01-15T09:30:00.000Z" },
+      ],
+    },
+  ),
+  ConfigChangeList: obj({ changes: arr(ref("ConfigChange")) }, ["changes"], {
+    examples: [
+      {
+        changes: [
+          { id: 12, kind: "rule", itemId: "r1", action: "update", actor: { id: "anna", name: "Anna" }, occurredAt: "2026-01-15T09:30:00.000Z" },
+          { id: 11, kind: "source", itemId: "demo-http", action: "import", actor: null, occurredAt: "2026-01-15T09:00:00.000Z" },
+        ],
+      },
+    ],
+  }),
+
   // ---- events ----
   Event: obj(
     {

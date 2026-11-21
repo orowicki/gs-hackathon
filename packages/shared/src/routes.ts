@@ -50,6 +50,7 @@ export const ROUTES: RouteDef[] = [
   { method: "POST", path: "/api/sources/test", summary: "Try a parser on a sample line; returns the parsed fields", tag: "sources", request: "{ parser: ParserConfig; sample: string }", response: "{ parsed: JsonObject }" },
   { method: "GET", path: "/api/people/{id}/starred-filters", summary: "List a person's starred filters", tag: "filters", response: "StarredFilter[]" },
   { method: "PUT", path: "/api/people/{id}/starred-filters", summary: "Replace a person's starred filters", tag: "filters", request: "StarredFilter[]", response: "StarredFilter[]" },
+  { method: "GET", path: "/api/config/changes", summary: "Who changed what in the config (newest first; filter by kind and id)", tag: "config", response: "{ changes: ConfigChange[] }" },
   { method: "GET", path: "/api/events", summary: "List stored events (filter, limit, before)", tag: "events", response: "Event[]" },
   { method: "GET", path: "/api/events/recent", summary: "Most recent events (for autocomplete and previews)", tag: "events", response: "Event[]" },
   { method: "POST", path: "/api/events/test-filter", summary: "Count recent events matching a filter", tag: "events", request: "{ filter: Filter }", response: "{ matched: number; total: number }" },
