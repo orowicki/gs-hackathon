@@ -2,7 +2,8 @@ import type { JsonObject } from "@alerting/shared";
 import type { Emit, SourcePlugin } from "../types.js";
 import { HTTP_CONFIG_SCHEMA } from "./schemas.js";
 
-const isObject = (v: unknown): v is JsonObject => typeof v === "object" && v !== null && !Array.isArray(v);
+const isObject = (v: unknown): v is JsonObject =>
+  typeof v === "object" && v !== null && !Array.isArray(v);
 
 function lines(body: string): string[] {
   return body
@@ -16,12 +17,16 @@ function lines(body: string): string[] {
  * NDJSON, or plain text lines. Objects become objects, everything else text.
  * `contentType` is accepted for future use; detection is content-based.
  */
-export function splitHttpBody(body: string, contentType?: string): (string | JsonObject)[] {
+export function splitHttpBody(
+  body: string,
+  contentType?: string,
+): (string | JsonObject)[] {
   void contentType;
   if (body.trim() === "") return [];
   try {
     const v: unknown = JSON.parse(body);
-    if (Array.isArray(v)) return v.map((e) => (isObject(e) ? e : JSON.stringify(e)));
+    if (Array.isArray(v))
+      return v.map((e) => (isObject(e) ? e : JSON.stringify(e)));
     if (isObject(v)) return [v];
   } catch {
     // not a single JSON document; fall through to line mode
@@ -59,14 +64,27 @@ export async function handleHttpIngest(
   sourceId: string,
   body: string,
   contentType?: string,
-): Promise<{ accepted: number } | { error: "unknown_source" | "empty" }> {
+): Promise<
+  | { accepted: number }
+  | { error: "unknown_source" | "empty" }
+  | { accepted: number; error: "emit_failed"; message: string }
+> {
   const emit = registry.get(sourceId);
   if (!emit) return { error: "unknown_source" };
   const messages = splitHttpBody(body, contentType);
   if (messages.length === 0) return { error: "empty" };
   const receivedAt = new Date().toISOString();
-  for (const m of messages) await emit(m, { receivedAt });
-  return { accepted: messages.length };
+  let accepted = 0;
+  for (const m of messages) {
+    try {
+      await emit(m, { receivedAt });
+    } catch (err) {
+      // Partial success: the first `accepted` messages were published; the caller reports it so clients can resume.
+      return { accepted, error: "emit_failed", message: String(err) };
+    }
+    accepted++;
+  }
+  return { accepted };
 }
 
 export const httpPlugin: SourcePlugin<Record<string, never>> = {
@@ -76,7 +94,8 @@ export const httpPlugin: SourcePlugin<Record<string, never>> = {
     HttpIngestRegistry.register(ctx.sourceId, emit);
     return {
       stop: async () => {
-        if (registry.get(ctx.sourceId) === emit) HttpIngestRegistry.unregister(ctx.sourceId);
+        if (registry.get(ctx.sourceId) === emit)
+          HttpIngestRegistry.unregister(ctx.sourceId);
       },
     };
   },

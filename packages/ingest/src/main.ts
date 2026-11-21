@@ -7,7 +7,15 @@ if (!databaseUrl || !redisUrl) {
   process.exit(1);
 }
 
-const service = await startIngestService({ databaseUrl, redisUrl });
+// Standalone runs only the parse worker: the api process owns the sources runner and the http route registry.
+// INGEST_RUN_SOURCES=1 additionally runs non-http sources here (do not also run them in the api process).
+const runSources = process.env.INGEST_RUN_SOURCES === "1";
+const service = await startIngestService({
+  databaseUrl,
+  redisUrl,
+  runSources,
+  excludeTypes: ["http"],
+});
 let closing = false;
 function shutdown(): void {
   if (closing) return;

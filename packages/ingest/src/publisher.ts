@@ -15,7 +15,11 @@ export function toRawMessage(
   raw: Parameters<Emit>[0],
   receivedAt: string = new Date().toISOString(),
 ): RawMessage {
-  return { sourceId, receivedAt, raw: typeof raw === "string" ? raw : JSON.stringify(raw) };
+  return {
+    sourceId,
+    receivedAt,
+    raw: typeof raw === "string" ? raw : JSON.stringify(raw),
+  };
 }
 
 export function createRawPublisher(redis: Redis): RawPublisher {
@@ -23,7 +27,15 @@ export function createRawPublisher(redis: Redis): RawPublisher {
     forSource(sourceId) {
       return async (raw, meta) => {
         const msg = toRawMessage(sourceId, raw, meta?.receivedAt);
-        await redis.xadd(STREAM_RAW_EVENTS, "MAXLEN", "~", RAW_STREAM_MAXLEN, "*", "data", JSON.stringify(msg));
+        await redis.xadd(
+          STREAM_RAW_EVENTS,
+          "MAXLEN",
+          "~",
+          RAW_STREAM_MAXLEN,
+          "*",
+          "data",
+          JSON.stringify(msg),
+        );
       };
     },
   };

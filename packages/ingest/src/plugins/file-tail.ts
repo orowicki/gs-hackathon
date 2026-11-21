@@ -1,6 +1,5 @@
 import { watch, type FSWatcher } from "node:fs";
 import { open, readdir, stat } from "node:fs/promises";
-import { StringDecoder } from "node:string_decoder";
 import path from "node:path";
 import picomatch from "picomatch";
 import type { SourcePlugin } from "../types.js";
@@ -14,14 +13,16 @@ const POLL_MS = 250;
 const MAX_READ = 1024 * 1024;
 
 interface FileState {
+  /** Byte offset of the first unconsumed byte (start of the next line to emit). */
   offset: number;
-  decoder: StringDecoder;
-  buf: string;
+  ino: number;
+  dev: number;
 }
 
 /** Split a path/glob into a literal base directory and a glob pattern (null when no glob chars). */
 function splitGlob(p: string): { base: string; pattern: string | null } {
-  if (!picomatch.scan(p).isGlob) return { base: path.dirname(p), pattern: null };
+  if (!picomatch.scan(p).isGlob)
+    return { base: path.dirname(p), pattern: null };
   const { base } = picomatch.scan(p);
   return { base: base === "" ? "." : base, pattern: p };
 }
@@ -56,8 +57,11 @@ export const fileTailPlugin: SourcePlugin<FileTailConfig> = {
     const target = path.resolve(config.path);
     const { base, pattern } = splitGlob(target);
     const pm = pattern ? picomatch(pattern, { dot: true }) : () => false;
-    const isMatch = pattern ? (f: string) => pm(f) : (f: string) => f === target;
-    const recursive = pattern !== null && path.relative(base, pattern).includes(path.sep);
+    const isMatch = pattern
+      ? (f: string) => pm(f)
+      : (f: string) => f === target;
+    const recursive =
+      pattern !== null && path.relative(base, pattern).includes(path.sep);
     const states = new Map<string, FileState>();
     let stopped = false;
     let running = false;
@@ -67,15 +71,17 @@ export const fileTailPlugin: SourcePlugin<FileTailConfig> = {
     const readFile = async (file: string, st: FileState): Promise<void> => {
       let size: number;
       try {
-        size = (await stat(file)).size;
+        const info = await stat(file);
+        size = info.size;
+        if (info.ino !== st.ino || info.dev !== st.dev || size < st.offset) {
+          // rotated (rename + recreate) or truncated: start over from the beginning
+          st.ino = info.ino;
+          st.dev = info.dev;
+          st.offset = 0;
+        }
       } catch {
         states.delete(file);
         return;
-      }
-      if (size < st.offset) {
-        st.offset = 0;
-        st.buf = "";
-        st.decoder = new StringDecoder("utf8");
       }
       while (st.offset < size && !stopped) {
         const len = Math.min(size - st.offset, MAX_READ);
@@ -88,18 +94,38 @@ export const fileTailPlugin: SourcePlugin<FileTailConfig> = {
           await fh.close();
         }
         if (n === 0) break;
-        st.offset += n;
-        st.buf += st.decoder.write(chunk.subarray(0, n));
-        const parts = st.buf.split("\n");
-        st.buf = parts.pop() ?? "";
-        for (const line of parts) {
-          const text = line.replace(/\r$/, "");
-          if (text === "") continue;
-          try {
-            await emit(text);
-          } catch (e) {
-            ctx.logger?.error(`file_tail emit failed: ${String(e)}`);
+        const data = chunk.subarray(0, n);
+        let pos = 0;
+        let idx: number;
+        while ((idx = data.indexOf(10, pos)) !== -1) {
+          const text = data.toString("utf8", pos, idx).replace(/\r$/, "");
+          if (text !== "") {
+            if (stopped) return;
+            try {
+              await emit(text);
+            } catch (e) {
+              ctx.logger?.error(
+                `file_tail emit failed (will retry): ${String(e)}`,
+              );
+              return; // offset stays at this line; retried next tick
+            }
           }
+          st.offset += idx + 1 - pos;
+          pos = idx + 1;
+        }
+        if (pos === 0) {
+          if (n < MAX_READ) break; // incomplete last line: wait for the rest
+          // a single line longer than MAX_READ: emit it in pieces rather than stall
+          if (stopped) return;
+          try {
+            await emit(data.toString("utf8"));
+          } catch (e) {
+            ctx.logger?.error(
+              `file_tail emit failed (will retry): ${String(e)}`,
+            );
+            return;
+          }
+          st.offset += n;
         }
       }
     };
@@ -109,28 +135,34 @@ export const fileTailPlugin: SourcePlugin<FileTailConfig> = {
       for (const file of files) {
         let st = states.get(file);
         if (!st) {
-          let size = 0;
+          let info;
           try {
-            size = first ? (await stat(file)).size : 0;
+            info = await stat(file);
           } catch {
             continue;
           }
-          st = { offset: size, decoder: new StringDecoder("utf8"), buf: "" };
+          st = { offset: first ? info.size : 0, ino: info.ino, dev: info.dev };
           states.set(file, st);
         }
         await readFile(file, st);
       }
-      for (const f of [...states.keys()]) if (!files.includes(f)) states.delete(f);
+      for (const f of [...states.keys()])
+        if (!files.includes(f)) states.delete(f);
       first = false;
     };
 
-    const tick = async (): Promise<void> => {
-      if (stopped) return;
+    let inflight: Promise<void> = Promise.resolve();
+    const tick = (): Promise<void> => {
+      if (stopped) return Promise.resolve();
       if (running) {
         again = true;
-        return;
+        return inflight;
       }
       running = true;
+      inflight = runScans();
+      return inflight;
+    };
+    const runScans = async (): Promise<void> => {
       try {
         do {
           again = false;
@@ -159,6 +191,7 @@ export const fileTailPlugin: SourcePlugin<FileTailConfig> = {
       async stop() {
         stopped = true;
         clearInterval(timer);
+        await inflight;
         watcher?.close();
         ctx.signal?.removeEventListener("abort", onAbort);
       },

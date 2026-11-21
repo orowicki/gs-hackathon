@@ -34,7 +34,10 @@ export const PARSER_CONFIG_SCHEMA: JsonSchemaObject = {
   type: "object",
   properties: {
     type: { type: "string", enum: [...PARSER_TYPES] },
-    pattern: { type: "string", title: "Regex with named groups (regex parser only)" },
+    pattern: {
+      type: "string",
+      title: "Regex with named groups (regex parser only)",
+    },
   },
   required: ["type"],
   additionalProperties: false,

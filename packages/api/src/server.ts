@@ -1,5 +1,5 @@
 import http from "node:http";
-import { handleHttpIngest } from "@alerting/ingest";
+import { HttpIngestRegistry, handleHttpIngest } from "@alerting/ingest";
 import { buildOpenApi } from "./openapi.js";
 import { serveStatic } from "./static.js";
 
@@ -35,32 +35,71 @@ function send(res: http.ServerResponse, status: number, body: unknown): void {
 
 export const MAX_INGEST_BYTES = 10 * 1024 * 1024;
 
-/** Read the request body as UTF-8 text; resolves undefined when it exceeds the limit. */
-function readBody(req: http.IncomingMessage, limit: number): Promise<string | undefined> {
+/** Read the request body as UTF-8 text; resolves undefined (and destroys the request) when it exceeds the limit. */
+function readBody(
+  req: http.IncomingMessage,
+  limit: number,
+  onTooBig: () => void,
+): Promise<string | undefined> {
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = [];
     let size = 0;
-    let tooBig = false;
+    let done = false;
     req.on("data", (c: Buffer) => {
+      if (done) return;
       size += c.length;
-      if (size > limit) tooBig = true;
-      else chunks.push(c);
+      if (size > limit) {
+        done = true;
+        chunks.length = 0;
+        onTooBig();
+        resolve(undefined);
+        return;
+      }
+      chunks.push(c);
     });
-    req.on("end", () => resolve(tooBig ? undefined : Buffer.concat(chunks).toString("utf8")));
-    req.on("error", reject);
+    req.on("end", () => {
+      if (!done) resolve(Buffer.concat(chunks).toString("utf8"));
+    });
+    req.on("error", (e) => (done ? undefined : reject(e)));
   });
 }
 
-async function handleIngest(req: http.IncomingMessage, res: http.ServerResponse, sourceId: string): Promise<void> {
+function tooLarge(req: http.IncomingMessage, res: http.ServerResponse): void {
+  const payload = JSON.stringify({ error: "payload too large" });
+  res.writeHead(413, {
+    "content-type": "application/json",
+    "content-length": Buffer.byteLength(payload),
+    connection: "close",
+  });
+  res.end(payload, () => req.destroy());
+}
+
+async function handleIngest(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  sourceId: string,
+): Promise<void> {
   try {
-    const body = await readBody(req, MAX_INGEST_BYTES);
-    if (body === undefined) return send(res, 413, { error: "payload too large" });
+    if (!HttpIngestRegistry.has(sourceId))
+      return send(res, 404, { error: "unknown source" });
+    const declared = Number(req.headers["content-length"]);
+    if (Number.isFinite(declared) && declared > MAX_INGEST_BYTES)
+      return tooLarge(req, res);
+    let overflow = false;
+    const body = await readBody(req, MAX_INGEST_BYTES, () => {
+      overflow = true;
+      tooLarge(req, res);
+    });
+    if (overflow || body === undefined) return;
     const type = req.headers["content-type"];
     const out = await handleHttpIngest(sourceId, body, type);
     if ("error" in out) {
-      return out.error === "unknown_source"
-        ? send(res, 404, { error: "unknown source" })
-        : send(res, 400, { error: "empty body" });
+      if (out.error === "unknown_source")
+        return send(res, 404, { error: "unknown source" });
+      if (out.error === "empty") return send(res, 400, { error: "empty body" });
+      if (!("message" in out)) return send(res, 500, { error: "internal error" });
+      console.error("ingest emit failed:", out.message);
+      return send(res, 500, { accepted: out.accepted, error: "emit failed" });
     }
     send(res, 202, out);
   } catch (err) {
@@ -70,7 +109,7 @@ async function handleIngest(req: http.IncomingMessage, res: http.ServerResponse,
 }
 
 export function createServer(deps: Deps): http.Server {
-  return http.createServer((req, res) => {
+  const server = http.createServer((req, res) => {
     const path = (req.url ?? "").split("?")[0];
     if (req.method === "GET" && path === "/health") {
       void (async () => {
@@ -110,4 +149,6 @@ export function createServer(deps: Deps): http.Server {
     }
     send(res, 404, { error: "not found" });
   });
+  server.requestTimeout = 30_000;
+  return server;
 }

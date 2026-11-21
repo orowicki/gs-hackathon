@@ -1,7 +1,10 @@
 import type { JsonObject, ParserConfig } from "@alerting/shared";
 
 /** A parser never throws; unreadable input yields `{ raw: "<text>" }`. */
-export type Parser = (input: string | JsonObject, config: ParserConfig) => JsonObject;
+export type Parser = (
+  input: string | JsonObject,
+  config: ParserConfig,
+) => JsonObject;
 
 export function toText(input: string | JsonObject): string {
   return typeof input === "string" ? input : JSON.stringify(input);
@@ -40,7 +43,10 @@ export const logfmtParser: Parser = (input) => {
   for (const m of text.matchAll(LOGFMT_RE)) {
     found = true;
     const key = m[1] as string;
-    if (m[2] !== undefined) out[key] = m[2].replace(/\\(.)/g, (_, c: string) => (c === "n" ? "\n" : c === "t" ? "\t" : c));
+    if (m[2] !== undefined)
+      out[key] = m[2].replace(/\\(.)/g, (_, c: string) =>
+        c === "n" ? "\n" : c === "t" ? "\t" : c,
+      );
     else if (m[3] !== undefined) out[key] = m[3];
     else out[key] = true;
   }
@@ -81,7 +87,10 @@ export function registerParser(name: string, parser: Parser): void {
 }
 
 /** Dispatch on `config.type`; unknown types and throwing parsers fall back to `{ raw }`. */
-export function parse(input: string | JsonObject, config: ParserConfig): JsonObject {
+export function parse(
+  input: string | JsonObject,
+  config: ParserConfig,
+): JsonObject {
   const parser = PARSERS[config.type];
   try {
     return parser ? parser(input, config) : fallback(stripEol(toText(input)));

@@ -1,4 +1,10 @@
-import { appendFileSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import {
+  appendFileSync,
+  mkdtempSync,
+  renameSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -43,7 +49,11 @@ describe("file_tail", () => {
 
   it("picks up new files matching a glob from the start", async () => {
     writeFileSync(path.join(dir, "x.log"), "existing\n");
-    handle = await fileTailPlugin.start({ path: path.join(dir, "*.log") }, emit, { sourceId: "s" });
+    handle = await fileTailPlugin.start(
+      { path: path.join(dir, "*.log") },
+      emit,
+      { sourceId: "s" },
+    );
     writeFileSync(path.join(dir, "y.log"), "hello\nworld\n");
     writeFileSync(path.join(dir, "z.txt"), "ignored\n");
     await waitFor(2);
@@ -59,5 +69,57 @@ describe("file_tail", () => {
     writeFileSync(f, "c\n");
     await waitFor(2);
     expect(got).toEqual(["bbbb", "c"]);
+  });
+
+  it("detects rotation (rename + recreate with a larger file) and reads the new file from 0", async () => {
+    const f = path.join(dir, "r.log");
+    writeFileSync(f, "a\n");
+    handle = await fileTailPlugin.start({ path: f }, emit, { sourceId: "s" });
+    renameSync(f, path.join(dir, "r.log.1"));
+    writeFileSync(f, "new-one\nnew-two\nnew-three\n");
+    await waitFor(3);
+    expect(got).toEqual(["new-one", "new-two", "new-three"]);
+  });
+
+  it("retries a line whose emit failed on the next tick", async () => {
+    const f = path.join(dir, "e.log");
+    writeFileSync(f, "");
+    let calls = 0;
+    const flaky = async (m: unknown) => {
+      if (++calls === 1) throw new Error("down");
+      got.push(m);
+    };
+    handle = await fileTailPlugin.start({ path: f }, flaky, { sourceId: "s" });
+    appendFileSync(f, "l1\nl2\n");
+    await waitFor(2, 2000);
+    expect(got).toEqual(["l1", "l2"]);
+  });
+
+  it("stop() awaits an in-flight emit; nothing emits afterwards", async () => {
+    const f = path.join(dir, "s.log");
+    writeFileSync(f, "");
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    let started = false;
+    const slow = async (m: unknown) => {
+      started = true;
+      await gate;
+      got.push(m);
+    };
+    handle = await fileTailPlugin.start({ path: f }, slow, { sourceId: "s" });
+    appendFileSync(f, "one\ntwo\n");
+    const end = Date.now() + 2000;
+    while (!started && Date.now() < end) await sleep(10);
+    let stopped = false;
+    const stopping = handle.stop().then(() => (stopped = true));
+    await sleep(100);
+    expect(stopped).toBe(false);
+    release();
+    await stopping;
+    const n = got.length;
+    await sleep(500);
+    expect(got.length).toBe(n);
+    expect(got).toEqual(["one"]);
+    handle = undefined;
   });
 });

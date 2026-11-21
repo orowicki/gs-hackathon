@@ -3,7 +3,10 @@ import type { JsonObject, SourceType } from "@alerting/shared";
 /** JSON Schema (draft 2020-12) describing an object. */
 export type JsonSchemaObject = { type: "object" } & { [key: string]: unknown };
 
-export type Emit = (raw: string | JsonObject, meta?: { receivedAt?: string }) => Promise<void>;
+export type Emit = (
+  raw: string | JsonObject,
+  meta?: { receivedAt?: string },
+) => Promise<void>;
 
 export interface SourceContext {
   sourceId: string;
