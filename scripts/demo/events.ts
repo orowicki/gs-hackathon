@@ -11,7 +11,9 @@ export interface DemoEvent {
 const pick = <T>(rng: Rng, xs: readonly T[]): T => xs[Math.floor(rng() * xs.length)] as T;
 const int = (rng: Rng, lo: number, hi: number) => lo + Math.floor(rng() * (hi - lo + 1));
 
-const STEPS = ["validate-counterparty", "book-trade", "confirm-settlement", "notify-custodian"];
+// Random-phase steps and names never collide with the showcase's dedup keys (see showcase()), so the
+// showcase alerts keep their state for the whole run.
+const STEPS = ["reconcile-ledger", "release-collateral", "archive-confirmation", "send-swift-message"];
 const ERRORS = [
   { code: "TIMEOUT", message: "Counterparty service did not respond in 5000 ms" },
   { code: "REJECTED", message: "Counterparty rejected the instruction" },
@@ -72,7 +74,7 @@ export function paymentsCritical(rng: Rng, now: Date, status: "firing" | "resolv
   return {
     kind: status === "resolved" ? "resolved" : "payments",
     line: JSON.stringify(
-      metric(rng, now, "payments-api", "HighErrorRate", "critical", `Error rate ${int(rng, 5, 40)}% over the last 5 minutes`, status),
+      metric(rng, now, "payments-api", "SlowCheckout", "critical", `Error rate ${int(rng, 5, 40)}% over the last 5 minutes`, status),
     ),
   };
 }
