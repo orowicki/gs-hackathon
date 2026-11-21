@@ -36,25 +36,36 @@ The exact wording is in the `measurement` field of each JSON file.
 
 ## Results
 
-Both runs: 5000 ev/s target, 60 s, commit `89658d1`, 0 rejected, 0 HTTP errors, single run each (not averaged).
+Both configurations: 5000 ev/s target, 60 s per window, 3 measurement windows each, commit `1c5d7b3`, local mode, 0 rejected, 0 HTTP errors. Values are medians across the 3 windows with [min-max] in brackets (from `aggregate.range` where the JSON provides it, otherwise from `runs`).
 
 | | 1 worker | 2 workers |
 | --- | --- | --- |
 | Target rate (ev/s) | 5000 | 5000 |
 | Send rate (ev/s) | 4999.2 | 4999.2 |
-| Processed/s | 4664.5 | 4999.3 |
-| Events sent / alerts seen | 299975 / 299975 | 299955 / 299955 |
-| e2e samples (push coverage) | 299975 (100%) | 299955 (100%) |
-| e2e p50 (ms) | 882 | 10 |
-| e2e p90 (ms) | 1891 | 3244 |
-| e2e p99 (ms) | 3560 | 5193 |
-| e2e max (ms) | 4334 | 5311 |
-| notification p50 (ms) | 882 | 10 |
-| notification p90 (ms) | 1891 | 3244 |
-| notification p99 (ms) | 3560 | 5193 |
-| notification max (ms) | 4334 | 5310 |
-| Lost | 0 | 0 |
+| Processed/s | 4932.7 [4715.9-4999.2] | 4999.3 [4999-4999.3] |
+| Events sent / alerts seen (3 windows) | 899905 / 899905 | 899915 / 899915 |
+| e2e samples (push coverage) | 899905 (100%) | 899915 (100%) |
+| e2e p50 (ms) | 946 [14-2420] | 9 [8-9] |
+| e2e p90 (ms) | 2334 | 151 |
+| e2e p99 (ms) | 3784 [2267-6876] | 531 [379-1089] |
+| e2e max (ms) | 3809 | 655 |
+| notification p50 (ms) | 945 | 9 |
+| notification p90 (ms) | 2333 | 151 |
+| notification p99 (ms) | 3783 | 530 |
+| notification max (ms) | 3809 | 655 |
+| Lost (sum over windows) | 0 | 0 |
 | Targets met (p50 < 50, p99 < 250, 0 lost) | no | no |
+
+Per window (e2e in ms):
+
+| Workers | Window | Processed/s | e2e p50 | e2e p90 | e2e p99 | e2e max | Lost |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| 1 | 1 | 4715.9 | 14 | 2334 | 3784 | 3809 | 0 |
+| 1 | 2 | 4932.7 | 946 | 2079 | 2267 | 2306 | 0 |
+| 1 | 3 | 4999.2 | 2420 | 6225 | 6876 | 6964 | 0 |
+| 2 | 1 | 4999 | 9 | 151 | 531 | 655 | 0 |
+| 2 | 2 | 4999.3 | 8 | 55 | 379 | 475 | 0 |
+| 2 | 3 | 4999.3 | 9 | 358 | 1089 | 1270 | 0 |
 
 Sources: [1 worker](../results/loadtest-2026-11-21.json) ([chart](../results/loadtest-2026-11-21.html)),
 [2 workers](../results/loadtest-2026-11-21-workers2.json) ([chart](../results/loadtest-2026-11-21-workers2.html)),
@@ -62,17 +73,17 @@ Sources: [1 worker](../results/loadtest-2026-11-21.json) ([chart](../results/loa
 
 ### Reading the results
 
-- **1 worker falls behind at 5000 ev/s.** Processed/s (4664.5) stays below the send rate (4999.2) and a backlog builds, so latency is high (p50 882 ms, p99 3560 ms). No event was lost: every accepted event produced an alert.
-- **2 workers sustain the rate.** Processed/s (4999.3) matches the send rate (4999.2). The p50 target is met (10 ms < 50 ms), but the tail is bad: p90 3244 ms, p99 5193 ms (target 250 ms). The per-second `processed` series in the JSON shows stalls followed by catch-up spikes.
-- Overall the SPEC latency targets are **not** met at 5000 ev/s on this setup: p50 only with 2 workers, p99 no, 0 lost yes.
-- Run-to-run variation is large: an earlier run of the same configuration (commit `9b60a09`) gave 1 worker p50 576 ms / p99 1250 ms and 2 workers p99 796 ms. Treat the numbers as indicative only.
+- **Targets are not met in either configuration** (`targets.met` is false for both). 0 events were lost in both: every accepted event produced an alert.
+- **1 worker misses p50 and p99 and falls behind at 5000 ev/s.** Median processed/s is 4932.7 (window range 4715.9-4999.2) against a send rate of 4999.2, so a backlog builds. Median p50 is 946 ms (target 50 ms) and median p99 is 3784 ms (target 250 ms). The spread between windows is very large (p50 14-2420 ms, p99 2267-6876 ms), so the median is only a rough guide.
+- **2 workers sustain 5000 ev/s, meet p50, miss p99.** Processed/s is 4999.3 [4999-4999.3], matching the send rate. Median p50 is 9 ms [8-9] (target 50 ms, met in all 3 windows). Median p99 is 531 ms [379-1089] against the 250 ms target, missed in all 3 windows. The per-second `processed` series in the JSON shows stalls followed by catch-up spikes.
+- Notification latency (enqueue time) tracks e2e within 1 ms at every percentile in the medians.
 
 ## Caveats
 
 - These numbers were measured in **local mode** (`just loadtest --local`): processes on the dev container host with local Postgres and Redis, not inside docker compose (docker was not available). The hardware is not characterised, and the load generator, stack, Postgres and Redis share it.
 - The api process also runs an in-process ingest parse worker. "N workers" therefore means N engines and N+1 parse consumers (N standalone parse workers plus the api's own). This is also recorded in `config.note` of each result JSON.
 - The load-test rule matches on a run id field of the parsed event, because schema classification is not applied in ingest yet. Real rules with schema lookups would cost more.
-- One run per configuration, not averaged. Run-to-run variation is not known; treat p99 in particular as indicative.
+- Three windows per configuration. Window-to-window variation is large for the 1 worker case and for the 2 worker p99, so treat tail latency as indicative.
 - The compose run (`just loadtest` without `--local`) has not produced published numbers yet.
 
 ## Re-running and updating

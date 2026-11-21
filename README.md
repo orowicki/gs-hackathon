@@ -35,5 +35,6 @@ All variables have defaults, so the stack runs without any configuration. Overri
 
 ## Performance
 
-Load test at 5000 ev/s for 60 s (local mode, one run each): 1 worker falls behind (processed 4664.5/s, e2e p50 882 ms, p99 3560 ms, 0 lost); 2 workers sustain the rate (processed 4999.3/s, e2e p50 10 ms, p99 5193 ms, 0 lost). The p50 target (< 50 ms) is met with 2 workers, the p99 target (< 250 ms) is not in either run.
+Load test at 5000 ev/s for 60 s (local mode, median of 3 windows per configuration, [min-max]): 1 worker falls behind (processed 4932.7/s, e2e p50 946 ms [14-2420], p99 3784 ms [2267-6876], 0 lost); 2 workers sustain the rate (processed 4999.3/s, e2e p50 9 ms [8-9], p99 531 ms [379-1089], 0 lost).
+Targets (p50 < 50 ms, p99 < 250 ms, 0 lost) are not met: 1 worker misses p50 and p99, 2 workers meet p50 but miss p99.
 Details, caveats and how to re-run (`just loadtest`): [docs/performance.md](docs/performance.md). Raw results: [1 worker](results/loadtest-2026-11-21.json), [2 workers](results/loadtest-2026-11-21-workers2.json).
