@@ -27,6 +27,44 @@ services:
       retries: 10
       start_period: 5s
 
+  # Standalone ingest parse worker + rule engine in one container; scale with WORKERS=N.
+  worker:
+    build: .
+    command:
+      - sh
+      - -c
+      - |
+        node packages/ingest/dist/main.js & p1=$$!
+        node packages/engine/dist/main.js & p2=$$!
+        trap 'kill $$p1 $$p2 2>/dev/null' TERM INT
+        while kill -0 $$p1 2>/dev/null && kill -0 $$p2 2>/dev/null; do sleep 1; done
+        kill $$p1 $$p2 2>/dev/null
+        exit 1
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgres://alerting:alerting@postgres:5432/alerting}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379}
+      NTFY_URL: ${NTFY_URL:-http://ntfy:80}
+    depends_on:
+      app:
+        condition: service_healthy
+    deploy:
+      replicas: ${WORKERS:-1}
+
+  # Load generator (docker compose --profile loadtest run --rm loadtest ...)
+  loadtest:
+    build: .
+    profiles: ["loadtest"]
+    working_dir: /app
+    volumes:
+      - ./scripts/loadtest:/app/scripts/loadtest:ro
+      - ./results:/app/results
+    environment:
+      BASE_URL: http://app:3000
+      REDIS_URL: redis://redis:6379
+      DATABASE_URL: postgres://alerting:alerting@postgres:5432/alerting
+    depends_on:
+      - app
+
   postgres:
     image: postgres:16-alpine
     environment:
