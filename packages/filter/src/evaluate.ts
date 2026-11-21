@@ -1,3 +1,4 @@
+import { parseTimeValue, toEpochMs } from "./time.js";
 import { SEVERITY_FIELD, SEVERITY_ORDER, type EvalContext, type FilterNode, type FilterValue } from "./types.js";
 
 function getPath(root: unknown, path: string): unknown {
@@ -55,7 +56,7 @@ function order(op: string, a: number, b: number): boolean {
   return false;
 }
 
-function cmp(actual: unknown, op: string, lit: FilterValue, field: string): boolean {
+function cmp(actual: unknown, op: string, lit: FilterValue, field: string, now: number): boolean {
   if (actual === undefined || actual === null) return op === "!=";
   switch (op) {
     case "=":
@@ -78,6 +79,11 @@ function cmp(actual: unknown, op: string, lit: FilterValue, field: string): bool
         const b = rank(lit);
         return a !== undefined && b !== undefined && order(op, a, b);
       }
+      const when = parseTimeValue(lit, now);
+      if (when !== undefined) {
+        const a = toEpochMs(actual);
+        return a !== undefined && order(op, a, when);
+      }
       const a = toNum(actual);
       return a !== undefined && typeof lit === "number" && order(op, a, lit);
     }
@@ -95,7 +101,7 @@ export function evaluate(tree: FilterNode | null, ctx: EvalContext = {}): boolea
     case "not":
       return !evaluate(tree.child, ctx);
     case "cmp":
-      return cmp(resolve(tree.field, ctx), tree.op, tree.value, tree.field);
+      return cmp(resolve(tree.field, ctx), tree.op, tree.value, tree.field, ctx.now ?? Date.now());
     case "in": {
       const actual = resolve(tree.field, ctx);
       if (actual === undefined || actual === null) return false;

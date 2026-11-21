@@ -18,6 +18,8 @@ export function alertContext(alert: Alert, event?: Event | null): EvalContext {
       ruleId: alert.ruleId,
       count: alert.count,
       dedupKey: alert.dedupKey,
+      firstSeen: alert.firstSeen,
+      lastSeen: alert.lastSeen,
     },
     event: event ? (event.parsed ?? event.raw) : undefined,
   };

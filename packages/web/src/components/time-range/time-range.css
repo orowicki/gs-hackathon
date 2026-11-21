@@ -1,0 +1,42 @@
+.time-range {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  height: 32px;
+  padding: 0 var(--space-2);
+  background: var(--surface);
+  color: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  flex: none;
+}
+
+.time-range:hover,
+.time-range:focus-within {
+  border-color: var(--border-strong);
+  color: var(--text);
+}
+
+.time-range.active {
+  color: var(--accent);
+}
+
+.time-range select {
+  appearance: none;
+  background: transparent;
+  border: 0;
+  color: var(--text);
+  font: inherit;
+  font-size: var(--text-sm);
+  cursor: pointer;
+  padding-right: var(--space-1);
+}
+
+.time-range select:focus {
+  outline: none;
+}
+
+.time-range option {
+  background: var(--surface-2);
+  color: var(--text);
+}

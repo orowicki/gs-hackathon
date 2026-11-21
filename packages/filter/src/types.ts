@@ -15,6 +15,8 @@ export type FilterNode =
 export interface EvalContext {
   alert?: Record<string, unknown>;
   event?: unknown;
+  /** Current time in epoch ms for relative dates (`now-24h`); defaults to Date.now(). */
+  now?: number;
 }
 
 export const COMMON_FIELDS = [
@@ -25,6 +27,8 @@ export const COMMON_FIELDS = [
   "alert.dedupKey",
   "alert.status",
   "alert.occurredAt",
+  "alert.lastSeen",
+  "alert.firstSeen",
   "alert.schema",
 ] as const;
 
