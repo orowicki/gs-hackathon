@@ -5,6 +5,7 @@ import type { RouteDef } from "./types";
 const EXPECTED = [
   "/",
   "/alerts/:id",
+  "/approvals",
   "/events",
   "/config/sources",
   "/config/sources/:id",

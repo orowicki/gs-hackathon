@@ -1085,3 +1085,19 @@ a.crumb:hover {
 @media (max-width: 640px) { .account-name { display: none; } }
 /* The account menu opens over the page content. */
 .app-bar { position: relative; z-index: 30; }
+
+/* Sidebar count badge (e.g. approvals waiting). */
+.nav-badge {
+  margin-left: auto;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9px;
+  background: var(--warning);
+  color: #1a1400;
+  font-size: var(--text-xs);
+  font-weight: var(--weight-strong);
+}
