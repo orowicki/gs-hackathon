@@ -17,6 +17,7 @@ export function TemplateInput({
   fields,
   multiline = false,
   placeholder,
+  hint = true,
 }: {
   id: string;
   value: string;
@@ -24,6 +25,8 @@ export function TemplateInput({
   fields: string[];
   multiline?: boolean;
   placeholder?: string;
+  /** Show the "Type {{ to insert a field" line (off when a form shows it once). */
+  hint?: boolean;
 }) {
   const ref = useRef<HTMLInputElement & HTMLTextAreaElement>(null);
   const listId = useId();
@@ -109,9 +112,11 @@ export function TemplateInput({
           ))}
         </ul>
       )}
-      <span className="re-hint">
-        Type <kbd>{"{{"}</kbd> to insert a field.
-      </span>
+      {hint && (
+        <span className="re-hint">
+          Type <kbd>{"{{"}</kbd> to insert a field.
+        </span>
+      )}
     </div>
   );
 }

@@ -667,21 +667,20 @@ a.crumb:hover {
 
 .stat.lit .stat-label,
 .stat.lit .stat-value {
-  color: #fff;
+  color: var(--on-fill);
 }
 
 .stat.lit:hover {
   filter: brightness(1.08);
 }
 
-.stat.lit.sev-critical { background: var(--critical); }
-.stat.lit.sev-error { background: var(--error); }
-.stat.lit.sev-warning { background: var(--warning); }
+/* Solid severity fills from the palette (tokens.css: *-fill, --on-fill). */
+.stat.lit.sev-critical { background: var(--critical-fill); }
+.stat.lit.sev-error { background: var(--error-fill); }
+.stat.lit.sev-warning { background: var(--warning-fill); }
 .stat.lit.sev-warning .stat-label,
-.stat.lit.sev-warning .stat-value { color: #1a1400; }
-.stat.lit.sev-info { background: var(--info); }
-/* Light theme: the darker text-safe yellow reads muddy as a fill; use Grafana's bright one. */
-:root[data-theme="light"] .stat.lit.sev-warning { background: #f5c518; }
+.stat.lit.sev-warning .stat-value { color: var(--on-warning-fill); }
+.stat.lit.sev-info { background: var(--info-fill); }
 
 /* The panel matching the current filter: a ring in the text colour. Others step back. */
 .stat.selected {
@@ -842,7 +841,7 @@ a.crumb:hover {
 
 .feed-tab.active .feed-tab-count {
   background: var(--accent-bg);
-  color: #fff;
+  color: var(--on-accent);
 }
 
 .feed-tabs-note {
@@ -1085,3 +1084,20 @@ a.crumb:hover {
 @media (max-width: 640px) { .account-name { display: none; } }
 /* The account menu opens over the page content. */
 .app-bar { position: relative; z-index: 30; }
+
+/* Sidebar count badge (e.g. approvals waiting). */
+.nav-badge {
+  margin-left: auto;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9px;
+  background: var(--surface-2);
+  border: 1px solid var(--border-strong);
+  color: var(--text-strong);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-strong);
+}

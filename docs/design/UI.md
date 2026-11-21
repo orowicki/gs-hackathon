@@ -229,11 +229,23 @@ The full event is shown as a clean, readable list of fields. The user should nev
 | Icons | Lucide, 16 px, stroke 1.5. |
 | Motion | 120–160 ms ease-out, only for expanding rows, opening panels and highlighting new alerts. Respect `prefers-reduced-motion`. |
 
-Colours: Grafana dark palette by default, light theme via `data-theme="light"`. The single source
-is `packages/web/src/styles/tokens.css` (severity: critical `#F2495C`, error `#FF9830`,
-warning `#FADE2A`, info `#5794F2`; valid `#73BF69`; accent `#6E9FFF`; alert state:
-acknowledged `#B877D9` (purple), resolved `#73BF69`). Don't hard-code colours in
-page CSS; use the variables.
+Colours: Grafana's structure and neutrals with Goldman Sachs blue as the one brand highlight.
+The single source is `packages/web/src/styles/tokens.css`; never hard-code colours in page CSS.
+
+| Role | Dark | Light |
+|---|---|---|
+| Brand / highlight (links, focus, active nav, primary buttons) | `#7399C6` (links `#8FB2DD`, buttons `#3E6AA6`) | `#2F5D97` |
+| Critical (text / fill) | hipred `#EE454A` / `#EE454A` | `#D31319` / `#EE454A` |
+| Error | hiporange `#FC5E1F` / `#FC5E1F` | `#D13E03` / `#FC5E1F` |
+| Warning | hipyellow `#FABB2D` / brighter-but-deep hipyellow `#D29406` | `#9A6C03` / `#D29406` |
+| Info | hipblue `#3995DA` / `#3995DA` | `#2071AE` / `#3995DA` |
+| OK / healthy, resolved | hipgreen `#3CB538` | `#277624` |
+| Neutral tags | hipgray `#6C7788` | `#515966` |
+| Acknowledged | purple `#B877D9` | `#8F3BB8` |
+
+The severity colours are the "Hip" palette (-500 shades).
+Every solid severity fill carries white text; hipyellow is too light for that, so its fill is a deeper shade of the same hue.
+Severity colours are for severity only; decoration (badges, edges, icons) stays neutral.
 
 ### Do not
 

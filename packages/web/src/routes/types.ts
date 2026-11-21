@@ -10,6 +10,8 @@ export interface NavEntry {
   order?: number;
   /** Extra path prefixes that also mark this entry active (e.g. "/alerts" for the feed). */
   activeFor?: string[];
+  /** GET URL returning a JSON array: its length shows as a badge (polled every 10 s). */
+  countUrl?: string;
 }
 
 /**

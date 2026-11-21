@@ -6,11 +6,17 @@ import {
   type ChannelStatus,
   type DeadLetter,
 } from "./api";
-import { relativeTime, statusColor } from "./format";
+import { relativeTime } from "./format";
 import "./channels.css";
 import { channelLabel } from "../../channels";
+import { useAccount } from "../../account";
+import { Icon } from "../../components/Icon";
+import { LayoutDashboard, Mail, RefreshCw, Send, Smartphone, type LucideIcon } from "lucide-react";
+
+const CHANNEL_ICONS: Record<string, LucideIcon> = { ui: LayoutDashboard, ntfy: Smartphone, email: Mail };
 
 export function ChannelsPage() {
+  const { nameOf } = useAccount();
   const [channels, setChannels] = useState<ChannelStatus[]>([]);
   const [letters, setLetters] = useState<DeadLetter[]>([]);
   const [loading, setLoading] = useState(true);
@@ -68,61 +74,60 @@ export function ChannelsPage() {
   };
 
   return (
-    <main className="page">
-      <h1>Channels</h1>
-      <div className="channels-actions">
-        <button
-          type="button"
-          className="btn"
-          onClick={() => void load()}
-          disabled={loading}
-        >
-          Refresh
-        </button>
-        {loading && <span className="muted">Loading…</span>}
-      </div>
+    <main className="page ch-page">
+      <header className="page-header">
+        <div>
+          <h1>Channels</h1>
+          <p className="page-intro">
+            Where notifications go. Failed deliveries are retried on their own; the ones that keep failing land in dead letters, where you can send
+            them again.
+          </p>
+        </div>
+        <div className="page-actions">
+          {loading && <span className="muted ch-loading">Loading…</span>}
+          <button type="button" className="btn" onClick={() => void load()} disabled={loading}>
+            <Icon as={RefreshCw} /> Refresh
+          </button>
+        </div>
+      </header>
 
-      <h2>Status</h2>
       {channelsError && (
-        <p className="channels-error" role="alert">
+        <p className="callout error" role="alert">
           {channelsError}
         </p>
       )}
       {channels.length === 0 ? (
-        channelsError ? null : (
-          <p className="muted">No channels.</p>
-        )
+        channelsError ? null : <p className="muted">No channels.</p>
       ) : (
-        <table className="channels-table" aria-label="Channel status">
-          <thead>
-            <tr>
-              <th>Channel</th>
-              <th>Status</th>
-              <th>Pending</th>
-              <th>Dead letters</th>
-              <th>Last error</th>
-            </tr>
-          </thead>
-          <tbody>
-            {channels.map((c) => (
-              <tr key={c.id}>
-                <td>{channelLabel(c.id)}</td>
-                <td
-                  className="channels-status"
-                  style={{ color: statusColor(c.healthy) }}
-                >
-                  {c.healthy ? "Healthy" : "Unhealthy"}
-                </td>
-                <td>{c.pending}</td>
-                <td>{c.deadLetters}</td>
-                <td>{c.lastError ?? "—"}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <ul className="ch-cards" aria-label="Channel status">
+          {channels.map((c) => (
+            <li key={c.id} className={c.healthy ? "ch-card" : "ch-card down"}>
+              <div className="ch-card-head">
+                <span className="choice-icon">
+                  <Icon as={CHANNEL_ICONS[c.id] ?? Send} />
+                </span>
+                <span className="ch-name">{channelLabel(c.id)}</span>
+                <span className={c.healthy ? "tag ok" : "tag sev-critical"}>{c.healthy ? "Healthy" : "Unhealthy"}</span>
+              </div>
+              <dl className="ch-stats">
+                <div>
+                  <dt>Pending</dt>
+                  <dd>{c.pending}</dd>
+                </div>
+                <div>
+                  <dt>Dead letters</dt>
+                  <dd className={c.deadLetters > 0 ? "bad" : undefined}>{c.deadLetters}</dd>
+                </div>
+              </dl>
+              <p className="ch-error" title={c.lastError ?? undefined}>
+                {c.lastError ? <>Last error: {c.lastError}</> : "No recent errors"}
+              </p>
+            </li>
+          ))}
+        </ul>
       )}
 
-      <h2>Dead letters</h2>
+      <h2 className="ch-section">Dead letters</h2>
       {lettersError && (
         <p className="channels-error" role="alert">
           {lettersError}
@@ -130,12 +135,12 @@ export function ChannelsPage() {
       )}
       {letters.length === 0 ? (
         lettersError ? null : (
-          <div className="empty">
+          <div className="empty-state">
             <p>No dead letters</p>
           </div>
         )
       ) : (
-        <table className="channels-table" aria-label="Dead letters">
+        <table className="ch-table" aria-label="Dead letters">
           <thead>
             <tr>
               <th>Failed</th>
@@ -151,13 +156,13 @@ export function ChannelsPage() {
               <tr key={d.id}>
                 <td title={d.failedAt}>{relativeTime(d.failedAt)}</td>
                 <td>{channelLabel(d.notification.channel)}</td>
-                <td className="mono">{d.notification.recipientId}</td>
+                <td>{nameOf(d.notification.recipientId)}</td>
                 <td>{d.notification.title || d.notification.id}</td>
                 <td>{d.error}</td>
                 <td>
                   <button
                     type="button"
-                    className="btn"
+                    className="btn primary"
                     aria-label={`Retry ${d.id}`}
                     disabled={retrying.has(d.id)}
                     onClick={() => void retry(d.id)}

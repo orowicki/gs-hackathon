@@ -1,0 +1,56 @@
+/* Runbooks list and editor (rb-*). Shared editor layout: styles/components.css. */
+.rb-table tr.clickable { cursor: pointer; }
+.rb-table td:first-child a { color: var(--text-strong); font-weight: var(--weight-strong); }
+.rb-id { font-size: var(--text-xs); }
+.rb-cond { font-family: var(--font-mono); font-size: var(--text-sm); color: var(--text); }
+.rb-table .tag svg { margin-right: 3px; }
+
+.rb-kinds { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-2); }
+
+.rb-steps { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--space-2); }
+
+.rb-step {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+}
+
+.rb-step-head { display: flex; align-items: center; gap: var(--space-3); }
+.rb-step-head .who-tools { margin-left: auto; }
+.rb-num {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--surface-2);
+  border: 1px solid var(--border-strong);
+  color: var(--text-strong);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-strong);
+}
+
+.rb-http { display: grid; grid-template-columns: 110px minmax(0, 1fr); gap: var(--space-2) var(--space-3); align-items: start; }
+.rb-http select { height: var(--control-h); }
+.rb-step .re-hint kbd { padding: 0 4px; border: 1px solid var(--border-strong); border-radius: var(--radius); font-family: var(--font-mono); font-size: var(--text-xs); }
+.rb-full { grid-column: 1 / -1; }
+.rb-short input { max-width: 160px; }
+
+.rb-approval { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; padding-top: var(--space-2); border-top: 1px dashed var(--border); }
+.rb-approval select { min-width: 220px; }
+
+/* Summary: the steps at a glance. */
+.rb-mini { margin: 0; padding: var(--space-3) 0 0 18px; border-top: 1px solid var(--border); display: flex; flex-direction: column; gap: var(--space-2); font-size: var(--text-sm); }
+.rb-mini li { padding-left: 2px; }
+.rb-mini-name { display: block; color: var(--text-strong); }
+.rb-mini-what { display: block; color: var(--muted); font-size: var(--text-xs); overflow-wrap: anywhere; }
+.rb-mini .tag { margin-top: 4px; gap: 3px; }
+
+@media (max-width: 900px) {
+  .rb-kinds, .rb-http { grid-template-columns: 1fr; }
+}

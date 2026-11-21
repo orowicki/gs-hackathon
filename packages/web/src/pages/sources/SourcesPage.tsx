@@ -14,6 +14,7 @@ function where(s: Source): string {
   if (s.type === "http") return new URL(ingestUrl(s.id)).pathname;
   if (s.type === "file_tail" && typeof s.config.path === "string") return s.config.path;
   if (s.type === "redis_stream" && typeof s.config.stream === "string") return s.config.stream;
+  if (s.type === "kafka" && typeof s.config.topic === "string") return s.config.topic;
   return "";
 }
 

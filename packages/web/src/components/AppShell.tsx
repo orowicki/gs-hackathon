@@ -1,5 +1,5 @@
 import { ChevronRight, Siren } from "lucide-react";
-import type { ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { Link, matchPath, useLocation } from "react-router-dom";
 import { routes } from "../routes/registry";
 import type { NavEntry, RouteDef } from "../routes/types";
@@ -24,10 +24,36 @@ export function isActive(r: NavRoute, pathname: string): boolean {
   return [r.path, ...(r.nav.activeFor ?? [])].some((b) => under(pathname, b));
 }
 
+/** Badge counts for nav entries with a countUrl (array length), polled every 10 s. */
+function useNavCounts(items: NavRoute[]): Record<string, number> {
+  const [counts, setCounts] = useState<Record<string, number>>({});
+  const urls = items.map((r) => r.nav.countUrl).filter((u): u is string => Boolean(u));
+  const key = urls.join("|");
+  useEffect(() => {
+    if (!key) return;
+    let live = true;
+    const tick = () =>
+      key.split("|").forEach((u) =>
+        fetch(u)
+          .then((r) => (r.ok ? r.json() : null))
+          .then((v) => live && Array.isArray(v) && setCounts((c) => ({ ...c, [u]: v.length })))
+          .catch(() => undefined),
+      );
+    tick();
+    const t = setInterval(tick, 10000);
+    return () => {
+      live = false;
+      clearInterval(t);
+    };
+  }, [key]);
+  return counts;
+}
+
 /** Left sidebar (built from the route files' `nav` entries) + the page. */
 export function AppShell({ children }: { children: ReactNode }) {
   const { pathname } = useLocation();
   const items = routes.filter((r): r is NavRoute => Boolean(r.nav));
+  const counts = useNavCounts(items);
   const current = items.find((r) => isActive(r, pathname));
   const section = current && SECTIONS.find((s) => s.id === current.nav.section);
   const deeper = current && pathname !== current.path;
@@ -66,6 +92,11 @@ export function AppShell({ children }: { children: ReactNode }) {
                   >
                     <Icon as={r.nav.icon} />
                     <span>{r.nav.label}</span>
+                    {r.nav.countUrl && (counts[r.nav.countUrl] ?? 0) > 0 && (
+                      <span className="nav-badge" aria-label={`${counts[r.nav.countUrl]} waiting`}>
+                        {counts[r.nav.countUrl]}
+                      </span>
+                    )}
                   </Link>
                 );
               })}

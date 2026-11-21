@@ -1,4 +1,4 @@
-import { Check, Database, Download, FileText, Globe, Plug, Trash2 } from "lucide-react";
+import { Check, Database, Download, FileText, Globe, Layers, Plug, Trash2 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 import { Link, useNavigate } from "react-router-dom";
@@ -15,6 +15,7 @@ const TYPE_INFO: Record<string, { icon: LucideIcon; text: string }> = {
   http: { icon: Globe, text: "Services send events to a URL on this app." },
   file_tail: { icon: FileText, text: "Follow log files on disk as they grow." },
   redis_stream: { icon: Database, text: "Read messages from a Redis stream." },
+  kafka: { icon: Layers, text: "Consume a Kafka topic as a consumer group." },
 };
 const PARSER_HELP: Record<string, string> = {
   json: "One JSON object per message.",
