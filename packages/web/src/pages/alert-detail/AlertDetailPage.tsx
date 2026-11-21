@@ -201,7 +201,7 @@ function Runbooks({
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const isCurrent = useIsCurrent(alertId);
-  const call = async (key: string, fn: () => Promise<RunbookRun>) => {
+  const runAction = async (key: string, fn: () => Promise<RunbookRun>) => {
     setBusy(key);
     setError(null);
     try {
@@ -244,7 +244,7 @@ function Runbooks({
                       type="button"
                       className="btn primary solid run-now"
                       disabled={busy !== null}
-                      onClick={() => call(`run:${m.id}`, () => startRunbook(alertId, m.id))}
+                      onClick={() => runAction(`run:${m.id}`, () => startRunbook(alertId, m.id))}
                     >
                       <Icon as={Play} /> {busy === `run:${m.id}` ? "Starting…" : "Run now"}
                     </button>
@@ -257,7 +257,7 @@ function Runbooks({
                     steps={m.steps ?? []}
                     run={run}
                     busy={busy !== null}
-                    onDecide={(i, d) => call(`${m.id}:${i}`, () => decideStep(alertId, m.id, i, d))}
+                    onDecide={(i, d) => runAction(`${m.id}:${i}`, () => decideStep(alertId, m.id, i, d))}
                   />
                 )}
               </li>
@@ -273,7 +273,7 @@ function Runbooks({
                 steps={r.steps.map((st) => ({ index: st.index, name: st.name }))}
                 run={r}
                 busy={busy !== null}
-                onDecide={(i, d) => call(`${r.runbookId}:${i}`, () => decideStep(alertId, r.runbookId, i, d))}
+                onDecide={(i, d) => runAction(`${r.runbookId}:${i}`, () => decideStep(alertId, r.runbookId, i, d))}
               />
             </li>
           ))}
