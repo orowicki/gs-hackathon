@@ -55,3 +55,13 @@ registerSourcePlugin(heartbeat);
 
 - Sources page: generates the config form from `configSchema`; `POST /api/sources/test` calls `parse`.
 - #12 schema mapping hooks into the parse worker after `parse`.
+
+## Runtime
+
+Ingest runs inside the API process (`packages/api/src/main.ts` calls `startIngestService` when `DATABASE_URL` and
+`REDIS_URL` are set; otherwise it logs and skips). Reason: `handleHttpIngest` uses an in-process registry, so the
+http plugin must live with `POST /ingest/:sourceId` (202 `{accepted}`, 404 unknown source, 400 empty, 413 over 10 MB).
+`startIngestService` runs the migrations (config + `events` table), the sources runner (`startIngest`: starts enabled
+sources, restarts on config change) and the parse worker (group `parse`, `XREADGROUP`, batch insert into `events`,
+then `XADD STREAM_EVENTS` + `LPUSH/LTRIM LIST_RECENT_EVENTS`, then `XACK`). Event ids derive from the stream entry
+id, so redelivery is idempotent. `mapEvent` is the hook for schema mapping (#12). Standalone: `npm start -w @alerting/ingest`.

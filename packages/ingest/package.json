@@ -6,14 +6,18 @@
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {
-    "build": "tsc -b"
+    "build": "tsc -b",
+    "start": "node dist/main.js"
   },
   "dependencies": {
     "@alerting/shared": "*",
     "ioredis": "^5.11.1",
-    "picomatch": "^4.0.7"
+    "picomatch": "^4.0.7",
+    "@alerting/config": "*",
+    "pg": "^8.12.0"
   },
   "devDependencies": {
-    "@types/picomatch": "^4.0.3"
+    "@types/picomatch": "^4.0.3",
+    "@types/pg": "^8.11.6"
   }
 }

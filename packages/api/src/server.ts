@@ -1,4 +1,5 @@
 import http from "node:http";
+import { handleHttpIngest } from "@alerting/ingest";
 import { buildOpenApi } from "./openapi.js";
 import { serveStatic } from "./static.js";
 
@@ -32,6 +33,42 @@ function send(res: http.ServerResponse, status: number, body: unknown): void {
   res.end(payload);
 }
 
+export const MAX_INGEST_BYTES = 10 * 1024 * 1024;
+
+/** Read the request body as UTF-8 text; resolves undefined when it exceeds the limit. */
+function readBody(req: http.IncomingMessage, limit: number): Promise<string | undefined> {
+  return new Promise((resolve, reject) => {
+    const chunks: Buffer[] = [];
+    let size = 0;
+    let tooBig = false;
+    req.on("data", (c: Buffer) => {
+      size += c.length;
+      if (size > limit) tooBig = true;
+      else chunks.push(c);
+    });
+    req.on("end", () => resolve(tooBig ? undefined : Buffer.concat(chunks).toString("utf8")));
+    req.on("error", reject);
+  });
+}
+
+async function handleIngest(req: http.IncomingMessage, res: http.ServerResponse, sourceId: string): Promise<void> {
+  try {
+    const body = await readBody(req, MAX_INGEST_BYTES);
+    if (body === undefined) return send(res, 413, { error: "payload too large" });
+    const type = req.headers["content-type"];
+    const out = await handleHttpIngest(sourceId, body, type);
+    if ("error" in out) {
+      return out.error === "unknown_source"
+        ? send(res, 404, { error: "unknown source" })
+        : send(res, 400, { error: "empty body" });
+    }
+    send(res, 202, out);
+  } catch (err) {
+    console.error("ingest route failed:", err);
+    send(res, 500, { error: "internal error" });
+  }
+}
+
 export function createServer(deps: Deps): http.Server {
   return http.createServer((req, res) => {
     const path = (req.url ?? "").split("?")[0];
@@ -48,6 +85,17 @@ export function createServer(deps: Deps): http.Server {
     }
     if (req.method === "GET" && path === "/api/openapi.json") {
       send(res, 200, buildOpenApi());
+      return;
+    }
+    const m = req.method === "POST" ? /^\/ingest\/([^/]+)$/.exec(path) : null;
+    if (m) {
+      let id: string;
+      try {
+        id = decodeURIComponent(m[1]!);
+      } catch {
+        return send(res, 400, { error: "bad source id" });
+      }
+      void handleIngest(req, res, id);
       return;
     }
     const webDist = deps.webDist ?? process.env.WEB_DIST;
