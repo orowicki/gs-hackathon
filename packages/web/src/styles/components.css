@@ -785,6 +785,9 @@ input.mono,
 .chooser.idle .chooser-grid {
   flex: 1;
   min-height: 420px;
+  /* 2 x 2 rectangles filling the space */
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-rows: repeat(2, minmax(0, 1fr));
 }
 
 .chooser.idle .choice {

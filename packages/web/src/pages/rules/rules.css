@@ -1,8 +1,4 @@
 /* Rules list and rule editor. Shared controls live in styles/components.css. */
-.rules-page {
-  max-width: 1280px;
-}
-
 .rules-page .muted {
   color: var(--muted);
 }
