@@ -111,9 +111,24 @@ export const componentSchemas: Record<string, object> = {
           ),
         ],
       },
+      {
+        allOf: [
+          ref("SourceBase"),
+          obj(
+            {
+              type: { const: "kafka" },
+              config: obj(
+                { brokers: str(), topic: str(), groupId: str(), fromBeginning: { type: "boolean" } },
+                ["brokers", "topic", "groupId"],
+              ),
+            },
+            ["type", "config"],
+          ),
+        ],
+      },
     ],
   },
-  SourceType: strEnum(["http", "file_tail", "redis_stream"]),
+  SourceType: strEnum(["http", "file_tail", "redis_stream", "kafka"]),
   SourceTypeInfo: obj({ type: str(), configSchema: ref("JsonObject") }, ["type", "configSchema"]),
   SourceTypesResponse: obj(
     { sourceTypes: arr(ref("SourceTypeInfo")), parserConfigSchema: ref("JsonObject") },

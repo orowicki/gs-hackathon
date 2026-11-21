@@ -29,10 +29,10 @@ const sourceShape = {
   name: z.string(),
   enabled: z.boolean(),
   parser,
-  type: z.enum(["http", "file_tail", "redis_stream"]),
+  type: z.enum(["http", "file_tail", "redis_stream", "kafka"]),
   config: z
     .record(z.string(), z.unknown())
-    .describe("http: {}. file_tail: { path }. redis_stream: { stream, consumerGroup }"),
+    .describe("http: {}. file_tail: { path }. redis_stream: { stream, consumerGroup }. kafka: { brokers, topic, groupId }"),
 };
 
 const fieldMapping = z

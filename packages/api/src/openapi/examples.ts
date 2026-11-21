@@ -37,6 +37,14 @@ const demoStream = {
   type: "redis_stream",
   config: { stream: "demo:events", consumerGroup: "alerting" },
 };
+const demoKafka = {
+  id: "demo-kafka",
+  name: "Demo (Kafka topic)",
+  enabled: true,
+  parser: { type: "json" },
+  type: "kafka",
+  config: { brokers: "localhost:9092", topic: "alerts", groupId: "alerting" },
+};
 
 const workflowSchema = {
   id: "schema-workflow-failed",
@@ -234,6 +242,7 @@ export const operationExamples: Record<string, Record<string, ExampleSpec>> = {
     http: ex("HTTP ingest source", demoHttp),
     fileTail: ex("File-tail source", demoLogs),
     redisStream: ex("Redis stream source", demoStream),
+    kafka: ex("Kafka source", demoKafka),
   },
   "PUT /api/sources/{id}": { http: ex("Rename the HTTP source (path id demo-http)", { ...demoHttp, name: "Demo (HTTP) renamed" }) },
   "POST /api/schemas": {
