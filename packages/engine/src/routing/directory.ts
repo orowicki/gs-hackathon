@@ -1,5 +1,6 @@
 import type { ConfigStore } from "@alerting/config";
 import type { Group, Person, Preference } from "@alerting/shared";
+import { trackConfig, type LiveTracker } from "../live.js";
 import type { Logger } from "../rules/compile.js";
 
 export interface Directory {
@@ -38,38 +39,31 @@ export function createDirectory(store: ConfigStore, opts: { logger?: Logger } = 
   const people = new Map<string, Person>();
   const groups = new Map<string, Group>();
   const prefs = new Map<string, Preference>();
-  const unsubs: Array<() => void> = [];
-  let closed = false;
+  const trackers: LiveTracker[] = [];
 
-  const track = async <T>(
+  const track = <T>(
     kind: "person" | "group" | "preference",
     map: Map<string, T>,
     key: (e: T) => string,
   ) => {
-    const u = await store.onChange(kind, async (change) => {
-      if (closed) return;
-      try {
-        if (change.op === "delete") map.delete(change.id);
-        else {
-          const e = (await store.get(kind, change.id)) as T | undefined;
-          if (e) map.set(change.id, e);
-          else map.delete(change.id);
-        }
-      } catch (err) {
-        logger.error(`directory: failed to apply ${kind} change ${change.id}: ${(err as Error).message}`);
-      }
+    const t = trackConfig(store, kind, {
+      logger,
+      label: "directory",
+      idOf: (e) => key(e as T),
+      put(id, entity) {
+        if (entity) map.set(id, entity as T);
+        else map.delete(id);
+      },
     });
-    if (closed) u();
-    else unsubs.push(u);
-    const all = (await store.list(kind)) as unknown as T[];
-    for (const e of all) if (!map.has(key(e))) map.set(key(e), e);
+    trackers.push(t);
+    return t.ready;
   };
 
-  const ready = (async () => {
-    await track("person", people, (p: Person) => p.id);
-    await track("group", groups, (g: Group) => g.id);
-    await track("preference", prefs, (p: Preference) => prefId(p.ownerType, p.ownerId));
-  })();
+  const ready = Promise.all([
+    track("person", people, (p: Person) => p.id),
+    track("group", groups, (g: Group) => g.id),
+    track("preference", prefs, (p: Preference) => prefId(p.ownerType, p.ownerId)),
+  ]).then(() => undefined);
 
   return {
     ready,
@@ -77,8 +71,7 @@ export function createDirectory(store: ConfigStore, opts: { logger?: Logger } = 
     group: (id) => groups.get(id),
     preference: (t, id) => prefs.get(prefId(t, id)),
     close() {
-      closed = true;
-      for (const u of unsubs) u();
+      for (const t of trackers) t.close();
     },
   };
 }

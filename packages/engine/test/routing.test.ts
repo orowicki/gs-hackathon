@@ -226,7 +226,7 @@ describe("processEvent", () => {
       logger: silent,
       now: () => NOON,
     });
-    expect(pairs(sent)).toEqual(["a:ntfy", "a:ui", "b:ntfy", "b:ui"]);
+    expect(pairs(sent)).toEqual(["a:ntfy", "a:ui", "b:ui"]);
     expect(sent.every((n) => n.title === "Failed: Boom")).toBe(true);
     expect(res.alerts).toHaveLength(1);
     expect(res.alerts[0]).toMatchObject({ ruleId: "r1", count: 1, colour: "red", fields: [{ label: "source", value: "svc" }] });

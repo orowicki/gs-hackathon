@@ -1,4 +1,25 @@
-import { randomUUID } from "node:crypto";
+/*
+ * Routing rules
+ *
+ * Rows (rule.who), evaluated in order:
+ *  - A row with a condition applies when the condition matches the alert.
+ *  - A row without a condition is "everyone else": it applies only if no earlier conditioned
+ *    row applied.
+ *  - A person gets one notification per channel, however many rows/groups reach them.
+ *  - The first row that reaches a person decides how they are notified: a normal row uses their
+ *    preferences; a `force` row uses exactly its channels. A later normal row never adds channels.
+ *  - A later applying `force` row still reaches a person already reached: its channels are added
+ *    (union) to what they already get. Force bypasses preferences and quiet hours.
+ *  - `ntfy` is never produced for a person without an ntfyTopic, forced or not.
+ *
+ * Channel precedence for a normal row (first match wins):
+ *  1. the first matching rule of the person's own preference;
+ *  2. else the first matching rule of the preference of the group(s) the person was reached
+ *     through, in row/recipient order;
+ *  3. else the defaults (ui always; ntfy for error/critical when the person has an ntfyTopic).
+ * Quiet hours: the person's own quietHours if set, else those of the first reaching group that
+ * has them. Invalid quiet hours fail open (ignored) and are logged once.
+ */
 import { evaluate, parse, validateTree } from "@alerting/filter";
 import type { FilterNode } from "@alerting/filter";
 import type {
@@ -10,6 +31,7 @@ import type {
   Preference,
   Severity,
 } from "@alerting/shared";
+import { deterministicId, firstTime } from "../ids.js";
 import type { CompiledRule, Logger } from "../rules/compile.js";
 import { alertView } from "../rules/event-view.js";
 import { renderLooks } from "../rules/looks.js";
@@ -47,23 +69,31 @@ export function defaultChannels(person: Person, severity: Severity): ChannelId[]
   return ch;
 }
 
-const compiledPrefCache = new WeakMap<object, FilterNode | null>();
+type CompiledPrefFilter = { node: FilterNode | null } | { error: string };
+const prefFilterCache = new Map<string, CompiledPrefFilter>();
+
+function compilePrefFilter(pref: Preference, when: unknown, logger: Logger): CompiledPrefFilter {
+  const key = `${pref.ownerType}:${pref.ownerId}\u0000${JSON.stringify(when ?? null)}`;
+  let c = prefFilterCache.get(key);
+  if (!c) {
+    try {
+      c = { node: compileFilter(when) };
+    } catch (err) {
+      c = { error: (err as Error).message };
+      logger.error(`preference ${pref.ownerType}:${pref.ownerId}: invalid filter, rule skipped: ${c.error}`);
+    }
+    if (prefFilterCache.size > 5000) prefFilterCache.clear();
+    prefFilterCache.set(key, c);
+  }
+  return c;
+}
 
 function prefChannels(pref: Preference, ctx: Record<string, unknown>, logger: Logger): ChannelId[] | undefined {
   for (const r of pref.rules) {
-    let node = compiledPrefCache.get(r);
-    if (node === undefined) {
-      try {
-        node = compileFilter(r.when);
-      } catch (err) {
-        logger.error(`preference ${pref.ownerType}:${pref.ownerId}: invalid filter: ${(err as Error).message}`);
-        node = null;
-        // an invalid filter must not behave like "match everything"
-        continue;
-      }
-      compiledPrefCache.set(r, node);
-    }
-    if (matches(node, ctx, logger)) return r.channels;
+    const c = compilePrefFilter(pref, r.when, logger);
+    // an invalid filter must not behave like "match everything"
+    if ("error" in c) continue;
+    if (matches(c.node, ctx, logger)) return r.channels;
   }
   return undefined;
 }
@@ -72,6 +102,15 @@ function compileFilter(f: unknown): FilterNode | null {
   if (f === undefined || f === null) return null;
   if (typeof f === "string") return parse(f);
   return validateTree(f);
+}
+
+interface Reach {
+  person: Person;
+  /** Groups the person was reached through by non-force rows, in row/recipient order. */
+  groups: string[];
+  /** The first row that reached the person was a normal (non-force) row. */
+  normal: boolean;
+  forced: Set<ChannelId>;
 }
 
 export function routeAlert(input: RouteInput): Notification[] {
@@ -88,7 +127,7 @@ export function routeAlert(input: RouteInput): Notification[] {
   const createdAt = now.toISOString();
 
   const out: Notification[] = [];
-  const done = new Set<string>();
+  const reaches = new Map<string, Reach>();
   let conditionApplied = false;
 
   for (const [i, row] of rule.rule.who.entries()) {
@@ -121,46 +160,68 @@ export function routeAlert(input: RouteInput): Notification[] {
     }
 
     for (const { person, viaGroup } of reached) {
-      if (done.has(person.id)) continue;
-      done.add(person.id);
+      let r = reaches.get(person.id);
+      if (!r) {
+        r = { person, groups: [], normal: !row.force, forced: new Set() };
+        reaches.set(person.id, r);
+      }
+      if (row.force) for (const c of row.force) r.forced.add(c);
+      else if (r.normal && viaGroup && !r.groups.includes(viaGroup)) r.groups.push(viaGroup);
+    }
+  }
 
-      let channels: ChannelId[];
-      if (row.force) {
-        channels = [...row.force];
-      } else {
-        const pref =
-          directory.preference("person", person.id) ??
-          (viaGroup ? directory.preference("group", viaGroup) : undefined);
-        channels = (pref && prefChannels(pref, ctx, logger)) || defaultChannels(person, severity);
-        const q = pref?.quietHours;
-        if (q) {
-          try {
-            if (inQuietHours(q, now)) {
-              const allow = q.allowChannels ?? ["ui"];
-              channels = channels.filter((c) => allow.includes(c));
-            }
-          } catch (err) {
-            logger.error(`quiet hours ignored for ${person.id}: ${(err as Error).message}`);
+  for (const r of reaches.values()) {
+    const { person } = r;
+    const channels = new Set<ChannelId>();
+    if (r.normal) {
+      const personPref = directory.preference("person", person.id);
+      const groupPrefs = r.groups.flatMap((g) => directory.preference("group", g) ?? []);
+      let chosen = personPref ? prefChannels(personPref, ctx, logger) : undefined;
+      for (const gp of groupPrefs) {
+        if (chosen) break;
+        chosen = prefChannels(gp, ctx, logger);
+      }
+      let base = chosen ?? defaultChannels(person, severity);
+      const q = personPref?.quietHours ?? groupPrefs.find((p) => p.quietHours)?.quietHours;
+      if (q) {
+        try {
+          if (inQuietHours(q, now)) {
+            const allow = q.allowChannels ?? ["ui"];
+            base = base.filter((c) => allow.includes(c));
+          }
+        } catch (err) {
+          const owner = personPref?.quietHours ? personPref : groupPrefs.find((p) => p.quietHours);
+          if (firstTime(`quiet\u0000${owner?.ownerType}:${owner?.ownerId}\u0000${JSON.stringify(q)}`)) {
+            logger.error(`quiet hours ignored for ${owner?.ownerType}:${owner?.ownerId}: ${(err as Error).message}`);
           }
         }
       }
+      for (const c of base) channels.add(c);
+    }
+    // force bypasses preferences and quiet hours; unioned with whatever the person already gets
+    for (const c of r.forced) channels.add(c);
 
-      for (const channel of new Set(channels)) {
-        const n: Notification = {
-          id: randomUUID(),
-          alertId: alert.id,
-          recipientId: person.id,
-          channel,
-          severity,
-          title: looks.title,
-          clickUrl: `${publicUrl}/alerts/${alert.id}`,
-          attempt: 0,
-          createdAt,
-        };
-        if (looks.body !== undefined) n.body = looks.body;
-        if (typeof runbookUrl === "string" && runbookUrl) n.runbookUrl = runbookUrl;
-        out.push(n);
+    for (const channel of channels) {
+      if (channel === "ntfy" && !person.ntfyTopic) {
+        if (firstTime(`ntfy\u0000${person.id}`)) {
+          logger.error(`person ${person.id} has no ntfyTopic: ntfy notifications are skipped`);
+        }
+        continue;
       }
+      const n: Notification = {
+        id: deterministicId("notification", alert.id, person.id, channel),
+        alertId: alert.id,
+        recipientId: person.id,
+        channel,
+        severity,
+        title: looks.title,
+        clickUrl: `${publicUrl}/alerts/${alert.id}`,
+        attempt: 0,
+        createdAt,
+      };
+      if (looks.body !== undefined) n.body = looks.body;
+      if (typeof runbookUrl === "string" && runbookUrl) n.runbookUrl = runbookUrl;
+      out.push(n);
     }
   }
   return out;
