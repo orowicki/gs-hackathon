@@ -20,6 +20,7 @@ import {
 } from "@alerting/filter";
 import type { Preference, StarredFilter } from "@alerting/shared";
 import { send } from "../../http.js";
+import { ruleWriteForbidden } from "../accounts/actor.js";
 
 export interface ConfigDeps {
   config?: ConfigStore;
@@ -110,6 +111,11 @@ function isObj(x: unknown): x is Record<string, unknown> {
   return typeof x === "object" && x !== null && !Array.isArray(x);
 }
 
+/** Accounts whose person has canCreateRules false may not create or edit rules (no account: allowed). */
+function checkRuleWrite(kind: Kind, req: http.IncomingMessage): void {
+  if (kind === "rule" && ruleWriteForbidden(req)) throw new HttpError(403, "this account may not create or edit rules");
+}
+
 function validateEntity(kind: Kind, body: unknown): string {
   if (!isObj(body)) throw bad(`request body must be a JSON object (a ${kind})`);
   let id: string;
@@ -145,6 +151,7 @@ async function handleCrud(
   if (id === undefined) {
     if (method === "GET") return send(res, 200, await store.list(kind)), true;
     if (method === "POST") {
+      checkRuleWrite(kind, req);
       const text = await readText(req, res);
       if (text === undefined) return true;
       const body = parseJson(text);
@@ -163,6 +170,7 @@ async function handleCrud(
     return send(res, 200, e), true;
   }
   if (method === "PUT") {
+    checkRuleWrite(kind, req);
     const text = await readText(req, res);
     if (text === undefined) return true;
     const body = parseJson(text);
@@ -259,6 +267,7 @@ async function handleYaml(
     return sendYaml(res, await exportYaml(store, kind, id)), true;
   }
   if (req.method !== "POST") return false;
+  checkRuleWrite(kind, req);
   const text = await readText(req, res);
   if (text === undefined) return true;
   let value: unknown;

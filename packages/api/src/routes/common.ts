@@ -1,6 +1,7 @@
 import type http from "node:http";
 import { randomUUID } from "node:crypto";
 import type { UiPush } from "@alerting/shared";
+import { accountOf } from "./accounts/actor.js";
 import type { AlertStore, AuditStore, EventLoader, SuggestionStore } from "./alerts/store.js";
 
 export interface AlertsApiDeps {
@@ -74,8 +75,10 @@ export async function readJsonBody(req: http.IncomingMessage): Promise<Record<st
   return v as Record<string, unknown>;
 }
 
-/** Actor/author: body field, else x-actor header, else "anonymous". Trimmed, max 200 chars. */
+/** Actor/author: signed-in account (session cookie, X-Account), else body field, else x-actor header, else "anonymous". Trimmed, max 200 chars. */
 export function resolveActor(req: http.IncomingMessage, bodyValue: unknown): string {
+  const account = accountOf(req);
+  if (account) return account.id.slice(0, 200);
   const header = req.headers["x-actor"];
   const candidates = [bodyValue, Array.isArray(header) ? header[0] : header];
   for (const c of candidates) {

@@ -134,6 +134,25 @@ export const operationSpecs: Record<string, OperationSpec> = {
   },
   "GET /api/openapi.json": { success: json(200, "This OpenAPI document", { type: "object" }), errors: [] },
 
+  "POST /api/accounts": {
+    request: body("AccountCreate"),
+    success: json(201, "The created Person (canCreateRules false)", ref("Person")),
+    errors: [400, 413, ...CFG],
+  },
+  "POST /api/session": {
+    request: body("SessionCreate"),
+    success: {
+      ...json(200, "The person; the session cookie alerting_session is set (HttpOnly, SameSite=Lax, Path=/)", ref("Person")),
+      headers: { "set-cookie": "alerting_session=<token>" },
+    },
+    errors: [400, 404, 413, ...CFG],
+  },
+  "GET /api/session": {
+    success: json(200, "The signed-in person (cookie, or X-Account: <personId> header for API clients)", ref("Person")),
+    errors: [401],
+  },
+  "DELETE /api/session": { success: { status: 204, description: "Signed out; the cookie is cleared" }, errors: [] },
+
   "POST /ingest/{sourceId}": {
     request: {
       required: true,

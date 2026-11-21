@@ -69,7 +69,8 @@ async function readBody(req: IncomingMessage): Promise<unknown> {
 }
 
 export function createRunbookRoutes(deps: RunbookRoutesDeps): {
-  handle(req: IncomingMessage, res: ServerResponse, url: URL): Promise<boolean>;
+  /** `actor` (a signed-in account) wins over the body/query actor of approvals. */
+  handle(req: IncomingMessage, res: ServerResponse, url: URL, actor?: string): Promise<boolean>;
 } {
   const { runner } = deps;
   const respondWithinMs = deps.respondWithinMs ?? 5000;
@@ -81,7 +82,7 @@ export function createRunbookRoutes(deps: RunbookRoutesDeps): {
     }
   };
 
-  async function route(req: IncomingMessage, res: ServerResponse, url: URL): Promise<boolean> {
+  async function route(req: IncomingMessage, res: ServerResponse, url: URL, accountActor?: string): Promise<boolean> {
     const path = url.pathname;
     const method = req.method ?? "GET";
     let m: RegExpExecArray | null;
@@ -111,7 +112,7 @@ export function createRunbookRoutes(deps: RunbookRoutesDeps): {
       if (decision !== "approve" && decision !== "skip") throw new HttpError(400, "decision must be approve or skip", "bad_request");
       const runbookId = (b.runbookId as string | undefined) || url.searchParams.get("runbookId") || undefined;
       const pending = runner.approve(alertId, stepIndex, {
-        actor: (b.actor as string | undefined) || url.searchParams.get("actor") || "anonymous",
+        actor: accountActor || (b.actor as string | undefined) || url.searchParams.get("actor") || "anonymous",
         runbookId,
         decision,
       });
@@ -140,9 +141,9 @@ export function createRunbookRoutes(deps: RunbookRoutesDeps): {
   }
 
   return {
-    async handle(req, res, url) {
+    async handle(req, res, url, actor) {
       try {
-        return await route(req, res, url);
+        return await route(req, res, url, actor);
       } catch (e) {
         if (e instanceof HttpError) send(res, e.status, { error: e.message, code: e.code });
         else if (e instanceof RunnerError) send(res, e.code === "not_found" ? 404 : 409, { error: e.message, code: e.code });

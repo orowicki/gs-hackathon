@@ -1,4 +1,5 @@
 import type { RouteModule } from "../http.js";
+import { accountOf } from "./accounts/actor.js";
 import type { createRunbookRoutes } from "@alerting/runbooks";
 
 declare module "../http.js" {
@@ -22,6 +23,6 @@ export default {
       /^\/api\/alerts\/[^/]+\/runbook-runs$/.test(path) ||
       /^\/api\/alerts\/[^/]+\/runbook-steps\/[^/]+\/approve$/.test(path);
     if (!owned) return false;
-    return deps.runbooks.handle(req, res, url);
+    return deps.runbooks.handle(req, res, url, accountOf(req)?.id);
   },
 } satisfies RouteModule;

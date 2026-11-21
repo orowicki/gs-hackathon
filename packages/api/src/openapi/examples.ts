@@ -248,6 +248,8 @@ export const operationExamples: Record<string, Record<string, ExampleSpec>> = {
     annaCritical: ex("Anna personal rule (filter as JSON tree)", ruleAnna),
   },
   "PUT /api/rules/{id}": { rates: ex("Disable Team Rates (path id rates-trade-rejected)", { ...ruleRates, enabled: false }) },
+  "POST /api/accounts": { newcomer: ex("A new account", { name: "Piotr Lis", role: "Pricing engineer" }) },
+  "POST /api/session": { anna: ex("Sign in as Anna", { personId: "anna" }) },
   "POST /api/people": { anna: ex("Anna", anna), ewa: ex("Ewa", ewa) },
   "PUT /api/people/{id}": { anna: ex("Change Anna's role (path id anna)", { ...anna, role: "Head of payments" }) },
   "POST /api/groups": { ratesDesk: ex("Rates desk", ratesDesk), pricingTeam: ex("Pricing team", pricingTeam) },
