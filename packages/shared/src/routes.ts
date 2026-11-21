@@ -53,7 +53,8 @@ export const ROUTES: RouteDef[] = [
   { method: "POST", path: "/api/filters/format", summary: "Render a filter tree back to text", tag: "filters", request: "{ tree: FilterNode }", response: "{ text: string }" },
   { method: "GET", path: "/api/filters/suggest", summary: "Autocomplete field names, operators and values", tag: "filters", response: "string[]" },
 
-  { method: "GET", path: "/api/alerts", summary: "List alerts (filter, state, limit, before)", tag: "alerts", response: "Alert[]" },
+  { method: "GET", path: "/api/alerts", summary: "List alerts (filter, state, limit, before; sort=lastSeen|firstSeen|severity|count, order=asc|desc, offset=<n>). Default is lastSeen desc paged with the before cursor (x-next-before); non-default sort/order is paged with offset (x-next-offset) and combining it with before is a 400", tag: "alerts", response: "Alert[]" },
+  { method: "GET", path: "/api/alerts/summary", summary: "Alert counts for stat panels (optional filter/tree, same as the list). open = open alerts; bySeverity counts open alerts; byStatus counts all. Not pushed on SSE: refetch when an `alert` event arrives on /api/stream", tag: "alerts", response: "{ open: number, bySeverity: { critical, error, warning, info }, byStatus: { open, acknowledged, resolved } }" },
   { method: "GET", path: "/api/alerts/{id}", summary: "Get an alert with its event, runbooks and suggestions", tag: "alerts", response: "Alert" },
   { method: "GET", path: "/api/alerts/{id}/runbook-runs", summary: "Runbook run state per step of an alert", tag: "runbooks", response: "RunbookRun[]" },
   { method: "GET", path: "/api/approvals", summary: "Pending runbook step approvals", tag: "runbooks", response: "PendingApproval[]" },
