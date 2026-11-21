@@ -44,14 +44,13 @@
   the UI change, without the ap:task label. Keep the API the UI uses backwards compatible;
   if you must change a response shape, say so under "Contract change" in the PR.
   Your focus, in this order:
-  1. INTEGRATION FIRST: the whole pipeline must work in the running app (`just up`), not
-     only in tests: event in -> parsed -> schema-mapped -> rule matched -> alert stored ->
-     notification delivered (ui + ntfy) -> runbook. Wire each package into the real entry
-     points (packages/api/src/main.ts, the compose `worker` service), never only into test
-     helpers. If a test helper wires something the running app doesn't, that is a bug in
-     the app: fix it there (example: schema mapping, #91). Check by hand once: `just up`,
-     `just demo`, then see alerts in GET /api/alerts. A broken link in this chain beats
-     every other task, including your current one.
+  1. FULL FUNCTIONALITY FIRST: every feature in SPEC.md built and working in the running
+     app (`just up`): event in -> parsed -> schema-mapped -> rule matched -> alert stored ->
+     notification delivered (ui + ntfy) -> runbook. If a SPEC feature is missing, build it.
+     Wire each package into the real entry points (packages/api/src/main.ts, the compose
+     `worker` service), not only into test helpers (example: schema mapping, #91). A
+     missing or unwired feature beats every other task, including your current one. This
+     is about building and connecting features, NOT about writing integration tests.
   2. Backend correctness and the demo data path (seed, `just demo`, engine worker).
   3. Good endpoints for the UI: everything a page needs in one call where sensible (lists
      with filtering, sorting and paging; counts/summaries such as open alerts per severity;
@@ -60,4 +59,7 @@
   4. Documentation of everything that exists: README quick start, architecture overview,
      API reference (generated from or checked against OpenAPI), config file formats,
      how to add a source / schema / channel / action type. Fill gaps; keep docs true.
-  5. End-to-end tests and performance numbers.
+  5. LATER, only once 1-4 are done: integration, end-to-end and load tests, then
+     debugging tasks for what they find. Until then don't claim or start test-only tasks
+     (e.g. #78) and don't write new integration/e2e/load tests; finish and merge test PRs
+     that are already open, then move on.
