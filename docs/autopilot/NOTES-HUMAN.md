@@ -32,3 +32,18 @@
   your route needs on Deps from that file with `declare module "../http.js" { interface
   Deps { ... } }`, not in http.ts. Helpers go in routes/<name>/. When rebasing onto this
   change, move your server.ts routes into such a file.
+> UI is hand-built by the people now. Do not change anything under packages/web/ or
+  docs/design/UI.md, and don't claim or propose UI tasks. If backend work needs a UI change
+  (a new field to show, a new page), finish the backend part and file an issue describing
+  the UI change, without the ap:task label. Keep the API the UI uses backwards compatible;
+  if you must change a response shape, say so under "Contract change" in the PR.
+  Your focus, in this order:
+  1. Backend correctness and the demo data path (seed, `just demo`, engine worker).
+  2. Good endpoints for the UI: everything a page needs in one call where sensible (lists
+     with filtering, sorting and paging; counts/summaries such as open alerts per severity;
+     detail views with related data), consistent error shapes, and every endpoint in the
+     OpenAPI spec (/api/openapi.json) with request/response schemas and examples.
+  3. Documentation of everything that exists: README quick start, architecture overview,
+     API reference (generated from or checked against OpenAPI), config file formats,
+     how to add a source / schema / channel / action type. Fill gaps; keep docs true.
+  4. End-to-end tests and performance numbers.
