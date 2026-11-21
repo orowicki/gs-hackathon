@@ -3045,6 +3045,8 @@ Type: object
 | `who` | [WhoRow](#schema-whorow)[] | yes |  |
 | `looks` | [Looks](#schema-looks) | yes |  |
 | `dedupFields` | "severity" \| "title" \| "source" \| "environment" \| "dedupKey" \| "status" \| "occurredAt"[] | no |  |
+| `groupBy` | string[] | no |  |
+| `groupWindow` | string | no | Grouping window; with groupBy, one notification per recipient per burst |
 | `createdAt` | string | no |  |
 | `updatedAt` | string | no |  |
 

@@ -169,7 +169,32 @@ Directory `config/rules/` (kind `rule`). Who is told about which alerts, and how
 | `looks.severityOverride` | `info` \| `warning` \| `error` \| `critical` | no | |
 | `looks.colour` | string | no | CSS colour token or hex. |
 | `dedupFields` | list of common field names | no | Dedup key source when the event has none. |
+| `groupBy` | list of strings | no | Alert fields or dotted event paths to group notifications by. Needs `groupWindow`. |
+| `groupWindow` | duration (`500ms`, `30s`, `5m`, `1h`) | no | Length of a grouping window. Needs `groupBy`. |
 | `createdAt`, `updatedAt` | ISO-8601 string | yes | Quote the value so YAML keeps it a string. |
+
+**Grouping.** With `groupBy` and `groupWindow` set, alerts are still created per dedup key, but each recipient gets one notification per group and window instead of one per alert. The first alert of a group starts the window; when it ends the recipient gets a single notification (`N alerts: <rule name>`, severity of the highest alert, titles listed in the body). A group with one alert is sent unchanged. Missing values group as the empty string. Rules with `force` channels still group (grouping is opt-in per rule); the grouped notification then goes through the normal throttle.
+
+Complete rule with grouping:
+
+<!-- kind: rules -->
+```yaml
+id: disk-full-grouped
+name: Disk full
+enabled: true
+when: 'alert.severity >= warning'
+who:
+  - recipients:
+      - { type: group, id: pricing-team }
+    force: [ui]
+looks:
+  titleTemplate: '{{alert.title}}'
+  fields: [alert.source]
+groupBy: [source, environment]
+groupWindow: 5m
+createdAt: '2026-11-01T00:00:00Z'
+updatedAt: '2026-11-01T00:00:00Z'
+```
 
 A `who` row: `recipients` (list of `{ type: person | group, id }`, required); `condition` (filter, optional, omit for "everyone else"); `force` (list of channel ids such as `ui`, `ntfy`, optional, overrides the recipients' preferences).
 

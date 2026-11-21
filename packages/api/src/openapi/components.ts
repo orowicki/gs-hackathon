@@ -250,6 +250,8 @@ export const componentSchemas: Record<string, object> = {
       who: arr(ref("WhoRow")),
       looks: ref("Looks"),
       dedupFields: arr(strEnum(commonFieldNames)),
+      groupBy: arr(str()),
+      groupWindow: { type: "string", pattern: "^\\d+(ms|s|m|h)$", example: "5m", description: "Grouping window; with groupBy, one notification per recipient per burst" },
       createdAt: str(),
       updatedAt: str(),
     },

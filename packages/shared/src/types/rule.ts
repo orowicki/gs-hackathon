@@ -29,6 +29,10 @@ export interface Rule {
   looks: Looks;
   /** Default dedupKey source when the event has none. */
   dedupFields?: CommonFieldName[];
+  /** Notification grouping: fields (alert field or dotted event path) whose values bundle alerts. */
+  groupBy?: string[];
+  /** Grouping window, e.g. "30s", "5m", "1h" (also "ms"). Grouping needs groupBy and groupWindow. */
+  groupWindow?: string;
   createdAt: string;
   updatedAt: string;
 }
