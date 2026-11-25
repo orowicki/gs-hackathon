@@ -12,6 +12,9 @@ const gh = (args) => JSON.parse(execFileSync("gh", [...args, "--repo", REPO], { 
 const prs = gh(["pr", "list", "--state", "merged", "--limit", "500", "--json", "author,additions,deletions,mergedAt,number,title"]);
 const issues = gh(["issue", "list", "--state", "closed", "--limit", "500", "--json", "assignees,number,title,closedAt"]);
 
+for (const [name, list] of [["merged PRs", prs], ["closed issues", issues]])
+  if (list.length >= 500) console.warn(`warning: ${name} list hit the --limit of 500; counts may be truncated`);
+
 const entries = LOGINS.map((login) => {
   const mine = prs.filter((p) => p.author?.login === login);
   const dates = mine.map((p) => p.mergedAt).sort();

@@ -39,4 +39,9 @@ describe("ranking page", () => {
     expect(html).not.toContain("<script>alert(1)");
     expect(html).toContain("&#60;script&#62;");
   });
+
+  it("does not handle other paths or methods", async () => {
+    expect((await fetch(`${base}/rankings`)).status).toBe(404);
+    expect((await fetch(`${base}/ranking`, { method: "POST" })).status).toBe(404);
+  });
 });

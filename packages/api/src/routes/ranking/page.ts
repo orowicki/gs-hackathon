@@ -5,7 +5,8 @@ export interface Ranked extends RankingEntry {
   score: number;
 }
 
-export const SCORE_FORMULA = "score = 10 x merged PRs + 5 x issues closed + 20 x log10(lines added + removed)";
+export const SCORE_FORMULA =
+  "score = 10 x merged PRs + 5 x issues closed + 20 x log10(lines added + removed); line counts include generated files and lockfiles";
 
 export function scoreOf(e: RankingEntry): number {
   const lines = Math.max(1, e.linesAdded + e.linesRemoved);
@@ -24,6 +25,7 @@ export function esc(s: string): string {
 }
 
 const MEDAL = ["", "1st", "2nd", "3rd"];
+const place = (n: number): string => MEDAL[n] ?? `${n}th`;
 const METRICS: { key: "mergedPrs" | "issuesClosed" | "linesAdded" | "linesRemoved"; label: string }[] = [
   { key: "mergedPrs", label: "Merged PRs" },
   { key: "issuesClosed", label: "Issues closed" },
@@ -37,8 +39,8 @@ function card(e: Ranked, max: Record<string, number>, repo: string): string {
     const pct = max[m.key] ? Math.round((v / max[m.key]!) * 100) : 0;
     return `<div class="m"><span>${m.label}</span><b data-n="${v}">${v}</b><div class="bar" role="img" aria-label="${m.label}: ${v}, ${pct}% of the best"><i style="--w:${pct / 100}"></i></div></div>`;
   }).join("");
-  return `<article class="card r${e.rank}" style="--i:${e.rank}" aria-label="${MEDAL[e.rank]} place: ${esc(e.login)}">
-<div class="inner"><div class="place">${MEDAL[e.rank]}</div>
+  return `<article class="card r${e.rank}" style="--i:${e.rank}" aria-label="${place(e.rank)} place: ${esc(e.login)}">
+<div class="inner"><div class="place">${place(e.rank)}</div>
 <h2><a href="https://github.com/${esc(e.login)}" rel="noopener">@${esc(e.login)}</a></h2>
 <div class="score"><b data-n="${e.score}" data-d="1">${e.score}</b><small>points</small></div>
 ${bars}
@@ -50,8 +52,9 @@ const CSS = `*{box-sizing:border-box}html{color-scheme:dark}body{margin:0;min-he
 canvas{position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-index:5}
 main{max-width:1100px;margin:0 auto;padding:40px 20px 60px;position:relative}
 header{text-align:center;margin-bottom:36px}
-h1{font-size:clamp(2rem,6vw,3.6rem);margin:0;background:linear-gradient(90deg,#7cf,#c8f,#fa8,#7cf);background-size:300% 100%;-webkit-background-clip:text;background-clip:text;color:transparent;animation:sh 8s linear infinite}
-@keyframes sh{to{background-position:300% 0}}
+h1{position:relative;display:inline-block;overflow:hidden;font-size:clamp(2rem,6vw,3.6rem);margin:0;background:linear-gradient(90deg,#7cf,#c8f,#fa8);-webkit-background-clip:text;background-clip:text;color:transparent}
+h1::after{content:"";position:absolute;inset:0;background:linear-gradient(100deg,transparent 40%,rgba(255,255,255,.55) 50%,transparent 60%);transform:translateX(-100%);animation:sh 6s ease-in-out infinite;mix-blend-mode:overlay}
+@keyframes sh{60%,100%{transform:translateX(100%)}}
 header p{color:#b9bde0;margin:.4rem 0}
 .podium{display:grid;grid-template-columns:1fr 1.1fr 1fr;gap:20px;align-items:end;perspective:900px}
 .r1{order:2}.r2{order:1}.r3{order:3}
@@ -89,7 +92,7 @@ function tick(){if(document.hidden){run=false;P.length=0;g.clearRect(0,0,W,H);re
 g.clearRect(0,0,W,H);for(var i=P.length-1;i>=0;i--){var p=P[i];p.vy+=.25;p.vx*=.99;p.x+=p.vx;p.y+=p.vy;p.l-=.011;if(p.l<=0){P.splice(i,1);continue}g.globalAlpha=p.l;g.fillStyle=p.c;g.fillRect(p.x,p.y,p.s,p.s)}
 g.globalAlpha=1;if(P.length)requestAnimationFrame(tick);else{run=false;g.clearRect(0,0,W,H)}}
 setTimeout(function(){if(!document.hidden)burst()},1800);
-document.querySelector(".r1").addEventListener("click",burst);
+document.querySelector(".r1")?.addEventListener("click",burst);
 })();`;
 
 export function renderPage(data: RankingData): string {
