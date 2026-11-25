@@ -138,6 +138,21 @@ describe("mcp server", () => {
     expect(seen[0]?.body).toEqual(withExtra);
   });
 
+  it("exposes groupBy and groupWindow on the rule tools and sends them", async () => {
+    const { tools } = await client.listTools();
+    for (const name of ["create_rule", "update_rule"]) {
+      const props = (tools.find((t) => t.name === name)?.inputSchema.properties ?? {}) as Record<string, { type?: string; description?: string }>;
+      expect(props.groupBy?.type).toBe("array");
+      expect(props.groupBy?.description).toBeTruthy();
+      expect(props.groupWindow?.description).toBeTruthy();
+    }
+    seen = [];
+    const grouped = { ...rule, groupBy: ["source", "environment"], groupWindow: "5m" };
+    const res = await client.callTool({ name: "create_rule", arguments: grouped });
+    expect(res.isError).toBeFalsy();
+    expect(seen[0]?.body).toEqual(grouped);
+  });
+
   it("returns paging cursors from list_alerts", async () => {
     const res = await client.callTool({ name: "list_alerts", arguments: {} });
     expect(JSON.parse((res.content as { text: string }[])[0]!.text)).toEqual({
