@@ -50,7 +50,9 @@ Claude Desktop (`claude_desktop_config.json`):
 }
 ```
 
-Tools: `list_/get_/create_/update_/delete_` for sources, schemas and rules; `validate_filter`; `list_recent_events`; `list_alerts` (with `filter`, `state`, `limit`, `before`, `sort`, `order`, `offset`); `acknowledge_alert`, `resolve_alert`. API errors come back as tool errors with the API's message.
+Tools: `list_/get_/create_/update_/delete_` for sources, schemas, rules and runbooks (text or automation); `get_rule_runbook`, `set_rule_runbook` (the runbook attached to a rule); `validate_filter`; `list_recent_events`; `list_alerts` (with `filter`, `state`, `limit`, `before`, `sort`, `order`, `offset`); `acknowledge_alert`, `resolve_alert`. API errors come back as tool errors with the API's message.
+
+Prompt: `convert_text_runbook` takes a text runbook and asks the LLM to rewrite it as an automation runbook (http, escalate, wait steps) and save it with `create_runbook` or `update_runbook`. The conversion runs in your own LLM client, so there is no API key on our side.
 
 ## Environment variables
 

@@ -4,6 +4,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { createServer } from "../src/server.js";
+import { renderConvertTextRunbook } from "../src/prompts.js";
 import { TOOLS } from "../src/tools.js";
 
 interface Seen {
@@ -23,6 +24,11 @@ beforeAll(async () => {
       const text = Buffer.concat(chunks).toString();
       seen.push({ method: req.method ?? "", path: req.url ?? "", body: text ? JSON.parse(text) : undefined });
       res.setHeader("content-type", "application/json");
+      if (req.method === "POST" && req.url === "/api/runbooks" && text.includes("broken")) {
+        res.statusCode = 400;
+        res.end(JSON.stringify({ error: "steps[0]: http step needs method and url" }));
+        return;
+      }
       if (req.url === "/api/filters/parse" && text.includes("bad")) {
         res.statusCode = 400;
         res.end(JSON.stringify({ error: "unexpected token at position 5", position: 5 }));
@@ -65,6 +71,8 @@ const rule = {
   looks: { titleTemplate: "{{title}}", fields: [] },
 };
 
+const runbook = { id: "rb1", name: "RB", type: "automation", matches: "alert.source = s1", steps: [{ action: "wait", duration: "30s", approval: "none" }] };
+
 const cases: [string, Record<string, unknown>, Seen][] = [
   ["list_sources", {}, { method: "GET", path: "/api/sources", body: undefined }],
   ["get_source", { id: "a b" }, { method: "GET", path: "/api/sources/a%20b", body: undefined }],
@@ -81,6 +89,17 @@ const cases: [string, Record<string, unknown>, Seen][] = [
   ["create_rule", rule, { method: "POST", path: "/api/rules", body: rule }],
   ["update_rule", rule, { method: "PUT", path: "/api/rules/r1", body: rule }],
   ["delete_rule", { id: "r1" }, { method: "DELETE", path: "/api/rules/r1", body: undefined }],
+  ["list_runbooks", {}, { method: "GET", path: "/api/runbooks", body: undefined }],
+  ["get_runbook", { id: "rb1" }, { method: "GET", path: "/api/runbooks/rb1", body: undefined }],
+  ["create_runbook", runbook, { method: "POST", path: "/api/runbooks", body: runbook }],
+  ["update_runbook", runbook, { method: "PUT", path: "/api/runbooks/rb1", body: runbook }],
+  ["delete_runbook", { id: "rb1" }, { method: "DELETE", path: "/api/runbooks/rb1", body: undefined }],
+  ["get_rule_runbook", { id: "r1" }, { method: "GET", path: "/api/rules/r1/runbook", body: undefined }],
+  [
+    "set_rule_runbook",
+    { id: "r1", name: "RB", type: "text", content: "Restart {{source}}" },
+    { method: "PUT", path: "/api/rules/r1/runbook", body: { name: "RB", type: "text", content: "Restart {{source}}" } },
+  ],
   ["validate_filter", { text: "alert.severity = info" }, { method: "POST", path: "/api/filters/parse", body: { text: "alert.severity = info" } }],
   ["list_recent_events", { limit: 5 }, { method: "GET", path: "/api/events/recent?limit=5", body: undefined }],
   [
@@ -103,7 +122,7 @@ describe("mcp server", () => {
   it("lists all tools", async () => {
     const { tools } = await client.listTools();
     expect(tools.map((t) => t.name).sort()).toEqual(TOOLS.map((t) => t.name).sort());
-    expect(tools).toHaveLength(20);
+    expect(tools).toHaveLength(27);
   });
 
   it.each(cases)("%s calls the API", async (name, args, expected) => {
@@ -160,5 +179,33 @@ describe("mcp server", () => {
       nextBefore: "cur123",
       nextOffset: 30,
     });
+  });
+
+  it("returns a runbook validation error from the API as a tool error", async () => {
+    const res = await client.callTool({ name: "create_runbook", arguments: { id: "broken", name: "B", type: "automation", steps: [{ action: "http" }] } });
+    expect(res.isError).toBe(true);
+    const text = (res.content as { text: string }[])[0]?.text;
+    expect(text).toContain("400");
+    expect(text).toContain("http step needs method and url");
+  });
+
+  it("lists and renders the convert_text_runbook prompt", async () => {
+    const { prompts } = await client.listPrompts();
+    expect(prompts.map((p) => p.name)).toContain("convert_text_runbook");
+    const got = await client.getPrompt({ name: "convert_text_runbook", arguments: { text: "1. Restart the pod" } });
+    const msg = got.messages[0]!;
+    expect(msg.role).toBe("user");
+    const text = (msg.content as { text: string }).text;
+    expect(text).toContain("1. Restart the pod");
+    expect(text).toContain("create_runbook");
+  });
+
+  it("renders the prompt for updating an existing runbook", () => {
+    const text = renderConvertTextRunbook({ text: "do x", runbookId: "rb9" });
+    expect(text).toContain("do x");
+    expect(text).toContain("update_runbook");
+    expect(text).toContain("rb9");
+    expect(text).toContain('"action": "escalate"');
+    expect(text).toContain("validation error");
   });
 });

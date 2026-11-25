@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { createClient } from "./client.js";
+import { PROMPTS } from "./prompts.js";
 import { TOOLS } from "./tools.js";
 
 export interface ServerOptions {
@@ -17,6 +18,11 @@ export function createServer(opts: ServerOptions): McpServer {
       const r = await client.call(t.request(args));
       return { content: [{ type: "text" as const, text: r.text }], ...(r.ok ? {} : { isError: true }) };
     });
+  }
+  for (const p of PROMPTS) {
+    server.registerPrompt(p.name, { title: p.title, description: p.description, argsSchema: p.args }, (args: Record<string, unknown>) => ({
+      messages: [{ role: "user" as const, content: { type: "text" as const, text: p.render(args as Record<string, string | undefined>) } }],
+    }));
   }
   return server;
 }
