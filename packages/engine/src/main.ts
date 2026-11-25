@@ -18,8 +18,9 @@ const store = createConfigStore({ databaseUrl, redisUrl });
 const pool = new pg.Pool({ connectionString: databaseUrl, statement_timeout: 10_000 });
 pool.on("error", (err) => console.error(`engine: postgres pool error: ${err.message}`));
 const runbooks = createRunbookRegistry(store, { onError: (err) => console.error(`engine: runbook registry: ${err.message}`) });
-const publicUrl = process.env.PUBLIC_URL ?? "";
-if (!publicUrl) console.warn("engine: PUBLIC_URL is not set: notifications get no runbook link");
+// Same default as the app service in docker-compose.yml (the worker service sets no PUBLIC_URL).
+const publicUrl = process.env.PUBLIC_URL || "http://localhost:3000";
+if (!process.env.PUBLIC_URL) console.warn(`engine: PUBLIC_URL is not set: runbook links use ${publicUrl}`);
 const queue = createDeliveryQueue(redis);
 const throttle = createThrottle({ redis, ...throttleConfigFromEnv(), enqueue: (n) => queue.enqueue(n) });
 const dedupHooks = createDedupHooks({ redis, repo: createPgAlertRepo(pool), throttle });
