@@ -24,5 +24,8 @@
     {
       "path": "../runbooks"
     }
+  ],
+  "exclude": [
+    "src/**/*.test.ts"
   ]
 }
