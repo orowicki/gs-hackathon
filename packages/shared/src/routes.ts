@@ -25,6 +25,8 @@ function crud(tag: string, base: string, type: string, plural: string): RouteDef
 export const ROUTES: RouteDef[] = [
   { method: "GET", path: "/health", summary: "Liveness and dependency check", tag: "system" },
   { method: "GET", path: "/api/openapi.json", summary: "This OpenAPI document", tag: "system" },
+  { method: "GET", path: "/ranking", summary: "Animated page ranking the three autopilots that built this project (HTML)", tag: "system" },
+  { method: "GET", path: "/api/ranking", summary: "Data behind the /ranking page (snapshot plus scores)", tag: "system" },
 
   { method: "POST", path: "/api/accounts", summary: "Create an account (a Person without rule-creation permission)", tag: "accounts", request: "AccountCreate", response: "Person" },
   { method: "POST", path: "/api/session", summary: "Sign in as a person (no password); sets the session cookie", tag: "accounts", request: "SessionCreate", response: "Person" },

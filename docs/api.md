@@ -2543,6 +2543,16 @@ This OpenAPI document
 | --- | --- | --- | --- |
 | 200 | `application/json` | object | This OpenAPI document |
 
+### GET `/api/ranking`
+
+Data behind the /ranking page (snapshot plus scores)
+
+**Responses**
+
+| status | media type | schema | description |
+| --- | --- | --- | --- |
+| 200 | `application/json` | object | Snapshot, formula and ranked entries |
+
 ### GET `/health`
 
 Liveness and dependency check
@@ -2553,6 +2563,16 @@ Liveness and dependency check
 | --- | --- | --- | --- |
 | 200 | `application/json` | [Health](#schema-health) | Postgres and Redis are reachable |
 | 503 | `application/json` | [Health](#schema-health) | A dependency check failed |
+
+### GET `/ranking`
+
+Animated page ranking the three autopilots that built this project (HTML)
+
+**Responses**
+
+| status | media type | schema | description |
+| --- | --- | --- | --- |
+| 200 | `text/html` | string | Standalone HTML page |
 
 ## yaml
 
