@@ -24,6 +24,14 @@ describe("withRunbookLink", () => {
     const out = withRunbookLink(note({ runbookUrl: "https://own" }), { alert }, reg([text]), "https://x.test");
     expect(out.runbookUrl).toBe("https://own");
   });
+  it("skips the link without a publicUrl", () => {
+    const n = note();
+    expect(withRunbookLink(n, { alert }, reg([text]), "")).toBe(n);
+  });
+  it("skips digests", () => {
+    const n = note({ digestAlertIds: ["al1", "al2"] });
+    expect(withRunbookLink(n, { alert }, reg([text]), "https://x.test")).toBe(n);
+  });
   it("strips a trailing slash from publicUrl", () => {
     expect(withRunbookLink(note(), { alert }, reg([text]), "https://x.test/").runbookUrl).toBe("https://x.test/alerts/al1#runbook");
   });

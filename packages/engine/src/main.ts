@@ -19,6 +19,7 @@ const pool = new pg.Pool({ connectionString: databaseUrl, statement_timeout: 10_
 pool.on("error", (err) => console.error(`engine: postgres pool error: ${err.message}`));
 const runbooks = createRunbookRegistry(store, { onError: (err) => console.error(`engine: runbook registry: ${err.message}`) });
 const publicUrl = process.env.PUBLIC_URL ?? "";
+if (!publicUrl) console.warn("engine: PUBLIC_URL is not set: notifications get no runbook link");
 const queue = createDeliveryQueue(redis);
 const throttle = createThrottle({ redis, ...throttleConfigFromEnv(), enqueue: (n) => queue.enqueue(n) });
 const dedupHooks = createDedupHooks({ redis, repo: createPgAlertRepo(pool), throttle });

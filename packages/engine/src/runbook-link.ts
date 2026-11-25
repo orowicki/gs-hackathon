@@ -3,7 +3,9 @@ import type { Alert, Event, Notification } from "@alerting/shared";
 
 /**
  * Adds a link to the alert page's runbook section when a text runbook matches the alert.
- * An existing runbookUrl (the event's own) always wins. Never throws: on error the notification is returned unchanged.
+ * An existing runbookUrl (the event's own) always wins. Skipped without a publicUrl (a host-less link
+ * is not clickable in ntfy) and for digests (they cover several alerts). Never throws: on error the
+ * notification is returned unchanged.
  */
 export function withRunbookLink(
   n: Notification,
@@ -11,7 +13,7 @@ export function withRunbookLink(
   registry: Pick<RunbookRegistry, "match">,
   publicUrl: string,
 ): Notification {
-  if (n.runbookUrl) return n;
+  if (n.runbookUrl || !publicUrl || n.digestAlertIds) return n;
   try {
     if (!registry.match({ alert: ctx.alert, event: ctx.event }).some((r) => r.type === "text")) return n;
   } catch (err) {
