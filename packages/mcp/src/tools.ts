@@ -91,7 +91,7 @@ const ruleShape = {
 const approval = z.enum(["none", "required"]).optional().describe('"required" pauses the step until a person approves it in the UI or ntfy. Default "none"');
 const stepShape = z
   .object({
-    action: z.string().describe('"http" (needs method, url), "escalate" (needs group) or "wait" (needs duration)'),
+    action: z.string().describe('Only "http" (needs method, url), "escalate" (needs group) and "wait" (needs duration) are accepted; any other value is rejected'),
     name: z.string().optional().describe("Human-readable step name"),
     id: z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*$/).optional().describe("Step name usable as steps.<id>.ok in later `if` filters (letters, digits, _). Unique per runbook"),
     if: z.string().optional().describe("Filter checked when the step is reached, e.g. `steps.retry.ok = false`. False = skip the step"),
@@ -126,6 +126,8 @@ const ruleRunbookShape = {
   type: runbookFields.type.optional().describe('Default "text"'),
 };
 
+const RUNBOOK_NOTE = " set_rule_runbook is the path that validates steps server-side today; for runbooks attached to a rule, prefer it.";
+
 function crud(kind: string, plural: string, base: string, shape: ZodRawShape): ToolDef[] {
   return [
     { name: `list_${plural}`, description: `List all ${plural}.`, shape: {}, request: () => ({ method: "GET", path: base }) },
@@ -137,14 +139,14 @@ function crud(kind: string, plural: string, base: string, shape: ZodRawShape): T
     },
     {
       name: `create_${kind}`,
-      description: `Create a ${kind}. Unknown fields are passed through.`,
+      description: `Create a ${kind}. Unknown fields are passed through.${kind === "runbook" ? RUNBOOK_NOTE : ""}`,
       shape,
       extraKeys: true,
       request: (a) => ({ method: "POST", path: base, body: a }),
     },
     {
       name: `update_${kind}`,
-      description: `Replace a ${kind} (full object, same id). Unknown fields (e.g. createdAt) are passed through.`,
+      description: `Replace a ${kind} (full object, same id). Unknown fields (e.g. createdAt) are passed through.${kind === "runbook" ? ` This replaces the whole runbook: call get_runbook first and send the full object, including matches.${RUNBOOK_NOTE}` : ""}`,
       shape,
       extraKeys: true,
       request: (a) => ({ method: "PUT", path: `${base}/${seg(a.id)}`, body: a }),

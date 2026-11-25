@@ -14,7 +14,7 @@ export const AUTOMATION_EXAMPLE = `{
   "type": "automation",
   "matches": "alert.source = payments-api AND alert.severity = critical",
   "steps": [
-    { "action": "http", "id": "restart", "name": "Restart service", "method": "POST", "url": "https://ops.example.com/restart", "body": "{\\"service\\":\\"{{source}}\\"}", "approval": "required", "retries": 2 },
+    { "action": "http", "id": "restart", "name": "Restart service", "method": "POST", "url": "https://ops.example.com/restart", "body": "{\\"service\\":\\"{{alert.source}}\\"}", "approval": "required", "retries": 2 },
     { "action": "wait", "name": "Let it settle", "duration": "2m", "approval": "none" },
     { "action": "escalate", "name": "Page on-call if restart failed", "if": "steps.restart.ok = false", "group": "oncall", "approval": "none" }
   ]
@@ -27,7 +27,7 @@ export const STEP_FORMAT = `An automation runbook is an object: { id, name, type
 - action "http": needs \`method\` and \`url\`; optional \`headers\` (string map) and \`body\` (string, {{field}} placeholders allowed).
 - action "escalate": needs \`group\` (id of the group to notify).
 - action "wait": needs \`duration\` like 30s, 2m, 1h (maximum 15m).
-Only these three actions exist. Instructions that need a human (look at a dashboard, decide something) do not become steps: keep them in a text runbook or in a step with approval "required".`;
+Only these three actions exist (http, escalate, wait); any other action is rejected. Placeholders must be real alert fields such as {{alert.source}}, {{alert.severity}}, {{alert.title}}, {{alert.environment}}; never invent field names. Instructions that need a human (look at a dashboard, decide something) do not become steps: keep them in a text runbook or in a step with approval "required".`;
 
 /** Pure: build the prompt text for converting a text runbook into an automation runbook. */
 export function renderConvertTextRunbook(args: { text?: string; runbookId?: string; name?: string }): string {
