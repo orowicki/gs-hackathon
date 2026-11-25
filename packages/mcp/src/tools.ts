@@ -84,6 +84,8 @@ const ruleShape = {
     })
     .passthrough(),
   dedupFields: z.array(z.string()).optional(),
+  groupBy: z.array(z.string()).optional().describe("Alert fields or dotted event paths to group notifications by. Needs groupWindow."),
+  groupWindow: z.string().regex(/^\d+(ms|s|m|h)$/).optional().describe("Length of a grouping window, e.g. 500ms, 30s, 5m, 1h. Needs groupBy."),
 };
 
 function crud(kind: string, plural: string, base: string, shape: ZodRawShape): ToolDef[] {
