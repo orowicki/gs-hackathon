@@ -15,6 +15,7 @@
     "@alerting/filter": "*",
     "@alerting/shared": "*",
     "@alerting/delivery": "*",
+    "@alerting/runbooks": "*",
     "ioredis": "^5.4.1",
     "pg": "^8.12.0"
   },

@@ -2,7 +2,9 @@ import { Redis } from "ioredis";
 import pg from "pg";
 import { createConfigStore } from "@alerting/config";
 import { createDeliveryQueue } from "@alerting/delivery";
+import { createRunbookRegistry } from "@alerting/runbooks";
 import type { EngineHooks } from "./index.js";
+import { withRunbookLink } from "./runbook-link.js";
 import { createDedupHooks, createEngine, createGrouping, createPgAlertRepo, createThrottle, throttleConfigFromEnv } from "./index.js";
 
 const redisUrl = process.env.REDIS_URL;
@@ -15,6 +17,8 @@ const redis = new Redis(redisUrl);
 const store = createConfigStore({ databaseUrl, redisUrl });
 const pool = new pg.Pool({ connectionString: databaseUrl, statement_timeout: 10_000 });
 pool.on("error", (err) => console.error(`engine: postgres pool error: ${err.message}`));
+const runbooks = createRunbookRegistry(store, { onError: (err) => console.error(`engine: runbook registry: ${err.message}`) });
+const publicUrl = process.env.PUBLIC_URL ?? "";
 const queue = createDeliveryQueue(redis);
 const throttle = createThrottle({ redis, ...throttleConfigFromEnv(), enqueue: (n) => queue.enqueue(n) });
 const dedupHooks = createDedupHooks({ redis, repo: createPgAlertRepo(pool), throttle });
@@ -31,7 +35,9 @@ const hooks: EngineHooks = {
   ...dedupHooks,
   beforeEnqueue: async (n, ctx) => {
     const buffered = await grouping.beforeEnqueue(n, ctx);
-    return buffered ? dedupHooks.beforeEnqueue!(buffered, ctx) : null;
+    if (!buffered) return null;
+    const out = await dedupHooks.beforeEnqueue!(buffered, ctx);
+    return out ? withRunbookLink(out, ctx, runbooks, publicUrl) : null;
   },
 };
 const engine = createEngine({ redis, store, hooks });
@@ -44,6 +50,7 @@ const shutdown = async () => {
   await engine.stop();
   await grouping.stop();
   await throttle.stop();
+  await runbooks.close();
   await store.close();
   await pool.end();
   redis.disconnect();
