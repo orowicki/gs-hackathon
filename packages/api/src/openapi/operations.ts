@@ -134,6 +134,11 @@ export const operationSpecs: Record<string, OperationSpec> = {
     failures: [json(503, "A dependency check failed", ref("Health"))],
     errors: [],
   },
+  "GET /ranking": {
+    success: { status: 200, description: "Standalone HTML page", mediaType: "text/html", schema: { type: "string" } },
+    errors: [],
+  },
+  "GET /api/ranking": { success: json(200, "Snapshot, formula and ranked entries", { type: "object" }), errors: [] },
   "GET /api/openapi.json": { success: json(200, "This OpenAPI document", { type: "object" }), errors: [] },
 
   "POST /api/accounts": {
