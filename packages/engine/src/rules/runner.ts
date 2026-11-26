@@ -72,21 +72,27 @@ export interface ProcessResult {
   failed: Array<{ ruleId: string; error: Error }>;
 }
 
-export function buildAlert(event: Event, rule: CompiledRule, at: Date, entryId: string = event.id): Alert {
-  const looks = renderLooks(rule.rule, event);
+/** The dedup key buildAlert gives the alert of `event` under `rule` (falls back to the unique alert id). */
+export function alertDedupKey(event: Event, rule: CompiledRule, entryId: string = event.id): string {
   const c = event.common as Record<string, unknown>;
-  const id = deterministicId("alert", entryId, rule.rule.id);
   const dedupFromFields = (rule.rule.dedupFields ?? [])
     .map((f) => c[f])
     .filter((v) => v !== undefined && v !== null)
     .join("|");
+  return (c.dedupKey as string | undefined) || dedupFromFields || deterministicId("alert", entryId, rule.rule.id);
+}
+
+export function buildAlert(event: Event, rule: CompiledRule, at: Date, entryId: string = event.id): Alert {
+  const looks = renderLooks(rule.rule, event);
+  const c = event.common as Record<string, unknown>;
+  const id = deterministicId("alert", entryId, rule.rule.id);
   const iso = at.toISOString();
   const alert: Record<string, unknown> = {
     id,
     ruleId: rule.rule.id,
     eventId: event.id,
     schemaId: event.schemaId,
-    dedupKey: (c.dedupKey as string | undefined) || dedupFromFields || id,
+    dedupKey: alertDedupKey(event, rule, entryId),
     state: "open",
     status: "open",
     severity: looks.severity,
@@ -171,6 +177,13 @@ export interface EngineOptions {
   reclaimEveryMs?: number;
   /** Minimum idle time before a pending entry is reclaimed (ms, default 30000). */
   reclaimMinIdleMs?: number;
+  /** Entries read per XREADGROUP (default 200). */
+  batchSize?: number;
+  /**
+   * Entries processed at once (default 4 x batchSize). Reads continue while earlier entries are
+   * still in flight, so one slow entry does not hold up the next read.
+   */
+  maxInFlight?: number;
   /** Deliveries after which an event is given up on (logged and acked; default 5). */
   maxDeliveries?: number;
 }
@@ -189,6 +202,8 @@ export function createEngine(opts: EngineOptions): Engine {
   const reclaimEveryMs = opts.reclaimEveryMs ?? 5000;
   const reclaimMinIdleMs = opts.reclaimMinIdleMs ?? 30_000;
   const maxDeliveries = opts.maxDeliveries ?? 5;
+  const batchSize = opts.batchSize ?? 200;
+  const maxInFlight = Math.max(1, opts.maxInFlight ?? batchSize * 4);
   const queue = createDeliveryQueue(opts.redis);
   let running = false;
   let loop: Promise<void> | undefined;
@@ -197,9 +212,12 @@ export function createEngine(opts: EngineOptions): Engine {
   let directory: Directory | undefined;
 
   const publishAlert = async (ae: AlertEvent) => {
-    await opts.redis.xadd(STREAM_ALERTS, "*", "data", JSON.stringify(ae));
     const push: UiPush = { type: "alert", alertId: ae.alertId, kind: ae.kind };
-    await opts.redis.publish(CHANNEL_UI_PUSH, JSON.stringify(push));
+    // one round trip: both commands go out together and run in this order on the connection
+    await Promise.all([
+      opts.redis.xadd(STREAM_ALERTS, "*", "data", JSON.stringify(ae)),
+      opts.redis.publish(CHANNEL_UI_PUSH, JSON.stringify(push)),
+    ]);
   };
 
   const ensureGroup = async () => {
@@ -211,28 +229,48 @@ export function createEngine(opts: EngineOptions): Engine {
     }
   };
 
-  const ack = async (id: string) => {
-    try {
-      await opts.redis.xack(STREAM_EVENTS, GROUP_ENGINE, id);
-    } catch (err) {
-      logger.error(`engine: ack ${id} failed: ${(err as Error).message}`);
-    }
+  // Acks issued in the same turn of the event loop go out as one XACK. A failed XACK only logs: the
+  // entries stay pending and are reclaimed later (replays are idempotent).
+  let ackIds: string[] = [];
+  let ackFlush: Promise<void> | undefined;
+  const ack = (id: string): Promise<void> => {
+    ackIds.push(id);
+    return (ackFlush ??= new Promise<void>((resolve) => setImmediate(resolve)).then(async () => {
+      const ids = ackIds;
+      ackIds = [];
+      ackFlush = undefined;
+      try {
+        await opts.redis.xack(STREAM_EVENTS, GROUP_ENGINE, ...ids);
+        for (const id of ids) phantom.delete(id);
+      } catch (err) {
+        logger.error(`engine: ack of ${ids.length} entries (${ids[0]}..) failed: ${(err as Error).message}`);
+      }
+    }));
   };
 
   /** Process one stream entry; ack only on success, otherwise leave it pending for a retry. */
-  const handle = async (id: string, fields: string[]) => {
+  /** Resolves true when the entry was acked (done), false when it was left pending for a retry. */
+  const handle = async (
+    id: string,
+    fields: string[],
+    parsed?: { event: Event; matched: CompiledRule[] },
+  ): Promise<boolean> => {
     let event: Event;
     try {
-      const i = fields.indexOf("data");
-      event = JSON.parse(fields[i + 1] ?? "") as Event;
+      if (parsed) event = parsed.event;
+      else {
+        const i = fields.indexOf("data");
+        event = JSON.parse(fields[i + 1] ?? "") as Event;
+      }
     } catch (err) {
       logger.error(`engine: event ${id} is not valid JSON, dropped: ${(err as Error).message}`);
       await ack(id);
-      return;
+      return true;
     }
     try {
       const res = await processEvent(event, {
-        rules: rules!.rules(),
+        // already matched while keying the entry: only those rules are evaluated again
+        rules: parsed ? parsed.matched : rules!.rules(),
         directory: directory!,
         enqueue: (n) => queue.enqueue(n),
         publishAlert,
@@ -243,13 +281,58 @@ export function createEngine(opts: EngineOptions): Engine {
       });
       if (res.failed.length > 0) {
         logger.error(`engine: event ${id} left pending, ${res.failed.length} rule(s) failed (will retry)`);
-        return;
+        return false;
       }
     } catch (err) {
       logger.error(`engine: event ${id} failed, left pending: ${(err as Error).message}`);
-      return;
+      return false;
     }
     await ack(id);
+    return true;
+  };
+
+  // Entries being processed by this engine. Entries that resolve to the same (rule, dedupKey) run one
+  // after the other in stream order (also across reads); everything else overlaps.
+  const active = new Map<string, Promise<void>>();
+  const tails = new Map<string, Promise<void>>();
+  /** Deliveries XAUTOCLAIM counted for entries while they were in flight here (not real retries). */
+  const phantom = new Map<string, number>();
+  let slotFreed: (() => void) | undefined;
+
+  /** Start processing one entry behind the earlier entries of its keys. Never rejects. */
+  const submit = (id: string, fields: string[]): Promise<void> => {
+    let keys: string[] = [];
+    let parsed: { event: Event; matched: CompiledRule[] } | undefined;
+    try {
+      const i = fields.indexOf("data");
+      const event = JSON.parse(fields[i + 1] ?? "") as Event;
+      const matched = matchRules(event, rules!.rules(), logger);
+      parsed = { event, matched };
+      keys = [...new Set(matched.map((r) => `${r.rule.id}\u0000${alertDedupKey(event, r, id)}`))];
+    } catch {
+      // invalid entries are dropped by handle()
+    }
+    const waits = keys.map((k) => tails.get(k)).filter((p): p is Promise<void> => !!p);
+    const done = (waits.length ? Promise.all(waits).then(() => undefined) : Promise.resolve())
+      .then(() => handle(id, fields, parsed))
+      .then((acked) => {
+        // a left-pending entry keeps its adjustment for the reclaim that retries it
+        if (acked) phantom.delete(id);
+      })
+      .finally(() => {
+        for (const k of keys) if (tails.get(k) === done) tails.delete(k);
+        active.delete(id);
+        const wake = slotFreed;
+        slotFreed = undefined;
+        wake?.();
+      });
+    for (const k of keys) tails.set(k, done);
+    active.set(id, done);
+    return done;
+  };
+
+  const waitForSlot = async () => {
+    while (active.size >= maxInFlight) await new Promise<void>((r) => (slotFreed = r));
   };
 
   const deliveryCount = async (id: string): Promise<number> => {
@@ -275,6 +358,13 @@ export function createEngine(opts: EngineOptions): Engine {
       cursor = res[0];
       for (const [id, fields] of res[1] ?? []) {
         if (!running) return;
+        if (active.has(id)) {
+          // still being processed here, not stuck; XAUTOCLAIM counted a delivery that never happened
+          phantom.set(id, (phantom.get(id) ?? 0) + 1);
+          continue;
+        }
+        const extra = phantom.get(id) ?? 0;
+        phantom.delete(id);
         if (!fields) {
           // entry was trimmed from the stream; nothing to retry
           await ack(id);
@@ -282,7 +372,7 @@ export function createEngine(opts: EngineOptions): Engine {
         }
         let n = 0;
         try {
-          n = await deliveryCount(id);
+          n = (await deliveryCount(id)) - extra;
         } catch (err) {
           logger.error(`engine: xpending ${id} failed: ${(err as Error).message}`);
         }
@@ -291,7 +381,9 @@ export function createEngine(opts: EngineOptions): Engine {
           await ack(id);
           continue;
         }
-        await handle(id, fields);
+        await waitForSlot();
+        if (!running) return;
+        await submit(id, fields);
       }
     } while (running && cursor !== "0-0");
   };
@@ -304,12 +396,14 @@ export function createEngine(opts: EngineOptions): Engine {
           lastReclaim = Date.now();
           await reclaim();
         }
+        await waitForSlot();
+        if (!running) break;
         const res = (await reader!.xreadgroup(
           "GROUP",
           GROUP_ENGINE,
           consumer,
           "COUNT",
-          10,
+          Math.min(batchSize, maxInFlight - active.size),
           "BLOCK",
           blockMs,
           "STREAMS",
@@ -317,7 +411,7 @@ export function createEngine(opts: EngineOptions): Engine {
           ">",
         )) as Array<[string, Entries]> | null;
         if (!res) continue;
-        for (const [, entries] of res) for (const [id, fields] of entries) await handle(id, fields);
+        for (const [, entries] of res) for (const [id, fields] of entries) void submit(id, fields);
       } catch (err) {
         if (!running) return;
         const msg = (err as Error).message ?? String(err);
@@ -343,7 +437,8 @@ export function createEngine(opts: EngineOptions): Engine {
       try {
         await Promise.all([rules.ready, directory.ready]);
         await ensureGroup();
-        reader = opts.redis.duplicate();
+        // blocking reads: one command at a time, no auto-pipelining
+        reader = opts.redis.duplicate({ enableAutoPipelining: false });
       } catch (err) {
         rules.close();
         directory.close();
@@ -364,6 +459,9 @@ export function createEngine(opts: EngineOptions): Engine {
         }
       }
       await loop;
+      // entries already read finish (and are acked) before the caches go away
+      while (active.size > 0) await Promise.all([...active.values()]);
+      await ackFlush;
       rules?.close();
       directory?.close();
       reader = undefined;

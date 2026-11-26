@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Load test orchestration: runs scripts/loadtest/run.mjs with 1 then 2 workers.
-# Usage: loadtest.sh [--workers N] [--smoke] [--local] [--rate R] [--duration S] [--repeat N]
+# Usage: loadtest.sh [--workers N] [--smoke] [--local] [--rate R] [--duration S] [--repeat N] [--repeat-keys N]
 # --smoke writes to results/smoke/ so published results are never overwritten.
 set -euo pipefail
 cd "$(dirname "$0")/../.."
@@ -11,7 +11,7 @@ while [ $# -gt 0 ]; do
     --workers) workers="$2"; shift 2 ;;
     --local) local_mode=1; shift ;;
     --smoke) passthru+=(--smoke); smoke=1; shift ;;
-    --rate|--duration|--repeat) passthru+=("$1" "$2"); shift 2 ;;
+    --rate|--duration|--repeat|--repeat-keys) passthru+=("$1" "$2"); shift 2 ;;
     *) echo "unknown flag: $1" >&2; exit 2 ;;
   esac
 done
