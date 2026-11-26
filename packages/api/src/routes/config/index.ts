@@ -160,6 +160,10 @@ function validateEntity(kind: Kind, body: unknown): string {
   }
   // Preference ids ("person:p1") are derived and never used as a path segment.
   if (kind !== "preference") checkId(id);
+  if (kind === "runbook") {
+    const err = checkRunbook(body);
+    if (err !== "") throw bad(err);
+  }
   return id;
 }
 
@@ -331,6 +335,17 @@ async function handleYaml(
 /** Step actions the worker can run (createDefaultActions in @alerting/runbooks). */
 const STEP_ACTIONS = new Set(["http", "escalate", "wait"]);
 
+/** Checks shared by every runbook write path. Returns an error message, or "" when the runbook is fine. */
+function checkRunbook(candidate: unknown): string {
+  const r = validateRunbook(candidate);
+  if (!r.ok) return r.error;
+  const steps = (r.runbook as { steps?: { action: string }[] }).steps ?? [];
+  const unknown = steps.findIndex((st) => !STEP_ACTIONS.has(st.action));
+  if (unknown !== -1) return `steps[${unknown}].action must be one of: ${[...STEP_ACTIONS].join(", ")}`;
+  if (r.runbook.type === "automation" && steps.length === 0) return "automation runbook needs at least one step";
+  return "";
+}
+
 /** Id of the one YAML runbook a rule can own (written from the alert page). */
 export const ruleRunbookId = (ruleId: string): string => `rule-${ruleId}`;
 
@@ -375,12 +390,10 @@ async function handleRuleRunbook(
     matches: `alert.ruleId = ${JSON.stringify(ruleId)}`,
     type: value.type ?? "text",
   };
+  const err = checkRunbook(candidate);
+  if (err !== "") throw bad(err);
   const r = validateRunbook(candidate);
   if (!r.ok) throw bad(r.error);
-  const steps = (r.runbook as { steps?: { action: string }[] }).steps ?? [];
-  const unknown = steps.findIndex((st) => !STEP_ACTIONS.has(st.action));
-  if (unknown !== -1) throw bad(`steps[${unknown}].action must be one of: ${[...STEP_ACTIONS].join(", ")}`);
-  if (r.runbook.type === "automation" && steps.length === 0) throw bad("automation runbook needs at least one step");
   const existed = (await store.get("runbook", rbId)) !== undefined;
   await store.upsert("runbook", r.runbook as Runbook);
   await rec("runbook", rbId, existed ? "update" : "create");

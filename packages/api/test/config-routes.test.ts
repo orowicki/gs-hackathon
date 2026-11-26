@@ -62,7 +62,7 @@ const samples: Record<string, Record<string, unknown>> = {
   rules: { id: "r1", name: "R" },
   people: { id: "p1", name: "P", role: "dev", canCreateRules: true },
   groups: { id: "g1", name: "G", memberIds: ["p1"] },
-  runbooks: { id: "rb1", name: "RB", steps: [] },
+  runbooks: { id: "rb1", name: "RB", type: "text", content: "Restart it." },
 };
 
 describe("config CRUD", () => {
@@ -326,5 +326,41 @@ describe("rule runbook (YAML, one per rule)", () => {
 
     expect((await fetch(`${url}/api/rules/${ruleId}/runbook`, { method: "DELETE" })).status).toBe(204);
     expect((await fetch(`${url}/api/rules/${ruleId}/runbook`)).status).toBe(404);
+  });
+});
+
+describe("runbook validation on /api/runbooks", () => {
+  const auto = (steps: unknown[]) => ({ id: "rbv", name: "V", type: "automation", matches: 'alert.severity = "critical"', steps });
+  const post = async (url: string, body: unknown) => {
+    const r = await fetch(`${url}/api/runbooks`, json("POST", body));
+    return { status: r.status, text: await r.text() };
+  };
+
+  it("rejects an unknown step action", async () => {
+    const url = await start(memoryStore());
+    const r = await post(url, auto([{ action: "explode" }]));
+    expect(r.status).toBe(400);
+    expect(r.text).toContain("steps[0]");
+  });
+
+  it("rejects an http step without url", async () => {
+    const url = await start(memoryStore());
+    const r = await post(url, auto([{ action: "http", method: "POST" }]));
+    expect(r.status).toBe(400);
+    expect(r.text).toContain("http step needs method and url");
+  });
+
+  it("accepts a valid automation runbook", async () => {
+    const url = await start(memoryStore());
+    const r = await post(url, auto([{ action: "http", method: "POST", url: "https://example.test/hook" }]));
+    expect(r.status).toBe(201);
+  });
+
+  it("rejects invalid steps on PUT", async () => {
+    const url = await start(memoryStore());
+    expect((await post(url, auto([{ action: "wait", duration: "10s" }]))).status).toBe(201);
+    const r = await fetch(`${url}/api/runbooks/rbv`, json("PUT", auto([{ action: "explode" }])));
+    expect(r.status).toBe(400);
+    expect(await r.text()).toContain("steps[0]");
   });
 });

@@ -88,6 +88,46 @@ const ruleShape = {
   groupWindow: z.string().regex(/^\d+(ms|s|m|h)$/).optional().describe("Length of a grouping window, e.g. 500ms, 30s, 5m, 1h. Needs groupBy."),
 };
 
+const approval = z.enum(["none", "required"]).optional().describe('"required" pauses the step until a person approves it in the UI or ntfy. Default "none"');
+const stepShape = z
+  .object({
+    action: z.string().describe('Only "http" (needs method, url), "escalate" (needs group) and "wait" (needs duration) are accepted; any other value is rejected'),
+    name: z.string().optional().describe("Human-readable step name"),
+    id: z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*$/).optional().describe("Step name usable as steps.<id>.ok in later `if` filters (letters, digits, _). Unique per runbook"),
+    if: z.string().optional().describe("Filter checked when the step is reached, e.g. `steps.retry.ok = false`. False = skip the step"),
+    retries: z.number().int().min(0).max(5).optional().describe("Re-run a failed step up to N more times (0-5)"),
+    approval,
+    approvers: z.string().optional().describe("Group id notified with an Approve button when the step awaits approval; default the alert's recipients"),
+    method: z.string().optional().describe("http only: HTTP method, e.g. POST"),
+    url: z.string().optional().describe("http only: URL, may contain {{field}} placeholders"),
+    headers: z.record(z.string(), z.string()).optional().describe("http only: request headers"),
+    body: z.string().optional().describe('http only: templated request body string, e.g. {"workflowId":"{{workflowId}}"}'),
+    group: z.string().optional().describe("escalate only: id of the group to notify"),
+    duration: z.string().regex(/^\d+(ms|s|m|h)$/).optional().describe("wait only: e.g. 30s, 2m, 1h (max 15m)"),
+  })
+  .passthrough();
+
+const runbookFields = {
+  name: z.string().min(1),
+  type: z.enum(["text", "automation"]).describe('"text": free-text/markdown instructions shown on the alert, never executed. "automation": executed `steps`'),
+  content: z.string().optional().describe("type=text only: markdown/free text with {{field}} placeholders filled from the alert"),
+  steps: z.array(stepShape).optional().describe("type=automation only: ordered steps (at least one)"),
+};
+
+const runbookShape = {
+  id: z.string().min(1),
+  ...runbookFields,
+  matches: filterOrTree.optional().describe("Which alerts this runbook applies to, e.g. `alert.source = payments-api`. Empty matches nothing useful: set it"),
+};
+
+const ruleRunbookShape = {
+  id: z.string().min(1).describe("Rule id (the runbook id and matches are set by the server)"),
+  ...runbookFields,
+  type: runbookFields.type.optional().describe('Default "text"'),
+};
+
+const RUNBOOK_NOTE = " set_rule_runbook is the path that validates steps server-side today; for runbooks attached to a rule, prefer it.";
+
 function crud(kind: string, plural: string, base: string, shape: ZodRawShape): ToolDef[] {
   return [
     { name: `list_${plural}`, description: `List all ${plural}.`, shape: {}, request: () => ({ method: "GET", path: base }) },
@@ -99,14 +139,14 @@ function crud(kind: string, plural: string, base: string, shape: ZodRawShape): T
     },
     {
       name: `create_${kind}`,
-      description: `Create a ${kind}. Unknown fields are passed through.`,
+      description: `Create a ${kind}. Unknown fields are passed through.${kind === "runbook" ? RUNBOOK_NOTE : ""}`,
       shape,
       extraKeys: true,
       request: (a) => ({ method: "POST", path: base, body: a }),
     },
     {
       name: `update_${kind}`,
-      description: `Replace a ${kind} (full object, same id). Unknown fields (e.g. createdAt) are passed through.`,
+      description: `Replace a ${kind} (full object, same id). Unknown fields (e.g. createdAt) are passed through.${kind === "runbook" ? ` This replaces the whole runbook: call get_runbook first and send the full object, including matches.${RUNBOOK_NOTE}` : ""}`,
       shape,
       extraKeys: true,
       request: (a) => ({ method: "PUT", path: `${base}/${seg(a.id)}`, body: a }),
@@ -124,6 +164,24 @@ export const TOOLS: ToolDef[] = [
   ...crud("source", "sources", "/api/sources", sourceShape),
   ...crud("schema", "schemas", "/api/schemas", schemaShape),
   ...crud("rule", "rules", "/api/rules", ruleShape),
+  ...crud("runbook", "runbooks", "/api/runbooks", runbookShape),
+  {
+    name: "get_rule_runbook",
+    description: "Get the runbook attached to a rule (error 404 when none). Returns `{ runbook, yaml }`.",
+    shape: { id: z.string().min(1).describe("Rule id") },
+    request: (a) => ({ method: "GET", path: `/api/rules/${seg(a.id)}/runbook` }),
+  },
+  {
+    name: "set_rule_runbook",
+    description:
+      "Create or replace the runbook attached to a rule. The runbook id and `matches` are set by the server from the rule id. Returns `{ runbook, yaml }`.",
+    shape: ruleRunbookShape,
+    extraKeys: true,
+    request: (a) => {
+      const { id: ruleId, ...body } = a;
+      return { method: "PUT", path: `/api/rules/${seg(ruleId)}/runbook`, body };
+    },
+  },
   {
     name: "validate_filter",
     description: "Parse and validate a filter expression. Returns `{ tree }` (the JSON filter tree), or an error with the position.",
